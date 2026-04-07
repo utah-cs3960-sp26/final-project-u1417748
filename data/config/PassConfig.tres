@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="PassConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/PassConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+speed = 1180.0
+catch_radius = 70.0
+tap_max_motion = 18.0
+intercept_lane_width = 84.0
+safe_pass_distance = 180.0
+risky_crosscourt_distance = 520.0
+release_endpoint_pass_conversion = true

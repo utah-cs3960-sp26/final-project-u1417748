@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 2
+actor_id = "pg"
+payload = {"target_id": "corner_left", "lane": "covered_cross_court"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("3")
+kind = "state"
+subject = "turnover.type"
+comparison = 0
+expected_value = "interception"
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "feedback"
+subject = "feedback_text"
+comparison = 4
+expected_value = "STEAL!"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "bad_cross_court_pass_steal"
+title = "Bad Cross-Court Pass Steal"
+description = "Exercises the pass-intercept lane: a risky long pass should be available to the BotPilot and should log as a turnover with steal feedback."
+tags = PackedStringArray("scenario", "acceptance", "pass", "steal")
+seed = 396003
+setup_data = {"ballhandler": "pg", "defense_shape": "lane_jump_ready"}
+actions = Array[Resource]([SubResource("1")])
+expectations = Array[Resource]([SubResource("2"), SubResource("3")])

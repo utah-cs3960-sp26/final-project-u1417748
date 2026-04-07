@@ -1,0 +1,90 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/TestRunner.gd" id="1"]
+[ext_resource type="Resource" path="res://data/config/TestHarnessConfig.tres" id="2"]
+[ext_resource type="Resource" path="res://data/config/DebugConfig.tres" id="3"]
+[ext_resource type="Script" path="res://scripts/debug/DebugOverlay.gd" id="4"]
+
+[node name="TestRunner" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+harness_config = ExtResource("2")
+debug_config = ExtResource("3")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 32
+
+[node name="Root" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Margin/Root"]
+layout_mode = 2
+text = "Pocket Hoops Diagnostics"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="Margin/Root"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Loading catalogs..."
+
+[node name="ButtonRow" type="HBoxContainer" parent="Margin/Root"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RunSmokeSuite" type="Button" parent="Margin/Root/ButtonRow"]
+layout_mode = 2
+text = "Run Pure Logic Smoke"
+
+[node name="ValidateScenarios" type="Button" parent="Margin/Root/ButtonRow"]
+layout_mode = 2
+text = "Validate Scenarios"
+
+[node name="ValidateBalance" type="Button" parent="Margin/Root/ButtonRow"]
+layout_mode = 2
+text = "Validate Balance"
+
+[node name="RefreshCatalogs" type="Button" parent="Margin/Root/ButtonRow"]
+layout_mode = 2
+text = "Refresh"
+
+[node name="Split" type="HSplitContainer" parent="Margin/Root"]
+layout_mode = 2
+size_flags_vertical = 3
+split_offset = 300
+
+[node name="ScenarioList" type="ItemList" parent="Margin/Root/Split"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="OutputText" type="RichTextLabel" parent="Margin/Root/Split"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = false
+scroll_following = true
+
+[node name="DebugOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4")
+config = ExtResource("3")
+
+[connection signal="pressed" from="Margin/Root/ButtonRow/RunSmokeSuite" to="." method="_on_run_smoke_suite_pressed"]
+[connection signal="pressed" from="Margin/Root/ButtonRow/ValidateScenarios" to="." method="_on_validate_scenarios_pressed"]
+[connection signal="pressed" from="Margin/Root/ButtonRow/ValidateBalance" to="." method="_on_validate_balance_pressed"]
+[connection signal="pressed" from="Margin/Root/ButtonRow/RefreshCatalogs" to="." method="_on_refresh_pressed"]

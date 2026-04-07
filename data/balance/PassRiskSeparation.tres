@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "pass_risk_separation"
+title = "Pass Risk Separation"
+description = "Batch placeholder comparing short safe passes against lane-covered cross-court passes."
+seed = 496004
+iterations = 250
+scenario_id = "bad_cross_court_pass_steal"
+metrics = PackedStringArray("safe_pass_interception_rate", "risky_pass_interception_rate")
+thresholds = {"risky_pass_interception_rate_above_safe": true}

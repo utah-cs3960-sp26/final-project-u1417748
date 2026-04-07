@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ShotTimingConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/ShotTimingConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+activation_drag_distance = 18.0
+min_shot_drag_distance = 62.0
+max_shot_drag_distance = 260.0
+base_center_time = 0.58
+base_window_width = 0.54
+green_fraction = 0.22
+yellow_fraction = 0.54
+max_angle_error_degrees = 18.0
+max_power_error_fraction = 0.22
+power_curve = 1.1
+pass_conversion_catch_radius = 78.0

@@ -1,0 +1,102 @@
+[gd_resource type="Resource" script_class="TeamData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/TeamData.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/PlayerData.gd" id="2"]
+
+[sub_resource type="Resource" id="PlayerData_pg"]
+script = ExtResource("2")
+player_id = "hom_pg"
+display_name = "HOM PG"
+role = "PG"
+speed = 74
+acceleration = 76
+handle = 82
+pass_accuracy = 81
+catch_rating = 74
+shooting = 70
+release_consistency = 77
+perimeter_defense = 68
+steal = 64
+block = 32
+rebound = 58
+sim_offense = 73
+
+[sub_resource type="Resource" id="PlayerData_wl"]
+script = ExtResource("2")
+player_id = "hom_wl"
+display_name = "HOM Wing L"
+role = "Wing"
+speed = 70
+acceleration = 71
+handle = 68
+pass_accuracy = 67
+catch_rating = 75
+shooting = 76
+release_consistency = 74
+perimeter_defense = 70
+steal = 66
+block = 38
+rebound = 61
+sim_offense = 72
+
+[sub_resource type="Resource" id="PlayerData_wr"]
+script = ExtResource("2")
+player_id = "hom_wr"
+display_name = "HOM Wing R"
+role = "Wing"
+speed = 72
+acceleration = 73
+handle = 70
+pass_accuracy = 69
+catch_rating = 75
+shooting = 79
+release_consistency = 75
+perimeter_defense = 72
+steal = 64
+block = 41
+rebound = 63
+sim_offense = 75
+
+[sub_resource type="Resource" id="PlayerData_cl"]
+script = ExtResource("2")
+player_id = "hom_cl"
+display_name = "HOM Corner L"
+role = "Corner"
+speed = 66
+acceleration = 67
+handle = 58
+pass_accuracy = 60
+catch_rating = 78
+shooting = 73
+release_consistency = 72
+perimeter_defense = 74
+steal = 61
+block = 46
+rebound = 70
+sim_offense = 68
+
+[sub_resource type="Resource" id="PlayerData_cr"]
+script = ExtResource("2")
+player_id = "hom_cr"
+display_name = "HOM Corner R"
+role = "Corner"
+speed = 67
+acceleration = 68
+handle = 58
+pass_accuracy = 60
+catch_rating = 79
+shooting = 74
+release_consistency = 73
+perimeter_defense = 73
+steal = 60
+block = 48
+rebound = 71
+sim_offense = 69
+
+[resource]
+script = ExtResource("1")
+team_name = "Pocket Hoops Home"
+abbreviation = "HOM"
+primary_color = Color(0.964706, 0.827451, 0.396078, 1)
+secondary_color = Color(0.0666667, 0.0901961, 0.164706, 1)
+players = [SubResource("PlayerData_pg"), SubResource("PlayerData_wl"), SubResource("PlayerData_wr"), SubResource("PlayerData_cl"), SubResource("PlayerData_cr")]

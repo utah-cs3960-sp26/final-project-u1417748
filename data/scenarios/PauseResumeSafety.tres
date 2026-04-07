@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 5
+actor_id = "system"
+payload = {"state_before_pause": "shot_aim"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("2")
+action_type = 0
+actor_id = "system"
+duration_seconds = 1.25
+payload = {"note": "wait while paused"}
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("2")
+action_type = 6
+actor_id = "system"
+payload = {"expected_timescale": 0.5}
+
+[sub_resource type="Resource" id="4"]
+script = ExtResource("3")
+kind = "state"
+subject = "pause.hidden_clock_advanced"
+comparison = 7
+
+[sub_resource type="Resource" id="5"]
+script = ExtResource("3")
+kind = "state"
+subject = "time_scale"
+comparison = 0
+expected_value = 0.5
+
+[resource]
+script = ExtResource("1")
+scenario_id = "pause_resume_safety"
+title = "Pause Resume Safety"
+description = "Provides a seeded pause/resume contract for both live offense and shot-aim slow-motion states."
+tags = PackedStringArray("scenario", "acceptance", "pause", "timing")
+seed = 396008
+setup_data = {"clock_seconds": 73.0, "state": "shot_aim"}
+actions = Array[Resource]([SubResource("1"), SubResource("2"), SubResource("3")])
+expectations = Array[Resource]([SubResource("4"), SubResource("5")])

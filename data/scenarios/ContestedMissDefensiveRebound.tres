@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 3
+actor_id = "sf"
+vector = Vector2(60, 150)
+duration_seconds = 0.60
+payload = {"timing_target": "yellow", "contest_level": "high"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("2")
+action_type = 4
+actor_id = "sf"
+payload = {"release_quality": "yellow"}
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "state"
+subject = "possession.result"
+comparison = 0
+expected_value = "defensive_rebound"
+
+[sub_resource type="Resource" id="4"]
+script = ExtResource("3")
+kind = "state"
+subject = "state"
+comparison = 0
+expected_value = "opponent_sim"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "contested_miss_defensive_rebound"
+title = "Contested Miss With Defensive Rebound"
+description = "Validates the miss-to-rebound handoff: a contested jumper misses, the defense secures the board, and live play jumps to opponent simulation."
+tags = PackedStringArray("scenario", "acceptance", "contest", "rebound")
+seed = 396002
+setup_data = {"clock_seconds": 57.5, "ballhandler": "sf", "contest_preset": "tight_closeout"}
+actions = Array[Resource]([SubResource("1"), SubResource("2")])
+expectations = Array[Resource]([SubResource("3"), SubResource("4")])

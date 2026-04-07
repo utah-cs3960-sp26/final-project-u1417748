@@ -1,0 +1,48 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/GameCoordinator.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/CourtView.gd" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Hoop.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Ball.tscn" id="4"]
+[ext_resource type="Script" path="res://scripts/input/InputController.gd" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/ui/PauseOverlay.tscn" id="7"]
+[ext_resource type="PackedScene" path="res://scenes/ui/GameOverOverlay.tscn" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/debug/DebugOverlay.tscn" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/ui/Joystick.tscn" id="10"]
+
+[node name="GameRoot" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Court" type="Node2D" parent="."]
+script = ExtResource("2")
+
+[node name="Players" type="Node2D" parent="."]
+
+[node name="Hoop" parent="." instance=ExtResource("3")]
+
+[node name="Ball" parent="." instance=ExtResource("4")]
+
+[node name="InputController" type="Node" parent="."]
+script = ExtResource("5")
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="UILayer" instance=ExtResource("6")]
+
+[node name="PauseOverlay" parent="UILayer" instance=ExtResource("7")]
+
+[node name="GameOverOverlay" parent="UILayer" instance=ExtResource("8")]
+
+[node name="DebugOverlay" parent="UILayer" instance=ExtResource("9")]
+
+[node name="Joystick" parent="UILayer" instance=ExtResource("10")]
+
+[node name="FeedbackLabel" type="Label" parent="UILayer"]
+offset_left = 270.0
+offset_top = 140.0
+offset_right = 810.0
+offset_bottom = 240.0
+text = "SWISH!"
+horizontal_alignment = 1
+vertical_alignment = 1

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="DefenseConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/DefenseConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+base_guard_distance = 66.0
+on_ball_guard_distance = 48.0
+contest_radius = 128.0
+block_radius = 88.0
+pressure_radius = 94.0
+pressure_stationary_seconds = 1.45
+pressure_check_interval = 0.35
+steal_lane_bonus = 0.22
+recovery_slack = 40.0

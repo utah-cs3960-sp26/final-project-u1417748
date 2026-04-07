@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="CourtConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/CourtConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+origin = Vector2(90, 170)
+size = Vector2(900, 1600)
+hoop_normalized = Vector2(0.5, 0.1)
+point_guard_start = Vector2(0.5, 0.78)
+left_wing_start = Vector2(0.32, 0.52)
+right_wing_start = Vector2(0.68, 0.52)
+left_corner_start = Vector2(0.18, 0.26)
+right_corner_start = Vector2(0.82, 0.26)
+three_point_radius = 560.0
+hoop_radius = 38.0
+scoring_radius = 28.0
+backboard_half_width = 76.0
+backboard_offset = 42.0
+rim_height = 146.0
+backboard_top = 220.0
+backboard_bottom = 80.0

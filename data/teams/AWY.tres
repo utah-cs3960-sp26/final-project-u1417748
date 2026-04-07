@@ -1,0 +1,102 @@
+[gd_resource type="Resource" script_class="TeamData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/TeamData.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/PlayerData.gd" id="2"]
+
+[sub_resource type="Resource" id="PlayerData_pg"]
+script = ExtResource("2")
+player_id = "awy_pg"
+display_name = "AWY PG"
+role = "PG"
+speed = 75
+acceleration = 75
+handle = 79
+pass_accuracy = 79
+catch_rating = 74
+shooting = 71
+release_consistency = 73
+perimeter_defense = 72
+steal = 67
+block = 35
+rebound = 58
+sim_offense = 74
+
+[sub_resource type="Resource" id="PlayerData_wl"]
+script = ExtResource("2")
+player_id = "awy_wl"
+display_name = "AWY Wing L"
+role = "Wing"
+speed = 71
+acceleration = 71
+handle = 66
+pass_accuracy = 67
+catch_rating = 74
+shooting = 74
+release_consistency = 72
+perimeter_defense = 74
+steal = 69
+block = 42
+rebound = 64
+sim_offense = 73
+
+[sub_resource type="Resource" id="PlayerData_wr"]
+script = ExtResource("2")
+player_id = "awy_wr"
+display_name = "AWY Wing R"
+role = "Wing"
+speed = 70
+acceleration = 72
+handle = 67
+pass_accuracy = 66
+catch_rating = 75
+shooting = 77
+release_consistency = 75
+perimeter_defense = 73
+steal = 66
+block = 43
+rebound = 65
+sim_offense = 76
+
+[sub_resource type="Resource" id="PlayerData_cl"]
+script = ExtResource("2")
+player_id = "awy_cl"
+display_name = "AWY Corner L"
+role = "Corner"
+speed = 65
+acceleration = 66
+handle = 56
+pass_accuracy = 59
+catch_rating = 78
+shooting = 72
+release_consistency = 70
+perimeter_defense = 75
+steal = 61
+block = 49
+rebound = 72
+sim_offense = 68
+
+[sub_resource type="Resource" id="PlayerData_cr"]
+script = ExtResource("2")
+player_id = "awy_cr"
+display_name = "AWY Corner R"
+role = "Corner"
+speed = 66
+acceleration = 67
+handle = 57
+pass_accuracy = 59
+catch_rating = 79
+shooting = 73
+release_consistency = 71
+perimeter_defense = 76
+steal = 62
+block = 51
+rebound = 73
+sim_offense = 69
+
+[resource]
+script = ExtResource("1")
+team_name = "Pocket Hoops Away"
+abbreviation = "AWY"
+primary_color = Color(0.333333, 0.835294, 0.901961, 1)
+secondary_color = Color(0.0470588, 0.117647, 0.180392, 1)
+players = [SubResource("PlayerData_pg"), SubResource("PlayerData_wl"), SubResource("PlayerData_wr"), SubResource("PlayerData_cl"), SubResource("PlayerData_cr")]

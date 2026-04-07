@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "difficulty_separation"
+title = "Difficulty Separation"
+description = "Batch placeholder comparing opponent simulation pressure on Easy, Normal, and Hard."
+seed = 496006
+iterations = 200
+scenario_id = "long_run_stability"
+metrics = PackedStringArray("easy_points_per_possession", "normal_points_per_possession", "hard_points_per_possession")
+thresholds = {"ordering": "easy<normal<hard"}

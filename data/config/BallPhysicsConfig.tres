@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BallPhysicsConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/BallPhysicsConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+gravity = 520.0
+ball_radius = 16.0
+shot_min_speed = 540.0
+shot_max_speed = 1080.0
+shot_min_vz = 560.0
+shot_max_vz = 960.0
+pass_speed = 1180.0
+rim_bounce_damping = 0.82
+backboard_bounce_damping = 0.78
+floor_bounce_damping = 0.25
+collision_height_tolerance = 18.0
+preview_steps = 28
+preview_step_seconds = 0.06

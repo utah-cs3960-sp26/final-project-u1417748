@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 3
+actor_id = "pf"
+vector = Vector2(10, 220)
+duration_seconds = 0.50
+payload = {"timing_target": "red", "note": "force a miss near the rim"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("2")
+action_type = 4
+actor_id = "pf"
+payload = {"release_quality": "red"}
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "state"
+subject = "possession.result"
+comparison = 0
+expected_value = "offensive_rebound"
+
+[sub_resource type="Resource" id="4"]
+script = ExtResource("3")
+kind = "state"
+subject = "state"
+comparison = 0
+expected_value = "live_offense"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "offensive_rebound_continuation"
+title = "Offensive Rebound Continuation"
+description = "Ensures the harness has a seeded scenario for missed-shot continuation when the offense secures the rebound."
+tags = PackedStringArray("scenario", "acceptance", "rebound", "continuation")
+seed = 396006
+setup_data = {"ballhandler": "pf", "shot_profile": "short_corner_runner"}
+actions = Array[Resource]([SubResource("1"), SubResource("2")])
+expectations = Array[Resource]([SubResource("3"), SubResource("4")])

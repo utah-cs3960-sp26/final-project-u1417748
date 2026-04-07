@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="GameConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/GameConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+match_length_seconds = 180.0
+aim_time_scale = 0.5
+base_time_scale = 1.0
+default_difficulty = "Normal"
+possession_reset_delay = 0.2
+feedback_duration = 1.1
+player_radius = 34.0
+controlled_ring_radius = 44.0
+keyboard_debug_speed_factor = 1.0
+offense_team_path = "res://data/teams/HOM.tres"
+defense_team_path = "res://data/teams/AWY.tres"

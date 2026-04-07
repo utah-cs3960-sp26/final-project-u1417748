@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="DifficultyConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/DifficultyConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+easy_defense_multiplier = 0.88
+normal_defense_multiplier = 1.0
+hard_defense_multiplier = 1.15
+easy_sim_efficiency = 0.92
+normal_sim_efficiency = 1.0
+hard_sim_efficiency = 1.12
+easy_rebound_multiplier = 0.93
+normal_rebound_multiplier = 1.0
+hard_rebound_multiplier = 1.08

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="OpponentSimConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/OpponentSimConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+possession_min_seconds = 4.0
+possession_max_seconds = 14.0
+second_chance_min_seconds = 2.0
+second_chance_max_seconds = 5.0
+turnover_base_chance = 0.12
+three_point_tendency = 0.34
+offensive_rebound_base = 0.24
+max_second_chance_loops = 2

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "timing_gradient"
+title = "Timing Gradient Separation"
+description = "Batch placeholder comparing open green, yellow, and red releases to enforce meaningful make-rate separation."
+seed = 496002
+iterations = 300
+scenario_id = "clean_pass_and_shoot_make"
+metrics = PackedStringArray("green_make_rate", "yellow_make_rate", "red_make_rate")
+thresholds = {"ordering": "green>yellow>red"}

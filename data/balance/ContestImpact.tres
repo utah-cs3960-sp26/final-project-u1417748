@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "contest_impact"
+title = "Contest Impact"
+description = "Batch placeholder comparing identical shot attempts in open and contested conditions."
+seed = 496003
+iterations = 250
+scenario_id = "contested_miss_defensive_rebound"
+metrics = PackedStringArray("open_make_rate", "contested_make_rate", "block_rate")
+thresholds = {"contested_make_rate_below_open": true}

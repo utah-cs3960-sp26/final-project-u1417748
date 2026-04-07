@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="TestHarnessConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/TestHarnessConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+deterministic_seed = 3960
+logs_directory = "user://logs"
+event_log_name = "structured_events.ndjson"
+test_log_name = "test_run.log"
+scenario_log_name = "scenario_run.ndjson"
+replay_log_name = "replay_frames.ndjson"
+sim_log_name = "opponent_sim.ndjson"
+pure_logic_test_directory = "res://tests/pure_logic"
+scenario_directory = "res://data/scenarios"
+balance_directory = "res://data/balance"
+auto_discover_tests = true
+required_scenarios = PackedStringArray("clean_pass_and_shoot_make", "contested_miss_defensive_rebound", "bad_cross_court_pass_steal", "stationary_pressure_turnover", "out_of_bounds_turnover", "offensive_rebound_continuation", "buzzer_shot_resolution", "pause_resume_safety", "long_run_stability")
+required_balance_batches = PackedStringArray("open_green_reward", "timing_gradient", "contest_impact", "pass_risk_separation", "rebound_distribution", "difficulty_separation")

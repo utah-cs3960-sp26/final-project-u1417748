@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 1
+actor_id = "pg"
+vector = Vector2(-1, 0)
+duration_seconds = 1.10
+payload = {"note": "drive into sideline to force turnover"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("3")
+kind = "state"
+subject = "turnover.type"
+comparison = 0
+expected_value = "out_of_bounds"
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "log"
+subject = "last_event"
+comparison = 4
+expected_value = "out_of_bounds"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "out_of_bounds_turnover"
+title = "Out Of Bounds Turnover"
+description = "Reserves a deterministic path for testing court-boundary loss of possession and the corresponding logs."
+tags = PackedStringArray("scenario", "acceptance", "turnover", "bounds")
+seed = 396005
+setup_data = {"ballhandler": "pg", "boundary": "left_sideline"}
+actions = Array[Resource]([SubResource("1")])
+expectations = Array[Resource]([SubResource("2"), SubResource("3")])

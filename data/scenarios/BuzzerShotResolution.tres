@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 3
+actor_id = "sg"
+vector = Vector2(-40, 260)
+duration_seconds = 0.40
+payload = {"clock_seconds": 0.2, "timing_target": "green"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("2")
+action_type = 4
+actor_id = "sg"
+payload = {"release_quality": "green", "clock_seconds": 0.0}
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "state"
+subject = "state"
+comparison = 0
+expected_value = "game_over"
+
+[sub_resource type="Resource" id="4"]
+script = ExtResource("3")
+kind = "log"
+subject = "game_over.finalized_after_live_resolution"
+comparison = 6
+
+[resource]
+script = ExtResource("1")
+scenario_id = "buzzer_shot_resolution"
+title = "Buzzer Shot Resolution"
+description = "Captures the acceptance edge case where the clock expires during a live shot and resolution must finish before game over."
+tags = PackedStringArray("scenario", "acceptance", "buzzer", "clock")
+seed = 396007
+setup_data = {"clock_seconds": 0.2, "ballhandler": "sg"}
+actions = Array[Resource]([SubResource("1"), SubResource("2")])
+expectations = Array[Resource]([SubResource("3"), SubResource("4")])

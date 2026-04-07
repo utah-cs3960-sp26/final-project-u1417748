@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 0
+actor_id = "pg"
+duration_seconds = 1.50
+payload = {"note": "hold the ball under heavy pressure"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("3")
+kind = "state"
+subject = "turnover.type"
+comparison = 0
+expected_value = "pressure_turnover"
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("3")
+kind = "state"
+subject = "state"
+comparison = 0
+expected_value = "opponent_sim"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "stationary_pressure_turnover"
+title = "Stationary Pressure Turnover"
+description = "Covers the acceptance case where the ballhandler stands still under pressure long enough to lose possession."
+tags = PackedStringArray("scenario", "acceptance", "turnover", "pressure")
+seed = 396004
+setup_data = {"ballhandler": "pg", "pressure": "smothered"}
+actions = Array[Resource]([SubResource("1")])
+expectations = Array[Resource]([SubResource("2"), SubResource("3")])

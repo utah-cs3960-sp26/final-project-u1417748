@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/ScenarioDefinition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioAction.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/debug/ScenarioExpectation.gd" id="3"]
+
+[sub_resource type="Resource" id="1"]
+script = ExtResource("2")
+action_type = 2
+actor_id = "pg"
+payload = {"target_id": "sg", "note": "tap teammate for quick pass"}
+
+[sub_resource type="Resource" id="2"]
+script = ExtResource("2")
+action_type = 3
+actor_id = "sg"
+vector = Vector2(-120, 240)
+duration_seconds = 0.45
+payload = {"timing_target": "green", "note": "hold drag for catch-and-shoot"}
+
+[sub_resource type="Resource" id="3"]
+script = ExtResource("2")
+action_type = 4
+actor_id = "sg"
+payload = {"release_quality": "green"}
+
+[sub_resource type="Resource" id="4"]
+script = ExtResource("3")
+kind = "score"
+subject = "score.home"
+comparison = 2
+expected_value = 2
+
+[sub_resource type="Resource" id="5"]
+script = ExtResource("3")
+kind = "state"
+subject = "last_event"
+comparison = 4
+expected_value = "score"
+
+[resource]
+script = ExtResource("1")
+scenario_id = "clean_pass_and_shoot_make"
+title = "Clean Pass And Shoot Make"
+description = "Deterministic happy-path possession: pass to a teammate, enter shot aim, release on green timing, and confirm the score changes."
+tags = PackedStringArray("scenario", "acceptance", "pass", "shot", "score")
+seed = 396001
+setup_data = {"clock_seconds": 42.0, "ballhandler": "pg", "spacing_preset": "five_out"}
+actions = Array[Resource]([SubResource("1"), SubResource("2"), SubResource("3")])
+expectations = Array[Resource]([SubResource("4"), SubResource("5")])

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ReboundConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/ReboundConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+resolve_delay = 0.58
+pursuit_speed_multiplier = 1.15
+offense_bias = -8.0
+distance_weight = 1.1
+rating_weight = 1.35

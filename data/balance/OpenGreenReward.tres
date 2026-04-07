@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "open_green_reward"
+title = "Open Green Reward"
+description = "Batch placeholder for uncontested inside-arc green releases; target broad make-rate band is 60%%-80%%."
+seed = 496001
+iterations = 250
+scenario_id = "clean_pass_and_shoot_make"
+metrics = PackedStringArray("make_rate", "green_release_rate", "average_arc_time")
+thresholds = {"make_rate_max": 0.8, "make_rate_min": 0.6}

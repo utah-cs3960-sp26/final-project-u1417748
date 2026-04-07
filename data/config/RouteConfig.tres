@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RouteConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/RouteConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+package_duration = 4.4
+slot_lift = 110.0
+corner_lift = 70.0
+lane_cut_offset = 160.0
+spacing_push_radius = 120.0
+spacing_push_strength = 48.0
+ballhandler_lane_buffer = 110.0

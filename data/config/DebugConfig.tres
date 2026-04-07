@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="DebugConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug/DebugConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+debug_overlay_enabled = true
+overlay_enabled_by_default = true
+deterministic_mode = true
+deterministic_seed = 3960
+keyboard_debug_enabled = true
+draw_route_guides = true
+draw_defense_guides = true
+show_game_state = true
+show_route_geometry = true
+show_defender_assignments = true
+show_contest_radii = true
+show_catch_radii = true
+show_intercept_corridors = true
+show_rebound_zone = true
+show_shot_preview = true
+show_rng_seed = true
+toggle_keycode = 4194332
+refresh_rate_hz = 10.0
