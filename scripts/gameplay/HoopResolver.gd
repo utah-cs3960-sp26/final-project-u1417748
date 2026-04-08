@@ -101,7 +101,7 @@ func _check_forced_make_score(ball_sim: BallSimulator) -> bool:
 
 func estimate_landing_position(ball_sim: BallSimulator) -> Vector2:
 	var probe: BallSimulator = ball_sim.clone_state()
-	for _index in 240:
+	for _index in 360:
 		probe.step(1.0 / 60.0)
 		if not probe.is_in_flight:
 			break

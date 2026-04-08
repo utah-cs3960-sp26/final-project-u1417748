@@ -1,9 +1,6 @@
 class_name ShotTimingConfig
 extends Resource
 
-@export var min_drag_distance: float = 50.0
-@export var max_drag_distance: float = 260.0
-@export var power_curve_exponent: float = 1.2
 @export var hold_start_delay: float = 0.16
 @export var meter_cycle_duration: float = 0.86
 @export var meter_green_center: float = 0.68

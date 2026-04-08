@@ -84,3 +84,12 @@
 - substantially increased player sprite scale and raised the sprite offset so enlarged characters stay foot-anchored to the floor
 - enlarged hit radii, screen anchors, held-ball anchors, and held/live ball render sizes so the bigger player presentation still aligns cleanly during input and possession
 - added pure-logic coverage for constant court width, linear depth mapping, and exact ground-coordinate round-tripping under the flatter projection
+
+### Cinematic shot arc refactor
+
+- replaced the fixed-time make/miss shot builder with an apex-driven launch profile that enforces minimum airtime and minimum apex by distance
+- changed shot launches to begin above the floor and updated `BallSimulator.launch` to accept full horizontal velocity plus launch z
+- restored visible arc preview dots during aim, with green showing the make path and red showing the deterministic miss path stored from aim start
+- raised live and preview z-lift, increased live ball size growth, and strengthened shadow shrink so the new arc reads clearly on screen
+- expanded pure-logic coverage for cinematic airtime, apex height, preview/live launch agreement, and above-floor release behavior
+- lengthened the contested green release scenario wait so the longer arc fully resolves back to live offense inside the harness

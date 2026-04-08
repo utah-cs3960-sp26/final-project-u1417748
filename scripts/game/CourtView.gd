@@ -2,11 +2,10 @@ class_name CourtView
 extends Node2D
 
 const COURT_TEXTURE: Texture2D = preload("res://assets/Court/Court.png")
-const GRASS_TEXTURE: Texture2D = preload("res://assets/Decor/Grass.png")
+const BACKDROP_COLOR: Color = Color("7f708a")
 
 @export var court_variant_source_region: Rect2 = Rect2(16.0, 256.0, 484.0, 229.0)
 @export var active_half_crop: Rect2 = Rect2(0.0, 0.0, 0.5, 1.0)
-@export var grass_tile_scale: float = 6.0
 @export var court_strip_count: int = 28
 
 var court_config: CourtConfig
@@ -88,13 +87,7 @@ func _project_arc(center: Vector2, radius: float, start_angle: float, end_angle:
 
 
 func _draw_background() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(1080.0, 1920.0)), Color(0.08, 0.08, 0.12))
-	if GRASS_TEXTURE == null:
-		return
-	var grass_size: Vector2 = GRASS_TEXTURE.get_size() * grass_tile_scale
-	for y in range(int(ceil(1920.0 / maxf(grass_size.y, 1.0))) + 1):
-		for x in range(int(ceil(1080.0 / maxf(grass_size.x, 1.0))) + 1):
-			draw_texture_rect(GRASS_TEXTURE, Rect2(Vector2(x, y) * grass_size, grass_size), false)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(1080.0, 1920.0)), BACKDROP_COLOR)
 
 
 func _draw_textured_court(rect: Rect2) -> void:

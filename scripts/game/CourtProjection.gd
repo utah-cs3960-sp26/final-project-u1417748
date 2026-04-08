@@ -75,7 +75,7 @@ func shadow_scale(world_xy: Vector2, z: float = 0.0) -> float:
 		return 1.0
 	var near_ratio: float = _get_near_ratio(world_xy.y)
 	var ground_scale: float = lerpf(projection_config.shadow_scale_far, projection_config.shadow_scale_near, near_ratio)
-	var z_scale: float = lerpf(1.0, 0.72, clampf(z / 900.0, 0.0, 1.0))
+	var z_scale: float = lerpf(1.0, 0.46, clampf(z / 820.0, 0.0, 1.0))
 	return ground_scale * z_scale
 
 

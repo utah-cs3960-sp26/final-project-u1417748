@@ -1,12 +1,13 @@
 # Pocket Hoops
 
-Pocket Hoops is a clean-room Godot 4.6.x portrait basketball prototype built for a class demo. The game is offense-only: you control the current ballhandler with a lower-third joystick, tap teammates to pass, hold on the ballhandler to bring up a slow-motion shot meter, and jump-cut through opponent possessions with a ratings-driven sim.
+Pocket Hoops is a clean-room Godot 4.6.x portrait basketball prototype built for a class demo. The game is offense-only: you control the current ballhandler with a lower-third joystick, tap teammates to pass, hold on the ballhandler to bring up a slow-motion shot meter plus a live arc preview, and jump-cut through opponent possessions with a ratings-driven sim.
 
 ## Status
 
 - The project now boots directly into a playable match for faster gameplay and layout validation.
 - Live offense, passing, shot aim, scoring, rebounds, pause, game over, and opponent sim are implemented.
-- Shot aim now uses a hold-to-shoot timing meter instead of drag aiming.
+- Shot aim now uses a hold-to-shoot timing meter instead of drag aiming, paired with a visible release preview.
+- Human shots now use an apex-driven launch solver with above-floor release height, longer airtime, and more dramatic on-screen arc lift.
 - Rendering now uses a flat top-down rectangular projection: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry stay screen-faithful without the stretched trapezoid look.
 - Action input is projection-aware, so teammate taps and shot holds target the projected screen positions the player actually sees.
 - The floor now renders from the blue second-court atlas variant as a rotated vertical half-court, and the visible front net layer is aligned to the live rim anchor.
@@ -34,6 +35,7 @@ Headless automated tests:
 - Pass: tap a teammate.
 - Shoot: touch and hold on the ballhandler until the bottom timing meter appears, then release.
 - Shot feel: the meter is mostly red with a smaller green chunk; releasing on green always scores and cannot be blocked, while releasing on red causes a miss or a block if the contest wins.
+- Shot preview: aim mode now shows preview dots for the release path. Green preview dots show the guaranteed-make arc, and red preview dots show the deterministic miss path that would be launched if released immediately.
 - Made shots now hold on-screen briefly so the ball can finish through the hoop before the possession resets.
 - Pause: HUD pause button or `P` / `Esc`.
 - Debug overlay: `F3`.

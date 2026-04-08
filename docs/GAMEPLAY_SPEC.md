@@ -30,9 +30,12 @@
 - Gameplay time scales to `0.5x`.
 - The ballhandler stops moving while aiming.
 - A bottom timing meter appears as a long red rectangle with a smaller green rectangle inside it.
+- Trajectory dots appear during aim and preview the current release path.
 - A rectangular indicator sweeps across the bar continuously while the player holds.
 - Releasing inside the green window guarantees a made shot, even if the shooter is contested, and the release cannot be downgraded into a block.
 - Releasing in the red causes a miss or a contest-driven block.
+- Green preview dots show the make path; red preview dots show the deterministic miss path tied to the current aim.
+- Live shots launch from an above-floor release height and use a deliberately exaggerated cinematic arc with longer hang time.
 - Made shots stay on screen briefly so the ball can finish through the hoop before the game transitions.
 
 ## Scoring

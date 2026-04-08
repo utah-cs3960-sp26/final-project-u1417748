@@ -30,7 +30,7 @@ func run_scenario(tree: SceneTree, definition: ScenarioDefinition) -> Dictionary
 	_queue_actions(pilot, definition.actions)
 	pilot.reset()
 
-	var timeout_seconds: float = 18.0
+	var timeout_seconds: float = 24.0
 	var elapsed: float = 0.0
 	while elapsed < timeout_seconds and not pilot.step(1.0 / 60.0):
 		await tree.process_frame

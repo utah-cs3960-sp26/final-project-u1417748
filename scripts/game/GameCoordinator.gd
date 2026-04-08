@@ -284,12 +284,24 @@ func _update_live_offense(delta: float) -> void:
 
 func _update_shot_aim(delta: float) -> void:
 	route_phase_time += delta
-	shot_controller.update_aim(delta, Vector2.ZERO)
+	shot_controller.update_aim(delta)
 	_update_off_ball_offense(delta)
 	_update_defense(delta)
+	if current_ballhandler == null:
+		return
 	var contested: bool = defense_controller.is_contested(current_ballhandler)
-	current_preview_points.clear()
-	court_view.clear_preview()
+	var preview_profile: Dictionary = shot_controller.build_current_launch_profile(
+		current_ballhandler.world_position,
+		current_ballhandler.get_player_data(),
+		contested
+	)
+	if preview_profile.is_empty():
+		current_preview_points.clear()
+		court_view.clear_preview()
+	else:
+		current_preview_points = shot_controller.create_preview(ball_simulator, preview_profile)
+		current_preview_color = _quality_color(str(preview_profile.get("quality", "red")))
+		court_view.set_preview(current_preview_points, current_preview_color)
 	court_view.set_shot_meter(shot_controller.get_meter_snapshot(contested, current_ballhandler.get_player_data().release_consistency))
 	_sync_ball_to_handler()
 
@@ -429,17 +441,16 @@ func _on_shot_aim_started(start_world: Vector2) -> void:
 		return
 	_change_state(GameState.State.SHOT_AIM)
 	context.gameplay_time_scale = game_config.aim_time_scale
-	shot_controller.begin_aim(current_ballhandler.world_position)
+	shot_controller.begin_aim(current_ballhandler.world_position, rng)
 	log_writer.log_match("Shot aim started")
 
 
-func _on_shot_aim_updated(current_world: Vector2, drag_vector: Vector2) -> void:
+func _on_shot_aim_updated(_current_world: Vector2, _drag_vector: Vector2) -> void:
 	if context.current_state != GameState.State.SHOT_AIM:
 		return
-	shot_controller.current_drag_vector = Vector2.ZERO
 
 
-func _on_shot_aim_released(release_screen: Vector2, release_world: Vector2, _drag_vector: Vector2) -> void:
+func _on_shot_aim_released(_release_screen: Vector2, _release_world: Vector2, _drag_vector: Vector2) -> void:
 	if context.current_state != GameState.State.SHOT_AIM:
 		return
 	var contested: bool = defense_controller.is_contested(current_ballhandler)
@@ -463,10 +474,38 @@ func _on_shot_aim_released(release_screen: Vector2, release_world: Vector2, _dra
 			current_ballhandler.trigger_shot_pose(0.28)
 			context.shot_value_pending = action["shot_value"]
 			current_ballhandler.set_has_ball(false)
-			ball_simulator.launch(action["preview_origin"], action["direction"], action["launch_speed"], action["z_speed"], action["outcome"] == "make")
+			ball_simulator.launch(
+				action["launch_position"],
+				action["velocity_xy"],
+				action["launch_z"],
+				action["vz"],
+				action["force_make"]
+			)
 			shot_had_rim_contact = false
 			_change_state(GameState.State.SHOT_IN_FLIGHT)
-			log_writer.log_match("Shot released %s %s for %d" % [action["quality"], action["outcome"], context.shot_value_pending])
+			log_writer.log_event(
+				"shot_launch",
+				{
+					"quality": action["quality"],
+					"outcome": action["outcome"],
+					"flight_time": action["flight_time"],
+					"apex_z": action["apex_z"],
+					"launch_z": action["launch_z"],
+					"target_xy": {
+						"x": action["target_xy"].x,
+						"y": action["target_xy"].y,
+					},
+				}
+			)
+			log_writer.log_match(
+				"Shot released %s %s for %d apex=%0.1f flight=%0.2f" % [
+					action["quality"],
+					action["outcome"],
+					context.shot_value_pending,
+					float(action.get("apex_z", 0.0)),
+					float(action.get("flight_time", 0.0)),
+				]
+			)
 
 
 func _toggle_pause() -> void:
@@ -876,6 +915,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float) -> void:
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
 	var ball_anchor: Vector2 = court_projection.world_to_screen(world_position, z_value)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(world_position)
+	var z_ratio: float = clampf(z_value / 620.0, 0.0, 1.0)
 	ball_node.sync_visual(
 		world_position,
 		z_value,
@@ -883,7 +923,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float) -> void:
 			"ground_anchor": ground_anchor,
 			"ball_anchor": ball_anchor,
 			"shadow_anchor": shadow_anchor,
-			"ball_radius": lerpf(14.0, 24.0, clampf(z_value / 240.0, 0.0, 1.0)),
+			"ball_radius": lerpf(15.0, 30.0, pow(z_ratio, 0.82)),
 			"shadow_scale": court_projection.shadow_scale(world_position, z_value),
 			"depth_key": court_projection.depth_key(world_position, z_value),
 		}

@@ -37,16 +37,16 @@ Smoke:
 
 Final headless suite status: pass
 
-- Pure logic: 40 / 40
+- Pure logic: 52 / 52
 - Scenarios: 10 / 10
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.91`, normal `1.07`, hard `1.32`
+- `difficulty_order`: easy `1.00`, normal `1.05`, hard `1.25`
 - `pass_risk`: short `0.10`, long `0.46`
-- `rebound_distribution`: offense `0.35`, defense `0.65`
+- `rebound_distribution`: offense `0.26`, defense `0.74`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180`
 
 ## Scenario Result
@@ -68,7 +68,7 @@ Passed scenarios:
 
 - default boot scene (`GameRoot.tscn`) booted headless without script/runtime errors
 - `GameRoot.tscn` booted headless without script/runtime errors
-- a non-headless gameplay capture confirmed the blue half-court floor renders vertically as a true rectangle, the front net hangs over the painted top-rim area, and the players are much larger on screen
+- headless validation kept the gameplay scene stable after the cinematic arc refactor and restored aim-preview path
 
 Additional pure-logic coverage now includes:
 
@@ -76,17 +76,27 @@ Additional pure-logic coverage now includes:
 - meter green-window stability under contest and ratings
 - meter red/green classification
 - ping-pong meter motion
+- cinematic near-shot airtime band
+- cinematic far-shot airtime band
+- cinematic far-shot apex band
+- far-shot preview staying close to solved apex
 - deterministic made-shot launch scoring through the hoop
 - deterministic miss launch staying outside the score region
 - forced green-launch scoring from a contested lane
 - green release producing a make outcome
 - contested green release still producing a make outcome
 - red release producing a miss outcome
+- red preview matching the released miss path
+- green preview matching the released make path
+- preview samples mirroring live simulation deltas
+- above-floor launch height
 - projected ground-depth ordering
 - flat rectangular court width consistency
 - flat projection linear depth mapping
 - flat projection ground-coordinate round trip
 - projected z-lift from a stable ground anchor
+- cinematic-strength projected z-lift
+- preview lift exceeding live-ball lift
 - actor scale and draw-order depth behavior
 - projected teammate tap hit testing
 - projection-aware shot-hold targeting

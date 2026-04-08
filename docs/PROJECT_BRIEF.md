@@ -8,7 +8,7 @@ Deliver a fast, readable offense-only basketball loop where the player:
 
 - moves the current ballhandler with a thumb-friendly joystick
 - taps teammates to pass
-- holds on the ballhandler to open a slow-motion timing meter
+- holds on the ballhandler to open a slow-motion timing meter and live arc preview
 - releases inside a fixed green meter window to score no matter what, or in red to miss / risk a block
 - resolves makes, misses, steals, rebounds, and jump-cut opponent possessions quickly
 
@@ -34,6 +34,7 @@ The demo is complete when a player can:
 ## Success Criteria
 
 - shooting feels like the center of the game
+- shots climb into a dramatic, readable arcade arc instead of a line drive to the rim
 - the court reads as a flat rectangle and players stay easy to read on a phone-sized screen
 - global state transitions stay explicit and logged
 - gameplay values are tunable through resources

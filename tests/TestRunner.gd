@@ -52,7 +52,6 @@ func _run_pure_logic() -> void:
 	shot_controller.ball_config = BallPhysicsConfig.new()
 	shot_controller.court_config = CourtConfig.new()
 	var projection_config: ProjectionConfig = ProjectionConfig.new()
-	projection_config.preview_projection_lift_multiplier = 1.0
 	var projection: CourtProjection = CourtProjection.new(projection_config, shot_controller.court_config)
 	shot_controller.projection = projection
 	var rng: GameRng = GameRng.new()
@@ -101,68 +100,86 @@ func _run_pure_logic() -> void:
 	var round_trip_screen: Vector2 = projection.world_to_screen_ground(round_trip_world)
 	_assert_true(projection.screen_to_world_ground(round_trip_screen).distance_to(round_trip_world) < 0.01, "projection round trips ground coordinates", "")
 	var lifted: Vector2 = projection.world_to_screen(Vector2(540.0, 1100.0), 180.0)
+	var preview_lifted: Vector2 = projection.preview_world_to_screen(Vector2(540.0, 1100.0), 180.0)
 	var ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 1100.0))
 	_assert_true(absf(lifted.x - ground.x) < 0.001 and lifted.y < ground.y, "projection lifts from ground anchor", "")
+	_assert_true(ground.y - lifted.y > 60.0, "projection gives cinematic z lift", "")
+	_assert_true(preview_lifted.y < lifted.y, "preview lift exceeds live ball lift", "")
 	_assert_true(projection.actor_scale(Vector2(540.0, 1500.0)) > projection.actor_scale(Vector2(540.0, 420.0)), "near actors render larger", "")
 	_assert_true(projection.depth_key(Vector2(540.0, 1500.0)) > projection.depth_key(Vector2(540.0, 420.0)), "near actors sort in front", "")
-	var make_params: Dictionary = shot_controller.build_make_launch_params(Vector2(540.0, 1100.0))
-	_assert_true(make_params["direction"].dot((shot_controller.court_config.hoop_position - make_params["preview_origin"]).normalized()) > 0.98, "made shot aims at hoop", "")
-	var make_sim: BallSimulator = BallSimulator.new()
-	make_sim.gravity = shot_controller.ball_config.gravity
-	make_sim.ball_radius = shot_controller.ball_config.ball_radius
+	var near_origin: Vector2 = Vector2(560.0, 760.0)
+	var far_origin: Vector2 = Vector2(540.0, 1400.0)
+	var near_green_profile: Dictionary = shot_controller.build_launch_profile(near_origin, "green")
+	var far_green_profile: Dictionary = shot_controller.build_launch_profile(far_origin, "green")
+	_assert_true(float(near_green_profile["launch_z"]) > 0.0, "shots launch above floor", "")
+	_assert_true(float(near_green_profile["flight_time"]) >= shot_controller.ball_config.made_shot_min_flight_time_near, "near shot meets cinematic airtime", "")
+	_assert_true(float(far_green_profile["flight_time"]) >= shot_controller.ball_config.made_shot_min_flight_time_far, "far shot meets cinematic airtime", "")
+	_assert_true(float(far_green_profile["apex_z"]) >= shot_controller.ball_config.made_shot_min_apex_far, "far shot meets cinematic apex", "")
+	_assert_true(float(far_green_profile["flight_time"]) > float(near_green_profile["flight_time"]), "far shot hangs longer than near shot", "")
+	_assert_true(float(far_green_profile["apex_z"]) > float(near_green_profile["apex_z"]), "far shot arcs higher than near shot", "")
+	var far_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), far_green_profile)
+	_assert_true(_max_preview_z(far_preview_points) >= float(far_green_profile["apex_z"]) - 56.0, "far preview stays close to cinematic apex", "")
+	var make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
 	var resolver: HoopResolver = HoopResolver.new(CourtConfig.new(), BallPhysicsConfig.new())
-	make_sim.launch(make_params["preview_origin"], make_params["direction"], make_params["launch_speed"], make_params["z_speed"])
+	make_sim.launch(near_green_profile["launch_position"], near_green_profile["velocity_xy"], near_green_profile["launch_z"], near_green_profile["vz"], near_green_profile["force_make"])
 	var scored: bool = false
-	for _frame in 120:
+	for _frame in 240:
 		make_sim.step(1.0 / 60.0)
 		if resolver.check_hoop_interaction(make_sim)["hit_type"] == "score":
 			scored = true
 			break
 	_assert_true(scored, "green launch scores through hoop", "")
-	var miss_params: Dictionary = shot_controller.build_miss_launch_params(Vector2(540.0, 1100.0), rng)
-	var miss_sim: BallSimulator = BallSimulator.new()
-	miss_sim.gravity = shot_controller.ball_config.gravity
-	miss_sim.ball_radius = shot_controller.ball_config.ball_radius
-	miss_sim.launch(miss_params["preview_origin"], miss_params["direction"], miss_params["launch_speed"], miss_params["z_speed"])
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
+	shot_controller.update_aim(0.04, Vector2.ZERO)
+	var red_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
+	var red_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), red_preview_profile)
+	var red_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, false, rng)
+	_assert_true(red_action["kind"] == "shot" and red_action["outcome"] == "miss" and red_action["quality"] == "red", "red release misses shot", "")
+	_assert_true(_launch_profiles_match(red_preview_profile, red_action), "red preview matches release path", "")
+	_assert_true(not red_preview_points.is_empty(), "red preview renders samples", "")
+	if not red_preview_points.is_empty():
+		var preview_probe: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
+		preview_probe.launch(red_action["launch_position"], red_action["velocity_xy"], red_action["launch_z"], red_action["vz"], red_action["force_make"])
+		for point in red_preview_points:
+			preview_probe.step(point["sample_delta"])
+		var red_preview_last: Dictionary = red_preview_points[maxi(red_preview_points.size() - 1, 0)]
+		_assert_true(preview_probe.position_xy.distance_to(red_preview_last["position"]) < 0.01 and absf(preview_probe.z - float(red_preview_last["z"])) < 0.01, "preview samples mirror live simulation", "")
+	var miss_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
+	miss_sim.launch(red_action["launch_position"], red_action["velocity_xy"], red_action["launch_z"], red_action["vz"], red_action["force_make"])
 	var miss_scored: bool = false
-	for _miss_frame in 120:
+	for _miss_frame in 240:
 		miss_sim.step(1.0 / 60.0)
 		if resolver.check_hoop_interaction(miss_sim)["hit_type"] == "score":
 			miss_scored = true
 			break
 	_assert_true(not miss_scored, "red launch misses rim center", "")
-	var forced_make_params: Dictionary = shot_controller.build_make_launch_params(Vector2(560.0, 760.0))
-	var forced_make_sim: BallSimulator = BallSimulator.new()
-	forced_make_sim.gravity = shot_controller.ball_config.gravity
-	forced_make_sim.ball_radius = shot_controller.ball_config.ball_radius
-	forced_make_sim.launch(forced_make_params["preview_origin"], forced_make_params["direction"], forced_make_params["launch_speed"], forced_make_params["z_speed"], true)
+	var forced_make_params: Dictionary = shot_controller.build_launch_profile(Vector2(560.0, 760.0), "green")
+	var forced_make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
+	forced_make_sim.launch(forced_make_params["launch_position"], forced_make_params["velocity_xy"], forced_make_params["launch_z"], forced_make_params["vz"], forced_make_params["force_make"])
 	var forced_scored: bool = false
-	for _forced_frame in 150:
+	for _forced_frame in 240:
 		forced_make_sim.step(1.0 / 60.0)
 		if resolver.check_hoop_interaction(forced_make_sim)["hit_type"] == "score":
 			forced_scored = true
 			break
 	_assert_true(forced_scored, "forced green launch scores from contested lane", "")
 
-	shot_controller.begin_aim(Vector2(540.0, 1100.0))
 	var green_hold: float = shot_controller.shot_config.meter_cycle_duration * shot_controller.shot_config.meter_green_center
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
 	shot_controller.update_aim(green_hold, Vector2.ZERO)
+	var green_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
 	var green_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, false, rng)
 	_assert_true(green_action["kind"] == "shot" and green_action["outcome"] == "make" and green_action["quality"] == "green", "green release makes shot", "")
-	shot_controller.begin_aim(Vector2(540.0, 1100.0))
+	_assert_true(_launch_profiles_match(green_preview_profile, green_action), "green preview matches release path", "")
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
 	shot_controller.update_aim(green_hold, Vector2.ZERO)
 	var contested_green_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, true, rng)
 	_assert_true(contested_green_action["kind"] == "shot" and contested_green_action["outcome"] == "make" and contested_green_action["quality"] == "green", "green release stays make under contest", "")
-	shot_controller.begin_aim(Vector2(540.0, 1100.0))
-	shot_controller.update_aim(0.04, Vector2.ZERO)
-	var red_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, false, rng)
-	_assert_true(red_action["kind"] == "shot" and red_action["outcome"] == "miss" and red_action["quality"] == "red", "red release misses shot", "")
 
-	var simulator: BallSimulator = BallSimulator.new()
-	simulator.gravity = BallPhysicsConfig.new().gravity
-	simulator.launch(Vector2(540.0, 980.0), Vector2.UP, 700.0, 700.0)
+	var simulator: BallSimulator = _new_ball_simulator(BallPhysicsConfig.new())
+	simulator.launch(Vector2(540.0, 980.0), Vector2.UP * 700.0, shot_controller.ball_config.shot_release_height, 700.0)
 	simulator.step(1.0 / 60.0)
-	_assert_true(simulator.z > 0.0, "ball gains z", "")
+	_assert_true(simulator.z > shot_controller.ball_config.shot_release_height, "ball gains z", "")
 	_assert_true(simulator.vz < 700.0, "gravity reduces vz", "")
 
 	var score_sim: BallSimulator = BallSimulator.new()
@@ -311,3 +328,21 @@ func _max_preview_z(points: Array[Dictionary]) -> float:
 	for point in points:
 		max_z = maxf(max_z, point["z"])
 	return max_z
+
+
+func _new_ball_simulator(config: BallPhysicsConfig) -> BallSimulator:
+	var simulator: BallSimulator = BallSimulator.new()
+	simulator.gravity = config.gravity
+	simulator.ball_radius = config.ball_radius
+	return simulator
+
+
+func _launch_profiles_match(a: Dictionary, b: Dictionary, tolerance: float = 0.01) -> bool:
+	if a.is_empty() or b.is_empty():
+		return false
+	return a["launch_position"].distance_to(b["launch_position"]) <= tolerance \
+		and a["target_xy"].distance_to(b["target_xy"]) <= tolerance \
+		and a["velocity_xy"].distance_to(b["velocity_xy"]) <= tolerance \
+		and absf(float(a["launch_z"]) - float(b["launch_z"])) <= tolerance \
+		and absf(float(a["vz"]) - float(b["vz"])) <= tolerance \
+		and absf(float(a["flight_time"]) - float(b["flight_time"])) <= tolerance

@@ -67,3 +67,11 @@ The earlier projection pass made the court read like a tapered trapezoid, which 
 ### Player readability wins over showing more empty floor
 
 The character sprites are now deliberately much larger and the default framing is slightly tighter. This was chosen to make the controlled player, nearby defenders, and held ball much easier to read in portrait mode, even if it means showing a little less empty court at once.
+
+### Cinematic shots now use apex-driven launch profiles
+
+The old fixed-time shot solver was replaced with an apex-driven launch builder that solves for minimum airtime and minimum apex by distance, then derives horizontal velocity from that longer vertical profile. Shots now launch from above the floor, hang in the air longer, and read as a deliberate arcade parabola instead of a fast line drive to the rim.
+
+### The meter keeps control truth, but live preview dots are back
+
+The repo still uses the hold-to-release meter as the only shot input. A live trajectory preview was restored as presentation, not aiming control: green preview dots show the guaranteed make path, while red preview dots show the deterministic miss path that would be launched if the player released on that frame. A stable aim-time miss variant is held from aim start through release so preview and live flight stay aligned.

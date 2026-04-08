@@ -4,15 +4,16 @@
 
 [resource]
 script = ExtResource("1")
-starter_forward_speed = 120.0
-max_forward_speed = 680.0
-starter_z_speed = 300.0
-max_z_speed = 1180.0
-forward_growth_curve_exponent = 2.15
-arc_growth_curve_exponent = 0.78
+shot_release_height = 44.0
+made_shot_min_apex_near = 320.0
+made_shot_min_apex_far = 540.0
+made_shot_min_flight_time_near = 1.2
+made_shot_min_flight_time_far = 1.6
+miss_apex_scale = 0.94
+miss_min_flight_time_scale = 0.97
 preview_origin_offset = Vector2(0, 28)
-preview_sample_count = 30
-preview_sample_delta = 0.055
-preview_dot_radius_min = 3.5
-preview_dot_radius_max = 10.5
-preview_apex_emphasis_strength = 0.72
+preview_sample_count = 42
+preview_sample_delta = 0.06
+preview_dot_radius_min = 4.0
+preview_dot_radius_max = 12.0
+preview_apex_emphasis_strength = 0.84

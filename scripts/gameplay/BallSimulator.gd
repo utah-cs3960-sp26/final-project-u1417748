@@ -9,6 +9,7 @@ var previous_z: float = 0.0
 var vz: float = 0.0
 var gravity: float = -920.0
 var ball_radius: float = 18.0
+var launch_z: float = 0.0
 var is_in_flight: bool = false
 var already_scored: bool = false
 var forced_make: bool = false
@@ -24,6 +25,7 @@ func clone_state() -> BallSimulator:
 	clone.vz = vz
 	clone.gravity = gravity
 	clone.ball_radius = ball_radius
+	clone.launch_z = launch_z
 	clone.is_in_flight = is_in_flight
 	clone.already_scored = already_scored
 	clone.forced_make = forced_make
@@ -37,17 +39,19 @@ func reset_to_possession(world_position: Vector2) -> void:
 	z = 0.0
 	previous_z = 0.0
 	vz = 0.0
+	launch_z = 0.0
 	is_in_flight = false
 	already_scored = false
 	forced_make = false
 
 
-func launch(world_position: Vector2, direction: Vector2, speed: float, z_speed: float, force_make: bool = false) -> void:
+func launch(world_position: Vector2, velocity_value: Vector2, initial_z: float, z_speed: float, force_make: bool = false) -> void:
 	position_xy = world_position
 	previous_position_xy = world_position
-	velocity_xy = direction.normalized() * speed
-	z = 0.0
-	previous_z = 0.0
+	velocity_xy = velocity_value
+	launch_z = maxf(initial_z, 0.0)
+	z = launch_z
+	previous_z = launch_z
 	vz = z_speed
 	is_in_flight = true
 	already_scored = false

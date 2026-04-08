@@ -38,15 +38,15 @@
 - `InputController`
   - joystick movement, projection-aware tap-pass, projection-aware hold-to-shoot meter input, debug mouse/keyboard support
 - `CourtProjection`
-  - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and overlay geometry projection for a flat rectangular court view
+  - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and amplified z-lift projection for a flat rectangular court view
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using an explicit left-half crop so the active offensive hoop lines up with the live rim anchor
 - `ShotController`
-  - hold meter timing, green-window classification, deterministic make/miss launch parameters, and meter snapshot generation
+  - hold meter timing, green-window classification, stable aim-time miss variants, apex-driven launch profile generation, and preview sampling
 - `PassController`
   - straight-line pass travel and interception corridor checks
 - `BallSimulator`
-  - pure `RefCounted` 2D + z-height motion
+  - pure `RefCounted` 2D + z-height motion with explicit above-floor shot release height
 - `HoopResolver`
   - score-plane, rim, and backboard resolution
 - `HoopView`

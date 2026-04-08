@@ -9,27 +9,28 @@ var projection: CourtProjection
 var is_aiming: bool = false
 var aim_elapsed: float = 0.0
 var aim_start_world: Vector2 = Vector2.ZERO
-var current_drag_vector: Vector2 = Vector2.ZERO
+var aim_variant_ready: bool = false
+var aim_miss_side_sign: float = 1.0
+var aim_miss_depth_sign: float = 1.0
 
 
-func begin_aim(world_position: Vector2) -> void:
+func begin_aim(world_position: Vector2, rng: GameRng = null) -> void:
 	is_aiming = true
 	aim_elapsed = 0.0
 	aim_start_world = world_position
-	current_drag_vector = Vector2.ZERO
+	_roll_aim_variant(rng)
 
 
-func update_aim(delta: float, drag_vector: Vector2) -> void:
+func update_aim(delta: float, _drag_vector: Vector2 = Vector2.ZERO) -> void:
 	if not is_aiming:
 		return
 	aim_elapsed += delta
-	current_drag_vector = drag_vector
 
 
 func cancel_aim() -> void:
 	is_aiming = false
 	aim_elapsed = 0.0
-	current_drag_vector = Vector2.ZERO
+	aim_variant_ready = false
 
 
 func get_current_quality(contested: bool, release_consistency: int) -> String:
@@ -49,26 +50,24 @@ func release_action(
 	if not is_aiming or aim_elapsed <= 0.0:
 		cancel_aim()
 		return {"kind": "cancel"}
+	if not aim_variant_ready:
+		_roll_aim_variant(rng)
 	var quality: String = get_current_quality(contested, shooter.release_consistency)
-	var params: Dictionary = build_make_launch_params(ballhandler_position)
-	var outcome: String = "make"
-	if quality != "green":
-		params = build_miss_launch_params(ballhandler_position, rng)
-		outcome = "miss"
+	var params: Dictionary = build_launch_profile(ballhandler_position, quality)
 	cancel_aim()
 	return {
 		"kind": "shot",
-		"outcome": outcome,
 		"quality": quality,
-		"direction": params["direction"],
-		"power": params.get("power", 1.0),
-		"forward_power": params.get("forward_power", 1.0),
-		"arc_power": params.get("arc_power", 1.0),
-		"launch_speed": params["launch_speed"],
-		"z_speed": params["z_speed"],
-		"preview_origin": params["preview_origin"],
-		"flight_time": params.get("flight_time", 0.0),
-		"shot_value": 3 if court_config.is_three_point(ballhandler_position) else 2,
+		"outcome": params["outcome"],
+		"launch_position": params["launch_position"],
+		"launch_z": params["launch_z"],
+		"velocity_xy": params["velocity_xy"],
+		"vz": params["vz"],
+		"flight_time": params["flight_time"],
+		"apex_z": params["apex_z"],
+		"target_xy": params["target_xy"],
+		"shot_value": params["shot_value"],
+		"force_make": params["force_make"],
 	}
 
 
@@ -111,69 +110,65 @@ func get_meter_snapshot(contested: bool, release_consistency: int) -> Dictionary
 	}
 
 
-func build_make_launch_params(launch_origin: Vector2) -> Dictionary:
-	var shot_origin: Vector2 = _get_shot_origin(launch_origin, court_config.hoop_position)
+func get_preview_profile(ballhandler_position: Vector2, shooter: PlayerData, contested: bool) -> Dictionary:
+	if not is_aiming:
+		return {}
+	var quality: String = get_current_quality(contested, shooter.release_consistency)
+	return build_launch_profile(ballhandler_position, quality)
+
+
+func build_current_launch_profile(ballhandler_position: Vector2, shooter: PlayerData, contested: bool) -> Dictionary:
+	return get_preview_profile(ballhandler_position, shooter, contested)
+
+
+func build_launch_profile(launch_origin: Vector2, quality: String) -> Dictionary:
+	var is_make: bool = quality == "green"
+	var target_xy: Vector2 = court_config.hoop_position if is_make else get_current_miss_target()
+	var shot_origin: Vector2 = _get_shot_origin(launch_origin, target_xy)
 	var distance_ratio: float = clampf(shot_origin.distance_to(court_config.hoop_position) / maxf(court_config.three_point_radius, 1.0), 0.0, 1.0)
-	var flight_time: float = lerpf(ball_config.made_shot_flight_time_near, ball_config.made_shot_flight_time_far, distance_ratio)
-	return _build_launch_to_target(shot_origin, court_config.hoop_position, court_config.rim_height, flight_time, 1.0, 1.0)
-
-
-func build_miss_launch_params(launch_origin: Vector2, rng: GameRng) -> Dictionary:
-	var side_sign: float = -1.0 if rng.randf() < 0.5 else 1.0
-	var depth_sign: float = -1.0 if rng.randf() < 0.5 else 1.0
-	var miss_target: Vector2 = court_config.hoop_position + Vector2(
-		side_sign * ball_config.miss_shot_side_offset,
-		depth_sign * ball_config.miss_shot_depth_offset
+	var min_apex: float = lerpf(ball_config.made_shot_min_apex_near, ball_config.made_shot_min_apex_far, distance_ratio)
+	var min_flight: float = lerpf(ball_config.made_shot_min_flight_time_near, ball_config.made_shot_min_flight_time_far, distance_ratio)
+	if not is_make:
+		min_apex *= ball_config.miss_apex_scale
+		min_flight *= ball_config.miss_min_flight_time_scale
+	return _build_launch_to_target(
+		shot_origin,
+		target_xy,
+		ball_config.shot_release_height,
+		court_config.rim_height,
+		min_apex,
+		min_flight,
+		quality,
+		"make" if is_make else "miss",
+		3 if court_config.is_three_point(launch_origin) else 2,
+		is_make
 	)
-	var shot_origin: Vector2 = _get_shot_origin(launch_origin, miss_target)
-	var distance_ratio: float = clampf(shot_origin.distance_to(court_config.hoop_position) / maxf(court_config.three_point_radius, 1.0), 0.0, 1.0)
-	var flight_time: float = lerpf(ball_config.miss_shot_flight_time_near, ball_config.miss_shot_flight_time_far, distance_ratio)
-	return _build_launch_to_target(shot_origin, miss_target, court_config.rim_height, flight_time, 0.55, 0.42)
 
 
-func calculate_launch_params(
-	drag_vector: Vector2,
-	quality: String,
-	shooter: PlayerData,
-	contested: bool,
-	rng: GameRng,
-	launch_origin: Vector2 = Vector2.ZERO
-) -> Dictionary:
-	var base_direction: Vector2 = _get_base_direction(drag_vector, launch_origin)
-	var normalized_drag: float = _get_normalized_drag_strength(drag_vector)
-	var forward_power: float = pow(normalized_drag, ball_config.forward_growth_curve_exponent)
-	var arc_power: float = pow(normalized_drag, ball_config.arc_growth_curve_exponent)
-	var angle_error: float = _sample_error(quality, true, shooter, contested, rng)
-	var power_error: float = _sample_error(quality, false, shooter, contested, rng)
-	var angle: float = base_direction.angle() + angle_error
-	var launch_direction: Vector2 = Vector2.RIGHT.rotated(angle)
-	var adjusted_forward_power: float = clampf(forward_power * (1.0 + power_error), 0.0, 1.0)
-	var adjusted_arc_power: float = clampf(arc_power * (1.0 + power_error * 0.55), 0.0, 1.0)
-	var preview_origin: Vector2 = _get_preview_origin(launch_origin, launch_direction)
-	var launch_speed: float = lerpf(ball_config.starter_forward_speed, ball_config.max_forward_speed, adjusted_forward_power)
-	var z_speed: float = lerpf(ball_config.starter_z_speed, ball_config.max_z_speed, adjusted_arc_power)
-	return {
-		"direction": launch_direction,
-		"power": adjusted_forward_power,
-		"forward_power": adjusted_forward_power,
-		"arc_power": adjusted_arc_power,
-		"launch_speed": launch_speed,
-		"z_speed": z_speed,
-		"preview_origin": preview_origin,
-	}
-
-
-func create_preview(simulator: BallSimulator, world_position: Vector2, params: Dictionary) -> Array[Dictionary]:
+func create_preview(simulator: BallSimulator, params: Dictionary) -> Array[Dictionary]:
 	var probe: BallSimulator = simulator.clone_state()
-	var preview_origin: Vector2 = params.get("preview_origin", world_position)
-	var launch_speed: float = params.get("launch_speed", ball_config.starter_forward_speed)
-	probe.launch(preview_origin, params["direction"], launch_speed, params["z_speed"])
+	var launch_position: Vector2 = params.get("launch_position", Vector2.ZERO)
+	var launch_z: float = float(params.get("launch_z", ball_config.shot_release_height))
+	var velocity_xy: Vector2 = params.get("velocity_xy", Vector2.ZERO)
+	var vz: float = float(params.get("vz", 0.0))
+	var force_make: bool = bool(params.get("force_make", false))
+	var flight_time: float = maxf(float(params.get("flight_time", ball_config.preview_sample_delta)), ball_config.preview_sample_delta)
+	var segment_count: int = maxi(ball_config.preview_sample_count, int(ceil(flight_time / maxf(ball_config.preview_sample_delta, 0.01))) + 1)
+	var sample_times: Array[float] = []
+	for index in segment_count:
+		sample_times.append(flight_time * float(index + 1) / float(segment_count))
+	var apex_time: float = vz / maxf(absf(ball_config.gravity), 0.001)
+	if apex_time > 0.0 and apex_time < flight_time:
+		sample_times.append(apex_time)
+	sample_times.sort()
+	probe.launch(launch_position, velocity_xy, launch_z, vz, force_make)
 	var raw_points: Array[Dictionary] = []
+	var max_z: float = launch_z
 	var elapsed: float = 0.0
-	var max_z: float = 0.0
-	for index in ball_config.preview_sample_count:
-		var progress: float = float(index) / maxf(float(maxi(ball_config.preview_sample_count - 1, 1)), 1.0)
-		var step_delta: float = ball_config.preview_sample_delta * lerpf(0.3, 1.05, pow(progress, 1.35))
+	for sample_time in sample_times:
+		var step_delta: float = maxf(float(sample_time) - elapsed, 0.0)
+		if step_delta <= 0.0001:
+			continue
 		probe.step(step_delta)
 		elapsed += step_delta
 		max_z = maxf(max_z, probe.z)
@@ -183,7 +178,7 @@ func create_preview(simulator: BallSimulator, world_position: Vector2, params: D
 			"launch_time": elapsed,
 			"sample_delta": step_delta,
 		})
-		if not probe.is_in_flight:
+		if elapsed >= flight_time or not probe.is_in_flight:
 			break
 	var points: Array[Dictionary] = []
 	for index in raw_points.size():
@@ -211,46 +206,23 @@ func create_preview(simulator: BallSimulator, world_position: Vector2, params: D
 	return points
 
 
-func _sample_error(
-	quality: String,
-	is_angle: bool,
-	shooter: PlayerData,
-	contested: bool,
-	rng: GameRng
-) -> float:
-	var base: float = 0.0
-	match quality:
-		"green":
-			base = shot_config.green_angle_error if is_angle else shot_config.green_power_error
-		"yellow":
-			base = shot_config.yellow_angle_error if is_angle else shot_config.yellow_power_error
-		_:
-			base = shot_config.red_angle_error if is_angle else shot_config.red_power_error
-	var shooter_bonus: float = 1.0 - ((float(shooter.shooting) + float(shooter.release_consistency)) * 0.5 / 100.0) * 0.28
-	var contested_penalty: float = 1.18 if contested else 1.0
-	var max_error: float = base * shooter_bonus * contested_penalty
-	return rng.randf_range(-max_error, max_error)
+func get_current_miss_target() -> Vector2:
+	if court_config == null or ball_config == null:
+		return Vector2.ZERO
+	return court_config.hoop_position + Vector2(
+		aim_miss_side_sign * ball_config.miss_shot_side_offset,
+		aim_miss_depth_sign * ball_config.miss_shot_depth_offset
+	)
 
 
-func _find_pass_conversion_target(release_world: Vector2, teammates: Array[PlayerController], release_screen: Vector2 = Vector2.INF) -> PlayerController:
-	for teammate in teammates:
-		if release_screen != Vector2.INF and teammate.get_screen_anchor().distance_to(release_screen) <= teammate.get_input_hit_radius():
-			return teammate
-		if teammate.world_position.distance_to(release_world) <= shot_config.teammate_conversion_radius:
-			return teammate
-	return null
-
-
-func _get_normalized_drag_strength(drag_vector: Vector2) -> float:
-	return clampf(drag_vector.length() / maxf(shot_config.max_drag_distance, 1.0), 0.0, 1.0)
-
-
-func _get_base_direction(drag_vector: Vector2, launch_origin: Vector2) -> Vector2:
-	if drag_vector.length() > 0.001:
-		return -drag_vector.normalized()
-	if court_config != null and launch_origin != Vector2.ZERO:
-		return (court_config.hoop_position - launch_origin).normalized()
-	return Vector2.UP
+func _roll_aim_variant(rng: GameRng = null) -> void:
+	aim_variant_ready = true
+	if rng == null:
+		aim_miss_side_sign = 1.0
+		aim_miss_depth_sign = 1.0
+		return
+	aim_miss_side_sign = -1.0 if rng.randf() < 0.5 else 1.0
+	aim_miss_depth_sign = -1.0 if rng.randf() < 0.5 else 1.0
 
 
 func _get_preview_origin(launch_origin: Vector2, direction: Vector2) -> Vector2:
@@ -263,31 +235,85 @@ func _get_preview_origin(launch_origin: Vector2, direction: Vector2) -> Vector2:
 func _build_launch_to_target(
 	shot_origin: Vector2,
 	target_xy: Vector2,
+	release_z: float,
 	target_z: float,
-	flight_time: float,
-	forward_power: float,
-	arc_power: float
+	min_apex: float,
+	min_flight: float,
+	quality: String,
+	outcome: String,
+	shot_value: int,
+	force_make: bool
 ) -> Dictionary:
-	var safe_time: float = maxf(flight_time, 0.2)
-	var delta_xy: Vector2 = target_xy - shot_origin
-	var velocity_xy: Vector2 = delta_xy / safe_time
-	var direction: Vector2 = velocity_xy.normalized() if velocity_xy.length() > 0.001 else Vector2.UP
-	var launch_speed: float = velocity_xy.length()
-	var z_speed: float = (target_z - 0.5 * ball_config.gravity * safe_time * safe_time) / safe_time
+	var solved_profile: Dictionary = _solve_ballistic_profile(shot_origin, target_xy, release_z, target_z, min_apex, min_flight)
 	return {
-		"direction": direction,
-		"power": forward_power,
-		"forward_power": forward_power,
-		"arc_power": arc_power,
-		"launch_speed": launch_speed,
-		"z_speed": z_speed,
-		"preview_origin": shot_origin,
-		"flight_time": safe_time,
+		"quality": quality,
+		"outcome": outcome,
+		"launch_position": shot_origin,
+		"launch_z": release_z,
+		"velocity_xy": solved_profile["velocity_xy"],
+		"vz": solved_profile["vz"],
+		"flight_time": solved_profile["flight_time"],
+		"apex_z": solved_profile["apex_z"],
+		"target_xy": target_xy,
+		"shot_value": shot_value,
+		"force_make": force_make,
 	}
 
 
 func _get_shot_origin(launch_origin: Vector2, target_xy: Vector2) -> Vector2:
 	var direction: Vector2 = (target_xy - launch_origin).normalized()
-	if direction.length() <= 0.001:
+	if direction.length_squared() <= 0.0001:
 		direction = Vector2.UP
 	return _get_preview_origin(launch_origin, direction)
+
+
+func _solve_ballistic_profile(
+	shot_origin: Vector2,
+	target_xy: Vector2,
+	release_z: float,
+	target_z: float,
+	min_apex: float,
+	min_flight: float
+) -> Dictionary:
+	var gravity_strength: float = maxf(absf(ball_config.gravity), 0.001)
+	var apex_z: float = _solve_apex_for_min_flight(release_z, target_z, min_apex, min_flight, gravity_strength)
+	var flight_time: float = _flight_time_from_apex(release_z, target_z, apex_z, gravity_strength)
+	var velocity_xy: Vector2 = (target_xy - shot_origin) / maxf(flight_time, 0.001)
+	var vz: float = sqrt(maxf(2.0 * gravity_strength * maxf(apex_z - release_z, 0.0), 0.0))
+	return {
+		"velocity_xy": velocity_xy,
+		"vz": vz,
+		"flight_time": flight_time,
+		"apex_z": apex_z,
+	}
+
+
+func _solve_apex_for_min_flight(
+	release_z: float,
+	target_z: float,
+	min_apex: float,
+	min_flight: float,
+	gravity_strength: float
+) -> float:
+	var safe_apex: float = maxf(maxf(min_apex, release_z + 1.0), target_z + 1.0)
+	if _flight_time_from_apex(release_z, target_z, safe_apex, gravity_strength) >= min_flight:
+		return safe_apex
+	var low: float = safe_apex
+	var high: float = safe_apex
+	var guard: int = 0
+	while _flight_time_from_apex(release_z, target_z, high, gravity_strength) < min_flight and guard < 24:
+		high += 64.0
+		guard += 1
+	for _iteration in 20:
+		var mid: float = (low + high) * 0.5
+		if _flight_time_from_apex(release_z, target_z, mid, gravity_strength) < min_flight:
+			low = mid
+		else:
+			high = mid
+	return high
+
+
+func _flight_time_from_apex(release_z: float, target_z: float, apex_z: float, gravity_strength: float) -> float:
+	var rise: float = maxf(apex_z - release_z, 0.0)
+	var fall: float = maxf(apex_z - target_z, 0.0)
+	return sqrt((2.0 * rise) / gravity_strength) + sqrt((2.0 * fall) / gravity_strength)
