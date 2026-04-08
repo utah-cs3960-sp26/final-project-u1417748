@@ -1,7 +1,62 @@
+# Pocket Hoops
 
-## Proposal
+Pocket Hoops is a clean-room Godot 4.6.x portrait basketball prototype built for a class demo. The game is offense-only: you control the current ballhandler with a lower-third joystick, tap teammates to pass, hold on the ballhandler to bring up a slow-motion shot meter, and jump-cut through opponent possessions with a ratings-driven sim.
 
-I want to build a retro, arcade style, basketball game. The core mechanic would be that you only play offense, you control the person with the ball every possession, you can swipe to pass to teammates (5v5) who dynamically move around based on the player with the balls position. You can shoot with a timing based swipe and release method. When you score or miss, the opponent's possession is simulated automatically based on their roster ratings and the ball comes right back to you on offense. This is to keep the pacing fast and gameplay focused solely on the offense mechanics, helping to lower the scope of this project to the time permitted. For the features I want to show off, I'd want to have a working shooting mechanic with a physics based ball arc and rim collisions, a working teammate movement system, and a working simulation for when the computer team has possession of the ball using ratings to determine outcomes. A stretch goal would be a fast break mechanic to give 2 on 1 opportunities.
+## Status
 
+- The project now boots directly into a playable match for faster gameplay and layout validation.
+- Live offense, passing, shot aim, scoring, rebounds, pause, game over, and opponent sim are implemented.
+- Shot aim now uses a hold-to-shoot timing meter instead of drag aiming.
+- Rendering now uses a low top-down projection layer: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry are projected for a stronger camera angle.
+- Action input is projection-aware, so teammate taps and shot holds target the projected screen positions the player actually sees.
+- The floor now renders from the blue second-court atlas variant as a rotated vertical half-court, and the visible front net layer is aligned to the live rim anchor.
+- Gameplay tuning is resource-backed under `data/config/`.
+- Deterministic pure-logic, scenario, and balance tests are implemented under `tests/`.
 
-For my agentic loop, I'll likely be using mostly AMP with possibly some Codex to generate the frame, the physics setup, and the UI while I will focus on tuning the gameplay to feel arcady and the logic that the AI probably won't get right on it's own. Before each task, I'll give AMP a structured checklist, what tasks to perform, what the expected behavior should look like, and what constraints to follow. For feedback, I'll have AMP run a build after every change to catch compile errors immediately and I'll maintain a testing.md or similar file that describes test cases to check for.  
+## Run
+
+Open the project in Godot 4.6.x or run:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --path .
+```
+
+Headless automated tests:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
+```
+
+## Controls
+
+- Move: touch joystick in the lower third, or `WASD` / arrow keys in debug.
+- Pass: tap a teammate.
+- Shoot: touch and hold on the ballhandler until the bottom timing meter appears, then release.
+- Shot feel: the meter is mostly red with a smaller green chunk; releasing on green always scores and cannot be blocked, while releasing on red causes a miss or a block if the contest wins.
+- Made shots now hold on-screen briefly so the ball can finish through the hoop before the possession resets.
+- Pause: HUD pause button or `P` / `Esc`.
+- Debug overlay: `F3`.
+
+## Layout
+
+- `scenes/`: game root, entity scenes, UI scenes, debug scenes
+- `scripts/game/`: coordinator, HUD, overlays, court view
+- `scripts/input/`: joystick and action input
+- `scripts/gameplay/`: shot, pass, ball, hoop, rebound systems
+- `scripts/ai/`: routes, spacing, defense, opponent sim
+- `scripts/entities/`: player and team resources/controllers
+- `scripts/debug/`: debug overlay plus wrappers for harness utilities
+- `data/`: config resources, teams, scenario resources, balance resources
+- `tests/`: headless harness, scenario runner, balance batches
+- `docs/`: brief, spec, architecture, decisions, worklog, test plan, results
+
+## Docs
+
+- `docs/PROJECT_BRIEF.md`
+- `docs/GAMEPLAY_SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DECISIONS.md`
+- `docs/TEST_PLAN.md`
+- `docs/KNOWN_ISSUES.md`
+- `docs/WORKLOG.md`
+- `docs/TEST_RESULTS.md`

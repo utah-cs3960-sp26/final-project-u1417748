@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/harness/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "shot_quality"
+display_name = "Shot Quality Bands"
+seed = 301
+trial_count = 220
+metric_keys = PackedStringArray("green_rate", "yellow_rate", "red_rate", "contested_green_rate")
+tags = PackedStringArray("balance", "shot")

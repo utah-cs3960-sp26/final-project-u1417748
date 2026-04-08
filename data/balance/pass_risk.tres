@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/harness/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "pass_risk"
+display_name = "Pass Risk Separation"
+seed = 302
+trial_count = 220
+metric_keys = PackedStringArray("short_rate", "long_rate")
+tags = PackedStringArray("balance", "pass")

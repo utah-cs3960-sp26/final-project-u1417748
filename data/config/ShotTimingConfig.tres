@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ShotTimingConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/ShotTimingConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+made_shot_animation_duration = 0.18
+hold_start_delay = 0.16
+meter_cycle_duration = 0.86
+meter_green_center = 0.68
+meter_width = 560.0
+meter_height = 42.0
+meter_bottom_margin = 164.0
+meter_marker_width = 20.0

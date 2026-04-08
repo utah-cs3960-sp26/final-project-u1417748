@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ProjectionConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/ProjectionConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+camera_tilt_strength = 0.82
+depth_compression_exponent = 1.45
+screen_center_x = 540.0
+screen_floor_y = 1600.0
+screen_horizon_y = 320.0
+ground_lateral_scale_near = 1.0
+ground_lateral_scale_far = 0.66
+z_lift_vector = Vector2(0, -0.16)
+preview_projection_lift_multiplier = 1.0
+actor_scale_near = 1.08
+actor_scale_far = 0.82
+actor_distance_to_hoop_scale_strength = 0.10
+shadow_offset = Vector2(0, 18)
+shadow_scale_near = 1.0
+shadow_scale_far = 0.45
+hoop_render_offset = Vector2(0, -34)
+debug_projection_enabled = true

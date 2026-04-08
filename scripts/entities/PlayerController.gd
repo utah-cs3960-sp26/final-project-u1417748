@@ -1,0 +1,170 @@
+class_name PlayerController
+extends Node2D
+
+var player_data: PlayerData
+var is_offense: bool = true
+var team_color: Color = Color.WHITE
+var shadow_color: Color = Color(0.0, 0.0, 0.0, 0.28)
+var is_controlled: bool = false
+var has_ball: bool = false
+var world_position: Vector2 = Vector2.ZERO
+var velocity: Vector2 = Vector2.ZERO
+var projected_scale: float = 1.0
+var projected_shadow_offset: Vector2 = Vector2(0.0, 18.0)
+var projected_shadow_scale: float = 1.0
+var input_hit_radius: float = 58.0
+var shot_pose_timer: float = 0.0
+var catch_pose_timer: float = 0.0
+
+var _label: Label
+var _visual: PlayerVisual
+
+
+func _ready() -> void:
+	z_index = 3
+	_ensure_visual()
+	if _label == null:
+		_label = Label.new()
+		_label.position = Vector2(-40.0, -102.0)
+		_label.size = Vector2(80.0, 24.0)
+		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_label.add_theme_font_size_override("font_size", 12)
+		_label.visible = OS.is_debug_build()
+		add_child(_label)
+	_update_label()
+
+
+func setup(data: PlayerData, offense_flag: bool, color_value: Color) -> void:
+	player_data = data
+	is_offense = offense_flag
+	team_color = color_value
+	if is_node_ready():
+		_ensure_visual()
+		_update_label()
+		_sync_visual_team()
+	queue_redraw()
+
+
+func _update_label() -> void:
+	if _label == null or player_data == null:
+		return
+	_label.text = player_data.role
+	_label.add_theme_color_override("font_color", Color(0.96, 0.95, 0.85))
+
+
+func _draw() -> void:
+	draw_ellipse(projected_shadow_offset, 23.0 * projected_shadow_scale, 12.0 * projected_shadow_scale, shadow_color)
+	if has_ball:
+		draw_circle(Vector2(0.0, -34.0), 24.0, Color(1.0, 0.89, 0.32, 0.22))
+	if is_controlled:
+		draw_arc(Vector2(0.0, 2.0), 22.0, 0.0, TAU, 24, Color(1.0, 1.0, 1.0, 0.95), 3.0)
+
+
+func set_controlled(value: bool) -> void:
+	is_controlled = value
+	queue_redraw()
+
+
+func set_has_ball(value: bool) -> void:
+	has_ball = value
+	queue_redraw()
+
+
+func get_player_data() -> PlayerData:
+	return player_data
+
+
+func get_position_role() -> String:
+	if player_data == null:
+		return ""
+	return player_data.role
+
+
+func get_display_name() -> String:
+	if player_data == null:
+		return "Player"
+	return player_data.display_name
+
+
+func move_in_direction(direction: Vector2, speed_scale: float, delta: float) -> void:
+	if player_data == null:
+		return
+	var max_speed: float = (180.0 + float(player_data.speed) * 2.2) * speed_scale
+	velocity = direction * max_speed
+	world_position += velocity * delta
+
+
+func move_toward_target(target: Vector2, speed_scale: float, delta: float) -> void:
+	var to_target: Vector2 = target - world_position
+	if to_target.length() <= 2.0:
+		velocity = Vector2.ZERO
+		return
+	move_in_direction(to_target.normalized(), speed_scale, delta)
+
+
+func apply_projection(
+	screen_ground_position: Vector2,
+	scale_value: float,
+	shadow_offset_value: Vector2,
+	shadow_scale_value: float,
+	depth_key_value: float
+) -> void:
+	position = screen_ground_position
+	projected_scale = scale_value
+	projected_shadow_offset = shadow_offset_value
+	projected_shadow_scale = shadow_scale_value
+	input_hit_radius = 58.0 * scale_value
+	scale = Vector2.ONE * scale_value
+	z_index = int(round(depth_key_value))
+	queue_redraw()
+
+
+func sync_visual_state(animation_state: String, facing_direction: Vector2, delta: float) -> void:
+	_ensure_visual()
+	shot_pose_timer = maxf(shot_pose_timer - delta, 0.0)
+	catch_pose_timer = maxf(catch_pose_timer - delta, 0.0)
+	if _visual == null:
+		return
+	_visual.apply_state(animation_state, facing_direction, delta)
+
+
+func trigger_shot_pose(duration: float = 0.28) -> void:
+	shot_pose_timer = maxf(duration, 0.0)
+
+
+func trigger_catch_pose(duration: float = 0.18) -> void:
+	catch_pose_timer = maxf(duration, 0.0)
+
+
+func has_sprite_visuals() -> bool:
+	return _visual != null and _visual.has_configured_sprites()
+
+
+func get_screen_anchor() -> Vector2:
+	return global_position + Vector2(0.0, -30.0 * projected_scale)
+
+
+func get_input_hit_radius() -> float:
+	return input_hit_radius
+
+
+func get_ball_screen_anchor() -> Vector2:
+	return global_position + Vector2(18.0 * projected_scale, -54.0 * projected_scale)
+
+
+func _ensure_visual() -> void:
+	if _visual == null:
+		_visual = get_node_or_null("PlayerVisual") as PlayerVisual
+	if _visual == null:
+		_visual = PlayerVisual.new()
+		_visual.name = "PlayerVisual"
+		add_child(_visual)
+		if _label != null:
+			move_child(_visual, 0)
+	_sync_visual_team()
+
+
+func _sync_visual_team() -> void:
+	if _visual == null:
+		return
+	_visual.set_team_key("home" if is_offense else "away")

@@ -1,0 +1,102 @@
+[gd_resource type="Resource" script_class="TeamData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/TeamData.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/PlayerData.gd" id="2"]
+
+[sub_resource type="Resource" id="PlayerData_pg"]
+script = ExtResource("2")
+player_id = "hom_pg"
+display_name = "Flash"
+role = "PG"
+speed = 83
+acceleration = 82
+handle = 84
+pass_accuracy = 81
+catch_rating = 72
+shooting = 74
+release_consistency = 76
+perimeter_defense = 68
+steal = 64
+block = 40
+rebound = 58
+sim_offense = 79
+
+[sub_resource type="Resource" id="PlayerData_lw"]
+script = ExtResource("2")
+player_id = "hom_lw"
+display_name = "Blaze"
+role = "LW"
+speed = 78
+acceleration = 76
+handle = 71
+pass_accuracy = 70
+catch_rating = 78
+shooting = 77
+release_consistency = 78
+perimeter_defense = 72
+steal = 69
+block = 48
+rebound = 62
+sim_offense = 75
+
+[sub_resource type="Resource" id="PlayerData_rw"]
+script = ExtResource("2")
+player_id = "hom_rw"
+display_name = "Ace"
+role = "RW"
+speed = 76
+acceleration = 74
+handle = 69
+pass_accuracy = 72
+catch_rating = 80
+shooting = 80
+release_consistency = 82
+perimeter_defense = 70
+steal = 67
+block = 50
+rebound = 60
+sim_offense = 78
+
+[sub_resource type="Resource" id="PlayerData_lc"]
+script = ExtResource("2")
+player_id = "hom_lc"
+display_name = "Tank"
+role = "LC"
+speed = 67
+acceleration = 64
+handle = 60
+pass_accuracy = 65
+catch_rating = 74
+shooting = 68
+release_consistency = 69
+perimeter_defense = 76
+steal = 63
+block = 68
+rebound = 80
+sim_offense = 64
+
+[sub_resource type="Resource" id="PlayerData_rc"]
+script = ExtResource("2")
+player_id = "hom_rc"
+display_name = "Sniper"
+role = "RC"
+speed = 71
+acceleration = 70
+handle = 66
+pass_accuracy = 69
+catch_rating = 81
+shooting = 84
+release_consistency = 85
+perimeter_defense = 69
+steal = 62
+block = 46
+rebound = 65
+sim_offense = 80
+
+[resource]
+script = ExtResource("1")
+team_name = "Home"
+abbreviation = "HOM"
+primary_color = Color(0.22, 0.58, 0.97, 1)
+secondary_color = Color(0.07, 0.11, 0.2, 1)
+players = Array[ExtResource("2")]([SubResource("PlayerData_pg"), SubResource("PlayerData_lw"), SubResource("PlayerData_rw"), SubResource("PlayerData_lc"), SubResource("PlayerData_rc")])

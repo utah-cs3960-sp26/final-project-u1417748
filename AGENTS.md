@@ -263,7 +263,6 @@ Recommended style:
 A clean structure similar to the following is expected:
 
 - `scenes/`
-  - `MainMenu.tscn`
   - `GameRoot.tscn`
   - `Court.tscn`
   - `entities/`
@@ -597,8 +596,7 @@ Do not postpone tests until the end.
 
 A contribution is not complete unless all of the following remain true:
 
-- the game still boots to a main menu
-- Start Game still enters a playable match
+- the game still boots directly into a playable match
 - movement, pass, shot, scoring, rebound, and opponent sim still function
 - the game state machine remains coherent
 - no new major soft-lock appears

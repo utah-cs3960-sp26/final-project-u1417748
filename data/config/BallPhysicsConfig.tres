@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BallPhysicsConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/config/BallPhysicsConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+starter_forward_speed = 120.0
+max_forward_speed = 680.0
+starter_z_speed = 300.0
+max_z_speed = 1180.0
+forward_growth_curve_exponent = 2.15
+arc_growth_curve_exponent = 0.78
+preview_origin_offset = Vector2(0, 28)
+preview_sample_count = 30
+preview_sample_delta = 0.055
+preview_dot_radius_min = 3.5
+preview_dot_radius_max = 10.5
+preview_apex_emphasis_strength = 0.72

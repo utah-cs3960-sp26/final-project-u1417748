@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/input/JoystickControl.gd" id="1"]
+
+[node name="Joystick" type="Control"]
+offset_left = 40.0
+offset_top = 1490.0
+offset_right = 420.0
+offset_bottom = 1870.0
+script = ExtResource("1")

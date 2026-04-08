@@ -1,0 +1,102 @@
+[gd_resource type="Resource" script_class="TeamData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/TeamData.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/PlayerData.gd" id="2"]
+
+[sub_resource type="Resource" id="PlayerData_pg"]
+script = ExtResource("2")
+player_id = "awy_pg"
+display_name = "Volt"
+role = "PG"
+speed = 81
+acceleration = 80
+handle = 79
+pass_accuracy = 77
+catch_rating = 73
+shooting = 75
+release_consistency = 74
+perimeter_defense = 75
+steal = 73
+block = 43
+rebound = 57
+sim_offense = 77
+
+[sub_resource type="Resource" id="PlayerData_lw"]
+script = ExtResource("2")
+player_id = "awy_lw"
+display_name = "Hawk"
+role = "LW"
+speed = 77
+acceleration = 75
+handle = 68
+pass_accuracy = 69
+catch_rating = 79
+shooting = 78
+release_consistency = 77
+perimeter_defense = 74
+steal = 70
+block = 51
+rebound = 63
+sim_offense = 76
+
+[sub_resource type="Resource" id="PlayerData_rw"]
+script = ExtResource("2")
+player_id = "awy_rw"
+display_name = "Storm"
+role = "RW"
+speed = 75
+acceleration = 74
+handle = 67
+pass_accuracy = 70
+catch_rating = 78
+shooting = 79
+release_consistency = 78
+perimeter_defense = 73
+steal = 68
+block = 49
+rebound = 61
+sim_offense = 77
+
+[sub_resource type="Resource" id="PlayerData_lc"]
+script = ExtResource("2")
+player_id = "awy_lc"
+display_name = "Rock"
+role = "LC"
+speed = 66
+acceleration = 63
+handle = 58
+pass_accuracy = 63
+catch_rating = 72
+shooting = 67
+release_consistency = 66
+perimeter_defense = 78
+steal = 62
+block = 70
+rebound = 82
+sim_offense = 63
+
+[sub_resource type="Resource" id="PlayerData_rc"]
+script = ExtResource("2")
+player_id = "awy_rc"
+display_name = "Razor"
+role = "RC"
+speed = 70
+acceleration = 68
+handle = 64
+pass_accuracy = 67
+catch_rating = 80
+shooting = 82
+release_consistency = 81
+perimeter_defense = 71
+steal = 66
+block = 47
+rebound = 66
+sim_offense = 79
+
+[resource]
+script = ExtResource("1")
+team_name = "Away"
+abbreviation = "AWY"
+primary_color = Color(0.94, 0.34, 0.31, 1)
+secondary_color = Color(0.22, 0.08, 0.1, 1)
+players = Array[ExtResource("2")]([SubResource("PlayerData_pg"), SubResource("PlayerData_lw"), SubResource("PlayerData_rw"), SubResource("PlayerData_lc"), SubResource("PlayerData_rc")])

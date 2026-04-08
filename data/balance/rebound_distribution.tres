@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BalanceBatchDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/harness/BalanceBatchDefinition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+batch_id = "rebound_distribution"
+display_name = "Rebound Distribution"
+seed = 304
+trial_count = 240
+metric_keys = PackedStringArray("offense_rate", "defense_rate")
+tags = PackedStringArray("balance", "rebound")
