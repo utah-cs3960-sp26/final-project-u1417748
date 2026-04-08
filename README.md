@@ -7,9 +7,10 @@ Pocket Hoops is a clean-room Godot 4.6.x portrait basketball prototype built for
 - The project now boots directly into a playable match for faster gameplay and layout validation.
 - Live offense, passing, shot aim, scoring, rebounds, pause, game over, and opponent sim are implemented.
 - Shot aim now uses a hold-to-shoot timing meter instead of drag aiming.
-- Rendering now uses a low top-down projection layer: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry are projected for a stronger camera angle.
+- Rendering now uses a flat top-down rectangular projection: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry stay screen-faithful without the stretched trapezoid look.
 - Action input is projection-aware, so teammate taps and shot holds target the projected screen positions the player actually sees.
 - The floor now renders from the blue second-court atlas variant as a rotated vertical half-court, and the visible front net layer is aligned to the live rim anchor.
+- Player presentation is intentionally oversized for mobile readability, with a slightly closer default framing than the earlier build.
 - Gameplay tuning is resource-backed under `data/config/`.
 - Deterministic pure-logic, scenario, and balance tests are implemented under `tests/`.
 

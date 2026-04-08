@@ -87,6 +87,10 @@ func _sync_sprite_positions() -> void:
 func _get_front_texture() -> Texture2D:
 	if _front_texture != null:
 		return _front_texture
+	var loaded_texture: Texture2D = load(hoop_front_texture_path) as Texture2D
+	if loaded_texture != null:
+		_front_texture = loaded_texture
+		return _front_texture
 	if not FileAccess.file_exists(hoop_front_texture_path):
 		return null
 	var image: Image = Image.load_from_file(hoop_front_texture_path)

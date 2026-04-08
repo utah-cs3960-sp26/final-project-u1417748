@@ -542,7 +542,7 @@ func _sync_ball_to_handler() -> void:
 			"ground_anchor": ground_anchor,
 			"ball_anchor": current_ballhandler.get_ball_screen_anchor(),
 			"shadow_anchor": shadow_anchor,
-			"ball_radius": 14.0 * current_ballhandler.projected_scale,
+			"ball_radius": 16.0 * current_ballhandler.projected_scale,
 			"shadow_scale": court_projection.shadow_scale(ball_simulator.position_xy, 0.0),
 			"depth_key": court_projection.depth_key(ball_simulator.position_xy, 0.0),
 		}
@@ -883,7 +883,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float) -> void:
 			"ground_anchor": ground_anchor,
 			"ball_anchor": ball_anchor,
 			"shadow_anchor": shadow_anchor,
-			"ball_radius": lerpf(12.0, 22.0, clampf(z_value / 240.0, 0.0, 1.0)),
+			"ball_radius": lerpf(14.0, 24.0, clampf(z_value / 240.0, 0.0, 1.0)),
 			"shadow_scale": court_projection.shadow_scale(world_position, z_value),
 			"depth_key": court_projection.depth_key(world_position, z_value),
 		}

@@ -42,6 +42,11 @@
 - A score only counts when the simulated ball is descending and crosses the scoring plane once.
 - Rim and backboard collisions stay live.
 
+## Presentation
+
+- The court renders as a flat top-down rectangle with parallel sidelines.
+- Player sprites are intentionally enlarged so the ballhandler and nearby defenders are easy to read in portrait play.
+
 ## Rebounds
 
 - Misses enter `REBOUND_LIVE`.

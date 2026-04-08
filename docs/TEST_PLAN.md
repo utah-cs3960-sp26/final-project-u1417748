@@ -10,6 +10,9 @@ Covered by `tests/TestRunner.gd`:
 - meter green-window sizing stays fixed under contest and ratings
 - red/green meter classification
 - meter ping-pong movement
+- flat rectangular court width consistency
+- flat projection linear depth mapping
+- flat projection ground-coordinate round trip
 - deterministic make / miss launch paths
 - ball gravity and z-height
 - scoring plane crossing
@@ -80,7 +83,9 @@ Smoke game scene:
 - release once in red and confirm a miss or block
 - score at least one basket
 - confirm the blue second-court half is visible and vertically oriented
+- confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
 - confirm the hoop body and front net sit on the painted top-rim area
+- confirm players are dramatically larger and easier to read than the earlier build
 - force a miss and observe rebound resolution
 - pause and resume
 - reach game over and restart

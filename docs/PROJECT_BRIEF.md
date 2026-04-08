@@ -34,6 +34,7 @@ The demo is complete when a player can:
 ## Success Criteria
 
 - shooting feels like the center of the game
+- the court reads as a flat rectangle and players stay easy to read on a phone-sized screen
 - global state transitions stay explicit and logged
 - gameplay values are tunable through resources
 - deterministic tests cover the highest-risk behaviors

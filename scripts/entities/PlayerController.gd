@@ -1,6 +1,12 @@
 class_name PlayerController
 extends Node2D
 
+const LABEL_POSITION: Vector2 = Vector2(-48.0, -134.0)
+const LABEL_SIZE: Vector2 = Vector2(96.0, 24.0)
+const BASE_INPUT_HIT_RADIUS: float = 84.0
+const SCREEN_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -44.0)
+const BALL_ANCHOR_OFFSET: Vector2 = Vector2(24.0, -82.0)
+
 var player_data: PlayerData
 var is_offense: bool = true
 var team_color: Color = Color.WHITE
@@ -25,8 +31,8 @@ func _ready() -> void:
 	_ensure_visual()
 	if _label == null:
 		_label = Label.new()
-		_label.position = Vector2(-40.0, -102.0)
-		_label.size = Vector2(80.0, 24.0)
+		_label.position = LABEL_POSITION
+		_label.size = LABEL_SIZE
 		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_label.add_theme_font_size_override("font_size", 12)
 		_label.visible = OS.is_debug_build()
@@ -113,7 +119,7 @@ func apply_projection(
 	projected_scale = scale_value
 	projected_shadow_offset = shadow_offset_value
 	projected_shadow_scale = shadow_scale_value
-	input_hit_radius = 58.0 * scale_value
+	input_hit_radius = BASE_INPUT_HIT_RADIUS * scale_value
 	scale = Vector2.ONE * scale_value
 	z_index = int(round(depth_key_value))
 	queue_redraw()
@@ -141,7 +147,7 @@ func has_sprite_visuals() -> bool:
 
 
 func get_screen_anchor() -> Vector2:
-	return global_position + Vector2(0.0, -30.0 * projected_scale)
+	return global_position + SCREEN_ANCHOR_OFFSET * projected_scale
 
 
 func get_input_hit_radius() -> float:
@@ -149,7 +155,7 @@ func get_input_hit_radius() -> float:
 
 
 func get_ball_screen_anchor() -> Vector2:
-	return global_position + Vector2(18.0 * projected_scale, -54.0 * projected_scale)
+	return global_position + BALL_ANCHOR_OFFSET * projected_scale
 
 
 func _ensure_visual() -> void:

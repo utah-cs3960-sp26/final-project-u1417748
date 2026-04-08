@@ -4,20 +4,20 @@
 
 [resource]
 script = ExtResource("1")
-camera_tilt_strength = 0.82
-depth_compression_exponent = 1.45
+camera_tilt_strength = 0.0
+depth_compression_exponent = 1.0
 screen_center_x = 540.0
-screen_floor_y = 1600.0
-screen_horizon_y = 320.0
-ground_lateral_scale_near = 1.0
-ground_lateral_scale_far = 0.66
+screen_floor_y = 1780.0
+screen_horizon_y = 220.0
+ground_lateral_scale_near = 1.08
+ground_lateral_scale_far = 1.08
 z_lift_vector = Vector2(0, -0.16)
 preview_projection_lift_multiplier = 1.0
-actor_scale_near = 1.08
-actor_scale_far = 0.82
-actor_distance_to_hoop_scale_strength = 0.10
+actor_scale_near = 1.26
+actor_scale_far = 1.16
+actor_distance_to_hoop_scale_strength = 0.02
 shadow_offset = Vector2(0, 18)
-shadow_scale_near = 1.0
-shadow_scale_far = 0.45
+shadow_scale_near = 0.92
+shadow_scale_far = 0.84
 hoop_render_offset = Vector2(0, -34)
 debug_projection_enabled = true

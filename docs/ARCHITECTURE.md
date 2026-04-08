@@ -29,7 +29,7 @@
 - owns state transitions
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
-- keeps gameplay coordinates in flat world space, then projects players, ball, hoop, preview points, and debug geometry into screen space each frame
+- keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - exposes deterministic hooks used only by the automated harness
 
@@ -38,7 +38,7 @@
 - `InputController`
   - joystick movement, projection-aware tap-pass, projection-aware hold-to-shoot meter input, debug mouse/keyboard support
 - `CourtProjection`
-  - render-only world/screen projection, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and overlay geometry projection
+  - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and overlay geometry projection for a flat rectangular court view
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using an explicit left-half crop so the active offensive hoop lines up with the live rim anchor
 - `ShotController`
@@ -52,7 +52,7 @@
 - `HoopView`
   - composes the hoop body plus a separate front-net texture around the existing gameplay rim anchor, letting the visible net hang in front of the board without changing hoop physics
 - `PlayerController` + `PlayerVisual`
-  - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, facing, and animation playback
+  - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, facing, animation playback, and the intentionally oversized mobile-readable sprite presentation
 - `ReboundController`
   - rebound candidate scoring and winner selection
 - `RouteController` + `SpacingSolver`

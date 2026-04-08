@@ -76,3 +76,11 @@
 - corrected the second-court source bounds to the full 484x229 atlas region and made the active portrait floor an explicit left-half crop of that source
 - switched court strip rendering to an `AtlasTexture`-backed sampling path with normalized UVs so the rotated floor art actually renders instead of sampling empty atlas space
 - generated a clean transparent `NetClean.png` from the user-provided net screenshot and used it as the front hoop layer, then tuned the front-net anchor so it hangs below the backboard over the painted rim area
+
+### Flat rectangular framing and larger players
+
+- retuned `ProjectionConfig` so the court maps to a true rectangle with constant width, linear depth, and a slightly tighter on-screen framing
+- kept the same `CourtProjection` and inverse input mapping APIs, but changed the authored defaults away from the old pseudo-perspective stretch
+- substantially increased player sprite scale and raised the sprite offset so enlarged characters stay foot-anchored to the floor
+- enlarged hit radii, screen anchors, held-ball anchors, and held/live ball render sizes so the bigger player presentation still aligns cleanly during input and possession
+- added pure-logic coverage for constant court width, linear depth mapping, and exact ground-coordinate round-tripping under the flatter projection

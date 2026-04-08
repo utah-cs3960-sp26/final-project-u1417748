@@ -86,7 +86,20 @@ func _run_pure_logic() -> void:
 
 	var far_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 320.0))
 	var near_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 1500.0))
-	_assert_true(far_ground.y < near_ground.y, "projection compresses up-court depth", "")
+	_assert_true(far_ground.y < near_ground.y, "projection orders up-court depth", "")
+	var court_rect: Rect2 = shot_controller.court_config.court_rect
+	var top_left: Vector2 = projection.world_to_screen_ground(court_rect.position)
+	var top_right: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.end.x, court_rect.position.y))
+	var bottom_left: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.position.x, court_rect.end.y))
+	var bottom_right: Vector2 = projection.world_to_screen_ground(court_rect.end)
+	_assert_true(absf((top_right.x - top_left.x) - (bottom_right.x - bottom_left.x)) < 0.001, "projection keeps court width constant", "")
+	var mid_world_y: float = court_rect.position.y + court_rect.size.y * 0.5
+	var mid_ground: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.get_center().x, mid_world_y))
+	var expected_mid_y: float = lerpf(projection_config.screen_horizon_y, projection_config.screen_floor_y, 0.5)
+	_assert_true(absf(mid_ground.y - expected_mid_y) < 0.001, "projection maps court depth linearly", "")
+	var round_trip_world: Vector2 = Vector2(740.0, 1110.0)
+	var round_trip_screen: Vector2 = projection.world_to_screen_ground(round_trip_world)
+	_assert_true(projection.screen_to_world_ground(round_trip_screen).distance_to(round_trip_world) < 0.01, "projection round trips ground coordinates", "")
 	var lifted: Vector2 = projection.world_to_screen(Vector2(540.0, 1100.0), 180.0)
 	var ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 1100.0))
 	_assert_true(absf(lifted.x - ground.x) < 0.001 and lifted.y < ground.y, "projection lifts from ground anchor", "")

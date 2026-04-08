@@ -7,8 +7,8 @@ const HOME_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Characte
 const AWAY_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW.png")
 const AWAY_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW_outline.png")
 
-@export var sprite_offset: Vector2 = Vector2(0.0, -50.0)
-@export var sprite_base_scale: float = 1.55
+@export var sprite_offset: Vector2 = Vector2(0.0, -72.0)
+@export var sprite_base_scale: float = 2.3
 
 var _fill_sprite: Sprite2D
 var _outline_sprite: Sprite2D

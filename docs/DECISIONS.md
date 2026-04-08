@@ -59,3 +59,11 @@ The green meter chunk is now fixed authored geometry and no longer shrinks based
 ### The court presentation now uses an explicit half-court crop
 
 The rotated court render no longer guesses at a narrow atlas slice. `CourtView` now treats the blue second-court art as a full source region and applies an explicit left-half crop before projecting it into portrait space. This keeps the active painted hoop area aligned with the single live top hoop while preserving the existing court/world geometry and projection math.
+
+### The pseudo-perspective camera was flattened into a rectangular court view
+
+The earlier projection pass made the court read like a tapered trapezoid, which hurt readability more than it helped. The shared `CourtProjection` system stays in place, but its authored defaults now flatten the court into a true rectangle with constant width and linear depth mapping. This keeps input, debug overlays, and ball-height rendering consistent while removing the stretched perspective feel.
+
+### Player readability wins over showing more empty floor
+
+The character sprites are now deliberately much larger and the default framing is slightly tighter. This was chosen to make the controlled player, nearby defenders, and held ball much easier to read in portrait mode, even if it means showing a little less empty court at once.
