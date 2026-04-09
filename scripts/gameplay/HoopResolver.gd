@@ -16,14 +16,33 @@ func check_hoop_interaction(ball_sim: BallSimulator) -> Dictionary:
 		"new_velocity_xy": ball_sim.velocity_xy,
 		"new_vz": ball_sim.vz,
 		"scored": false,
+		"score_sample_xy": court_config.hoop_position if court_config != null else Vector2.ZERO,
+		"score_sample_z": court_config.rim_height if court_config != null else 0.0,
+		"score_sample_t": 0.0,
 	}
 	if court_config == null or ball_config == null:
 		return result
 
-	if ball_sim.forced_make:
-		if _check_forced_make_score(ball_sim):
+	if ball_sim.is_guided_make_profile():
+		var guided_score: Dictionary = ball_sim.get_step_score_event()
+		if bool(guided_score.get("scored", false)):
 			result.hit_type = "score"
 			result.scored = true
+			result.score_sample_xy = guided_score["score_sample_xy"]
+			result.score_sample_z = guided_score["score_sample_z"]
+			result.score_sample_t = guided_score["score_sample_t"]
+			return result
+		if ball_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_FREE_FLIGHT:
+			return result
+
+	if ball_sim.forced_make:
+		var forced_make_score: Dictionary = _get_score_crossing_metadata(ball_sim)
+		if bool(forced_make_score.get("scored", false)):
+			result.hit_type = "score"
+			result.scored = true
+			result.score_sample_xy = forced_make_score["score_sample_xy"]
+			result.score_sample_z = forced_make_score["score_sample_z"]
+			result.score_sample_t = forced_make_score["score_sample_t"]
 		return result
 
 	if _check_backboard(ball_sim):
@@ -35,10 +54,15 @@ func check_hoop_interaction(ball_sim: BallSimulator) -> Dictionary:
 		result.new_vz = ball_sim.vz * ball_config.backboard_bounce_damping
 		return result
 
-	if _check_score(ball_sim):
-		result.hit_type = "score"
-		result.scored = true
-		return result
+	if not ball_sim.is_guided_make_profile():
+		var score_crossing: Dictionary = _get_score_crossing_metadata(ball_sim)
+		if bool(score_crossing.get("scored", false)):
+			result.hit_type = "score"
+			result.scored = true
+			result.score_sample_xy = score_crossing["score_sample_xy"]
+			result.score_sample_z = score_crossing["score_sample_z"]
+			result.score_sample_t = score_crossing["score_sample_t"]
+			return result
 
 	if _check_rim(ball_sim):
 		var normal: Vector2 = (ball_sim.position_xy - court_config.hoop_position).normalized()
@@ -71,32 +95,35 @@ func _check_rim(ball_sim: BallSimulator) -> bool:
 	return near_height and current_distance <= outer_radius and previous_distance >= current_distance and current_distance >= court_config.rim_inner_radius
 
 
-func _check_score(ball_sim: BallSimulator) -> bool:
+func _get_score_crossing_metadata(ball_sim: BallSimulator) -> Dictionary:
+	var result: Dictionary = {
+		"scored": false,
+		"score_sample_xy": court_config.hoop_position,
+		"score_sample_z": court_config.rim_height,
+		"score_sample_t": 0.0,
+	}
 	if ball_sim.already_scored or ball_sim.vz >= 0.0:
-		return false
+		return result
 	var crossed_plane: bool = ball_sim.previous_z >= court_config.rim_height and ball_sim.z <= court_config.rim_height
 	if not crossed_plane:
-		return false
+		return result
 	var denominator: float = ball_sim.previous_z - ball_sim.z
 	var t: float = 0.0
 	if not is_zero_approx(denominator):
 		t = clampf((ball_sim.previous_z - court_config.rim_height) / denominator, 0.0, 1.0)
 	var sample_pos: Vector2 = ball_sim.previous_position_xy.lerp(ball_sim.position_xy, t)
-	return sample_pos.distance_to(court_config.hoop_position) <= court_config.rim_inner_radius
+	if not _is_valid_score_entry(sample_pos):
+		return result
+	result.scored = true
+	result.score_sample_xy = sample_pos
+	result.score_sample_t = t
+	return result
 
 
-func _check_forced_make_score(ball_sim: BallSimulator) -> bool:
-	if ball_sim.already_scored or ball_sim.vz >= 0.0:
+func _is_valid_score_entry(sample_pos: Vector2) -> bool:
+	if sample_pos.distance_to(court_config.hoop_position) > court_config.rim_inner_radius:
 		return false
-	var crossed_plane: bool = ball_sim.previous_z >= court_config.rim_height and ball_sim.z <= court_config.rim_height
-	if not crossed_plane:
-		return false
-	var denominator: float = ball_sim.previous_z - ball_sim.z
-	var t: float = 0.0
-	if not is_zero_approx(denominator):
-		t = clampf((ball_sim.previous_z - court_config.rim_height) / denominator, 0.0, 1.0)
-	var sample_pos: Vector2 = ball_sim.previous_position_xy.lerp(ball_sim.position_xy, t)
-	return sample_pos.distance_to(court_config.hoop_position) <= court_config.rim_radius
+	return sample_pos.y >= court_config.hoop_position.y + court_config.score_entry_min_front_offset
 
 
 func estimate_landing_position(ball_sim: BallSimulator) -> Vector2:

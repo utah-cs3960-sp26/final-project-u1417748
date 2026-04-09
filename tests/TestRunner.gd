@@ -23,7 +23,7 @@ func run_all() -> Array:
 	logger.set_prefix("test_run_%d" % Time.get_ticks_msec())
 	logger.clear_runtime_logs()
 	logger.log_test("Pocket Hoops tests starting")
-	_run_pure_logic()
+	await _run_pure_logic()
 	await _run_scenarios()
 	_run_balance()
 	return pure_logic_results
@@ -111,58 +111,100 @@ func _run_pure_logic() -> void:
 	var far_origin: Vector2 = Vector2(540.0, 1400.0)
 	var near_green_profile: Dictionary = shot_controller.build_launch_profile(near_origin, "green")
 	var far_green_profile: Dictionary = shot_controller.build_launch_profile(far_origin, "green")
+	var expected_make_entry: Vector2 = shot_controller.get_current_make_entry_target()
+	_assert_true(str(near_green_profile.get("profile_kind", "")) == ShotController.PROFILE_KIND_GUIDED_MAKE, "green launch uses guided make profile", "")
+	_assert_true(near_green_profile["entry_xy"].distance_to(expected_make_entry) < 0.001, "green launch targets front rim entry", "")
+	_assert_true(absf(float(near_green_profile["entry_z"]) - shot_controller.court_config.rim_height) < 0.001, "guided make handoff sits on rim plane", str(near_green_profile["entry_z"]))
+	_assert_true(float(near_green_profile["score_gate_z"]) < shot_controller.court_config.rim_height, "guided make score gate starts below rim", str(near_green_profile["score_gate_z"]))
 	_assert_true(float(near_green_profile["launch_z"]) > 0.0, "shots launch above floor", "")
 	_assert_true(float(near_green_profile["flight_time"]) >= shot_controller.ball_config.made_shot_min_flight_time_near, "near shot meets cinematic airtime", "")
 	_assert_true(float(far_green_profile["flight_time"]) >= shot_controller.ball_config.made_shot_min_flight_time_far, "far shot meets cinematic airtime", "")
 	_assert_true(float(far_green_profile["apex_z"]) >= shot_controller.ball_config.made_shot_min_apex_far, "far shot meets cinematic apex", "")
 	_assert_true(float(far_green_profile["flight_time"]) > float(near_green_profile["flight_time"]), "far shot hangs longer than near shot", "")
 	_assert_true(float(far_green_profile["apex_z"]) > float(near_green_profile["apex_z"]), "far shot arcs higher than near shot", "")
+	_assert_true(_is_legal_score_sample(near_green_profile["score_gate_xy"], shot_controller.court_config), "green score gate stays inside legal corridor", str(near_green_profile["score_gate_xy"]))
 	var far_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), far_green_profile)
 	_assert_true(_max_preview_z(far_preview_points) >= float(far_green_profile["apex_z"]) - 56.0, "far preview stays close to cinematic apex", "")
 	var make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
 	var resolver: HoopResolver = HoopResolver.new(CourtConfig.new(), BallPhysicsConfig.new())
-	make_sim.launch(near_green_profile["launch_position"], near_green_profile["velocity_xy"], near_green_profile["launch_z"], near_green_profile["vz"], near_green_profile["force_make"])
+	make_sim.launch_shot_profile(near_green_profile)
 	var scored: bool = false
-	for _frame in 240:
+	var score_interaction: Dictionary = {}
+	var first_score_interaction: Dictionary = {}
+	var saw_guided_descent: bool = false
+	var saw_net_exit: bool = false
+	var pre_score_board_side: bool = false
+	var max_descent_center_offset: float = 0.0
+	var score_phase: String = ""
+	var handoff_reached: bool = false
+	var saw_above_rim_after_handoff: bool = false
+	var first_guided_descent_z: float = INF
+	var first_guided_descent_vz: float = 0.0
+	for _frame in 300:
 		make_sim.step(1.0 / 60.0)
-		if resolver.check_hoop_interaction(make_sim)["hit_type"] == "score":
+		match make_sim.get_flight_phase():
+			BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT:
+				saw_guided_descent = true
+				if is_inf(first_guided_descent_z):
+					first_guided_descent_z = make_sim.z
+					first_guided_descent_vz = make_sim.vz
+			BallSimulator.FLIGHT_PHASE_NET_EXIT:
+				saw_net_exit = true
+		if make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_FREE_FLIGHT and make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_NONE:
+			handoff_reached = true
+		if handoff_reached and not scored and make_sim.z > shot_controller.court_config.rim_height + 0.01:
+			saw_above_rim_after_handoff = true
+		if not make_sim.has_passed_score_gate():
+			if make_sim.z < shot_controller.court_config.over_backboard_z_threshold and make_sim.position_xy.y <= shot_controller.court_config.backboard_y + shot_controller.ball_config.ball_radius * 0.2:
+				pre_score_board_side = true
+		if make_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT or make_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_NET_EXIT:
+			max_descent_center_offset = maxf(max_descent_center_offset, absf(make_sim.position_xy.x - shot_controller.court_config.hoop_position.x))
+		score_interaction = resolver.check_hoop_interaction(make_sim)
+		if score_interaction["hit_type"] == "score" and not scored:
 			scored = true
+			score_phase = make_sim.get_flight_phase()
+			first_score_interaction = score_interaction.duplicate(true)
+		if scored and saw_net_exit and not make_sim.is_in_flight:
 			break
+	_assert_true(saw_guided_descent, "guided make enters guided descent", "")
+	_assert_true(saw_net_exit, "guided make exits below net", "")
+	_assert_true(not saw_above_rim_after_handoff, "guided make never rises above rim after handoff", "")
+	_assert_true(not pre_score_board_side, "guided make never goes board-side before score", "")
+	_assert_true(max_descent_center_offset <= shot_controller.ball_config.made_shot_descent_centering_tolerance + 0.5, "guided make descent stays centered", str(max_descent_center_offset))
 	_assert_true(scored, "green launch scores through hoop", "")
+	if scored:
+		_assert_true(first_guided_descent_z <= shot_controller.court_config.rim_height + 0.01 and first_guided_descent_vz < 0.0, "first visible guided descent sample is already dropping from rim", "%0.2f %0.2f" % [first_guided_descent_z, first_guided_descent_vz])
+		_assert_true(score_phase == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green score happens during guided descent", score_phase)
+		_assert_true(_is_legal_score_sample(first_score_interaction["score_sample_xy"], shot_controller.court_config), "green score enters legal front-half corridor", str(first_score_interaction["score_sample_xy"]))
 	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
 	shot_controller.update_aim(0.04, Vector2.ZERO)
 	var red_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
 	var red_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), red_preview_profile)
 	var red_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, false, rng)
 	_assert_true(red_action["kind"] == "shot" and red_action["outcome"] == "miss" and red_action["quality"] == "red", "red release misses shot", "")
+	_assert_true(str(red_action.get("profile_kind", "")) == ShotController.PROFILE_KIND_FREE_FLIGHT, "red release stays free-flight", "")
 	_assert_true(_launch_profiles_match(red_preview_profile, red_action), "red preview matches release path", "")
 	_assert_true(not red_preview_points.is_empty(), "red preview renders samples", "")
 	if not red_preview_points.is_empty():
 		var preview_probe: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
-		preview_probe.launch(red_action["launch_position"], red_action["velocity_xy"], red_action["launch_z"], red_action["vz"], red_action["force_make"])
+		preview_probe.launch_shot_profile(red_action)
 		for point in red_preview_points:
 			preview_probe.step(point["sample_delta"])
 		var red_preview_last: Dictionary = red_preview_points[maxi(red_preview_points.size() - 1, 0)]
 		_assert_true(preview_probe.position_xy.distance_to(red_preview_last["position"]) < 0.01 and absf(preview_probe.z - float(red_preview_last["z"])) < 0.01, "preview samples mirror live simulation", "")
 	var miss_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
-	miss_sim.launch(red_action["launch_position"], red_action["velocity_xy"], red_action["launch_z"], red_action["vz"], red_action["force_make"])
+	miss_sim.launch_shot_profile(red_action)
 	var miss_scored: bool = false
+	var miss_entered_guided_phase: bool = false
 	for _miss_frame in 240:
 		miss_sim.step(1.0 / 60.0)
+		if miss_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_MAKE_CAPTURE or miss_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT or miss_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_NET_EXIT:
+			miss_entered_guided_phase = true
 		if resolver.check_hoop_interaction(miss_sim)["hit_type"] == "score":
 			miss_scored = true
 			break
+	_assert_true(not miss_entered_guided_phase, "miss does not enter guided make phases", "")
 	_assert_true(not miss_scored, "red launch misses rim center", "")
-	var forced_make_params: Dictionary = shot_controller.build_launch_profile(Vector2(560.0, 760.0), "green")
-	var forced_make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
-	forced_make_sim.launch(forced_make_params["launch_position"], forced_make_params["velocity_xy"], forced_make_params["launch_z"], forced_make_params["vz"], forced_make_params["force_make"])
-	var forced_scored: bool = false
-	for _forced_frame in 240:
-		forced_make_sim.step(1.0 / 60.0)
-		if resolver.check_hoop_interaction(forced_make_sim)["hit_type"] == "score":
-			forced_scored = true
-			break
-	_assert_true(forced_scored, "forced green launch scores from contested lane", "")
 
 	var green_hold: float = shot_controller.shot_config.meter_cycle_duration * shot_controller.shot_config.meter_green_center
 	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
@@ -189,6 +231,21 @@ func _run_pure_logic() -> void:
 	score_sim.z = 160.0
 	score_sim.vz = -100.0
 	_assert_true(resolver.check_hoop_interaction(score_sim)["hit_type"] == "score", "descending score plane", "")
+	var invalid_score_sim: BallSimulator = BallSimulator.new()
+	invalid_score_sim.position_xy = Vector2(540.0, 354.0)
+	invalid_score_sim.previous_position_xy = Vector2(540.0, 354.0)
+	invalid_score_sim.previous_z = 210.0
+	invalid_score_sim.z = 160.0
+	invalid_score_sim.vz = -100.0
+	_assert_true(resolver.check_hoop_interaction(invalid_score_sim)["hit_type"] != "score", "backboard-side crossing does not score", "")
+	var invalid_forced_score_sim: BallSimulator = BallSimulator.new()
+	invalid_forced_score_sim.position_xy = Vector2(540.0, 354.0)
+	invalid_forced_score_sim.previous_position_xy = Vector2(540.0, 354.0)
+	invalid_forced_score_sim.previous_z = 210.0
+	invalid_forced_score_sim.z = 160.0
+	invalid_forced_score_sim.vz = -100.0
+	invalid_forced_score_sim.forced_make = true
+	_assert_true(resolver.check_hoop_interaction(invalid_forced_score_sim)["hit_type"] != "score", "forced make does not score from invalid back-half entry", "")
 
 	var court: CourtConfig = CourtConfig.new()
 	_assert_true(not court.is_three_point(court.hoop_position + Vector2(0.0, 120.0)), "inside arc two", "")
@@ -270,6 +327,8 @@ func _run_pure_logic() -> void:
 	_assert_true(smoke_court_view != null and smoke_court_view.has_textured_court(), "court art smoke", "")
 	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_sprite_visuals(), "hoop art smoke", "")
 	_assert_true(smoke_coordinator != null and smoke_coordinator.ball_node != null and smoke_coordinator.ball_node.has_sprite_visuals(), "ball art smoke", "")
+	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_ball_z_index_for_phase"), "hoop render-phase z accessor exists", "")
+	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_front_net_exit_screen_y"), "hoop net exit helper exists", "")
 	var home_visual_ok: bool = smoke_coordinator != null and smoke_coordinator.offense_players.size() == 5
 	if home_visual_ok:
 		for smoke_player in smoke_coordinator.offense_players + smoke_coordinator.defense_players:
@@ -283,6 +342,8 @@ func _run_pure_logic() -> void:
 	defender.free()
 	short_target.free()
 	long_target.free()
+	await get_tree().process_frame
+	await _run_hoop_render_phase_smoke()
 
 
 func _run_scenarios() -> void:
@@ -323,6 +384,76 @@ func _assert_true(condition: bool, name: String, detail: String) -> void:
 		total_failed += 1
 
 
+func _run_hoop_render_phase_smoke() -> void:
+	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
+	var game_root: Node2D = game_root_scene.instantiate() as Node2D
+	add_child(game_root)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var smoke_coordinator: GameCoordinator = game_root.get_node("GameCoordinator") as GameCoordinator
+	_assert_true(smoke_coordinator != null, "through-net smoke coordinator exists", "")
+	if smoke_coordinator == null:
+		game_root.queue_free()
+		await get_tree().process_frame
+		return
+	_assert_true(smoke_coordinator.has_method("get_ball_render_phase"), "ball render phase accessor exists", "")
+	_assert_true(smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"), "through-net score accessor exists", "")
+	_assert_true(smoke_coordinator.has_method("get_net_swish_active"), "net swish accessor exists", "")
+	if smoke_coordinator.hoop_node != null:
+		if smoke_coordinator.hoop_node.has_method("supports_three_piece_visuals"):
+			_assert_true(bool(smoke_coordinator.hoop_node.call("supports_three_piece_visuals")), "three-piece hoop visuals exist", "")
+		var back_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "behind_backboard"))
+		var rim_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "rim_mouth"))
+		var channel_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "net_channel"))
+		var front_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "front_of_net"))
+		_assert_true(back_z < rim_z and rim_z < channel_z and channel_z < front_z, "hoop phase z-order increases frontward", "%d %d %d %d" % [back_z, rim_z, channel_z, front_z])
+		if smoke_coordinator.hoop_node.has_method("is_net_swish_active"):
+			_assert_true(not bool(smoke_coordinator.hoop_node.call("is_net_swish_active")), "net swish idle before score", "")
+	smoke_coordinator.begin_test_mode(1708)
+	smoke_coordinator.test_force_scoring_shot("RC", 2)
+	var through_net: bool = false
+	var score_seen: bool = false
+	var score_phase: String = ""
+	var swish_when_scored: bool = false
+	var first_phase_frame: Dictionary = {}
+	var front_after_net_frame: int = -1
+	var score_z: float = INF
+	for frame in 180:
+		await get_tree().process_frame
+		if smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"):
+			through_net = bool(smoke_coordinator.call("did_last_scored_shot_pass_through_net"))
+		if smoke_coordinator.has_method("get_ball_render_phase"):
+			var phase: String = str(smoke_coordinator.call("get_ball_render_phase"))
+			if phase != "" and not first_phase_frame.has(phase):
+				first_phase_frame[phase] = frame
+			if phase == "front_of_net" and first_phase_frame.has("net_channel") and frame > int(first_phase_frame["net_channel"]) and front_after_net_frame == -1:
+				front_after_net_frame = frame
+			if smoke_coordinator.context.home_score > 0 and not score_seen:
+				score_seen = true
+				score_phase = phase
+				score_z = smoke_coordinator.ball_simulator.z
+				if smoke_coordinator.has_method("get_net_swish_active"):
+					swish_when_scored = bool(smoke_coordinator.call("get_net_swish_active"))
+		if score_seen and front_after_net_frame != -1:
+			break
+	_assert_true(first_phase_frame.has("net_channel"), "made shot enters net channel phase", str(first_phase_frame))
+	_assert_true(front_after_net_frame != -1, "made shot emerges front of net", str(first_phase_frame))
+	if first_phase_frame.has("rim_mouth") and first_phase_frame.has("net_channel"):
+		_assert_true(int(first_phase_frame["rim_mouth"]) <= int(first_phase_frame["net_channel"]), "optional rim-mouth handoff occurs before net channel", str(first_phase_frame))
+	if first_phase_frame.has("net_channel") and front_after_net_frame != -1:
+		_assert_true(int(first_phase_frame["net_channel"]) < front_after_net_frame, "guided make phases stay ordered", str({"net_channel": first_phase_frame["net_channel"], "front_of_net": front_after_net_frame}))
+	_assert_true(through_net, "made shot records through-net follow-through", "")
+	_assert_true(score_seen, "made shot resolves during smoke test", "")
+	_assert_true(score_phase == "net_channel", "scored frame occurs during guided descent", score_phase)
+	_assert_true(score_z <= smoke_coordinator.court_config.rim_height + 0.01, "score cannot appear while ball is above rim", str(score_z))
+	if smoke_coordinator.has_method("get_score_followthrough_active"):
+		_assert_true(bool(smoke_coordinator.call("get_score_followthrough_active")) or score_phase == "front_of_net", "score follow-through activates after score", "")
+	if smoke_coordinator.has_method("get_net_swish_active"):
+		_assert_true(swish_when_scored, "net swish activates on score", "")
+	game_root.queue_free()
+	await get_tree().process_frame
+
+
 func _max_preview_z(points: Array[Dictionary]) -> float:
 	var max_z: float = 0.0
 	for point in points:
@@ -340,9 +471,27 @@ func _new_ball_simulator(config: BallPhysicsConfig) -> BallSimulator:
 func _launch_profiles_match(a: Dictionary, b: Dictionary, tolerance: float = 0.01) -> bool:
 	if a.is_empty() or b.is_empty():
 		return false
-	return a["launch_position"].distance_to(b["launch_position"]) <= tolerance \
+	if str(a.get("profile_kind", "")) != str(b.get("profile_kind", "")):
+		return false
+	var matches: bool = a["launch_position"].distance_to(b["launch_position"]) <= tolerance \
 		and a["target_xy"].distance_to(b["target_xy"]) <= tolerance \
 		and a["velocity_xy"].distance_to(b["velocity_xy"]) <= tolerance \
 		and absf(float(a["launch_z"]) - float(b["launch_z"])) <= tolerance \
 		and absf(float(a["vz"]) - float(b["vz"])) <= tolerance \
 		and absf(float(a["flight_time"]) - float(b["flight_time"])) <= tolerance
+	if not matches:
+		return false
+	if str(a.get("profile_kind", "")) != ShotController.PROFILE_KIND_GUIDED_MAKE:
+		return true
+	return a["entry_xy"].distance_to(b["entry_xy"]) <= tolerance \
+		and a["score_gate_xy"].distance_to(b["score_gate_xy"]) <= tolerance \
+		and a["net_exit_xy"].distance_to(b["net_exit_xy"]) <= tolerance \
+		and absf(float(a["entry_z"]) - float(b["entry_z"])) <= tolerance \
+		and absf(float(a["entry_time"]) - float(b["entry_time"])) <= tolerance \
+		and absf(float(a["descent_duration"]) - float(b["descent_duration"])) <= tolerance
+
+
+func _is_legal_score_sample(sample_pos: Vector2, court: CourtConfig) -> bool:
+	if sample_pos.distance_to(court.hoop_position) > court.rim_inner_radius:
+		return false
+	return sample_pos.y >= court.hoop_position.y + court.score_entry_min_front_offset

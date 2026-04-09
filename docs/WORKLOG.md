@@ -93,3 +93,40 @@
 - raised live and preview z-lift, increased live ball size growth, and strengthened shadow shrink so the new arc reads clearly on screen
 - expanded pure-logic coverage for cinematic airtime, apex height, preview/live launch agreement, and above-floor release behavior
 - lengthened the contested green release scenario wait so the longer arc fully resolves back to live offense inside the harness
+
+### Hoop depth-visual contract
+
+- added deterministic test coverage for explicit hoop render phases and the through-net score follow-through contract
+- documented the layered hoop visual model so normal makes stay in front of the backboard, pass behind the front net on score, and only render behind the board on true over-the-top paths
+- recorded the through-net score visual behavior in the gameplay spec, architecture notes, test plan, and acceptance checklist without changing score legality
+- switched coordinator test mode to a fixed 60 Hz simulation step so made-shot follow-through timing, scenario waits, and clock assertions stay stable in headless deterministic runs
+
+### Front-half net-entry score fix
+
+- moved green make trajectories off raw hoop center and onto a dedicated front-half net-entry target so guaranteed makes visibly enter the mouth of the net
+- tightened `HoopResolver` so both forced and normal scores must cross the rim plane inside the inner cylinder and on the front side of the hoop
+- clamped score follow-through start positions into the legal net channel so a scored frame cannot begin above or behind the backboard
+- added pure-logic regressions for the screenshot case where a backboard-side descending crossing used to score despite missing the net
+
+### Three-piece hoop pass-through refactor
+
+- split the old single front hoop overlay into a three-piece render stack: a rear/full hoop silhouette, a front rim lip, and a hanging front net body
+- converted `Net.png` into a transparent combined rear hoop layer and regenerated `NetClean.png` as a rim-only layer, then authored a matching `NetBody.png` for the swishable lower net
+- added explicit `rim_mouth` and `net_channel` ball render phases so a made shot now spends a readable frame inside the rim before dropping behind the front net
+- added a small `HoopView`-owned net swish animation that stretches and sways the front net body on scored follow-through without touching score legality
+- extended deterministic smoke coverage so the harness now checks three-piece hoop availability, rim-mouth first-frame rendering, net-channel progression, front-of-net emergence, and score-triggered swish activation
+
+### Guided make descent rewrite
+
+- replaced the old green-shot forced-score contract with a staged guided-make profile that solves a legal front-half rim entry and then hands off to simulator-owned downward descent
+- extended `BallSimulator` so made shots move from free flight into a rim-plane handoff and then through `guided_descent` and `net_exit` before the score resolves
+- changed `HoopResolver` so guided makes can still collide during approach, but only score from the simulator-reported guided-descent gate instead of any arbitrary early crossing
+- removed the coordinator-owned render-only score rescue from the live scoring path and reduced it to phase/state tracking plus net-swish triggering
+- retimed deterministic `force_scoring_shot` scenarios so they now launch a real guided make instead of fabricating an instant scored frame
+
+### Rim-plane handoff rewrite
+
+- moved the end of the green make arc from an above-rim entry point down to the rim plane at the legal front-half handoff point
+- removed the authored above-rim linger from the live solver and kept any `rim_mouth` read to at most a transient transition frame
+- pushed the score gate slightly below the rim so feedback appears only after the ball has visibly started descending into the net
+- updated smoke coverage so made shots no longer require a sustained rim-mouth phase and explicitly fail if score feedback appears while the ball is above the rim

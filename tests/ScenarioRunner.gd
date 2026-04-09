@@ -124,4 +124,23 @@ func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpec
 		"state_not":
 			if coordinator.get_state_name() == str(expectation.value):
 				return "state should not be %s" % str(expectation.value)
+		"ball_render_phase":
+			if not coordinator.has_method("get_ball_render_phase"):
+				return "ball render phase accessor missing"
+			var phase: String = str(coordinator.call("get_ball_render_phase"))
+			if expectation.value is Array:
+				if not (phase in expectation.value):
+					return "ball render phase expected one of %s got %s" % [str(expectation.value), phase]
+			elif phase != str(expectation.value):
+				return "ball render phase expected %s got %s" % [str(expectation.value), phase]
+		"through_net_score":
+			if not coordinator.has_method("did_last_scored_shot_pass_through_net"):
+				return "through-net score accessor missing"
+			if bool(coordinator.call("did_last_scored_shot_pass_through_net")) != bool(expectation.value):
+				return "through-net score expected %s got %s" % [str(expectation.value), str(coordinator.call("did_last_scored_shot_pass_through_net"))]
+		"score_followthrough_active":
+			if not coordinator.has_method("get_score_followthrough_active"):
+				return "score follow-through accessor missing"
+			if bool(coordinator.call("get_score_followthrough_active")) != bool(expectation.value):
+				return "score follow-through expected %s got %s" % [str(expectation.value), str(coordinator.call("get_score_followthrough_active"))]
 	return ""

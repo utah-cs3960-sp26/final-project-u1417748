@@ -54,7 +54,7 @@ The project no longer uses a runtime start screen. `GameRoot.tscn` is now the de
 
 ### Green meter releases are now absolute
 
-The green meter chunk is now fixed authored geometry and no longer shrinks based on contest or shooter ratings. If the indicator lands in green, the shot always scores and cannot be blocked or downgraded after release. Runtime enforcement now continues through hoop resolution by treating green releases as forced makes until they score, instead of letting rim or backboard contact invalidate the make. Defense still matters only on red releases. This was changed to make the hold meter easier to read and to match the explicit "green always goes in" rule.
+The green meter chunk is now fixed authored geometry and no longer shrinks based on contest or shooter ratings. If the indicator lands in green, the shot always scores and cannot be blocked or downgraded after release. That guarantee is now enforced by the staged guided-make solver and simulator-owned descent path instead of by letting a widened forced-score flag rescue a bad flight late. Defense still matters only on red releases. This was changed to make the hold meter easier to read and to match the explicit "green always goes in" rule.
 
 ### The court presentation now uses an explicit half-court crop
 
@@ -75,3 +75,23 @@ The old fixed-time shot solver was replaced with an apex-driven launch builder t
 ### The meter keeps control truth, but live preview dots are back
 
 The repo still uses the hold-to-release meter as the only shot input. A live trajectory preview was restored as presentation, not aiming control: green preview dots show the guaranteed make path, while red preview dots show the deterministic miss path that would be launched if the player released on that frame. A stable aim-time miss variant is held from aim start through release so preview and live flight stay aligned.
+
+### Hoop occlusion is render-only and follows explicit phases
+
+Made-shot legality still belongs to `HoopResolver`, but the render layer now treats the hoop as a layered visual stack with explicit backboard, rim-mouth, net-channel, and emerged phases. Normal makes should read in front of the backboard, meet the rim at the handoff point without an authored hover, then pass behind the hanging front net during the guided descent, and only move behind the board when the ball genuinely goes over it. This was added to make the scoring visual understandable without changing basket rules.
+
+### Deterministic validation now uses a fixed 60 Hz coordinator step
+
+Scenario and smoke harness runs now clamp `GameCoordinator` test mode to a fixed `1/60` frame step instead of trusting wall-clock `delta`. The new hoop follow-through timing exposed how fragile the old real-time progression was in headless runs. This keeps scenario waits, clock assertions, and short post-score holds stable without affecting normal gameplay, because the fixed step only applies when deterministic test mode is enabled.
+
+### A counted make must enter the front half of the net
+
+Green releases still remain guaranteed makes, but that guarantee no longer comes from a widened `rim_radius` scoring loophole. The shared score contract is now stricter: a basket only counts when the descending ball crosses the rim plane inside the inner score radius and on the front half of the hoop. The green shot solver was retargeted to a front-half net entry point so the visual path and the legal score path match.
+
+### Green makes now use simulator-owned guided descent instead of forced scoring
+
+The earlier fix still allowed green makes to be “saved” too late by a coordinator-owned visual follow-through after an otherwise bad free-flight path. That is no longer the contract. Green releases now solve a staged make profile up front, the live simulator owns the capture into the rim and the downward net descent, and the score only resolves when the simulator crosses the planned guided-descent gate. This was chosen to eliminate counted makes that still rendered above the rim or behind the backboard.
+
+### The make arc now hands off on the rim plane, not above it
+
+The first guided-make rewrite still let the arc terminate above the rim before the simulator dropped the ball into the net. That still read like a hard downward pop. The handoff point is now on the rim plane inside the legal front-half cylinder, with no authored hover. The next visible motion after the arc finishes is already downward into the net, and the score does not appear until that descent has begun.

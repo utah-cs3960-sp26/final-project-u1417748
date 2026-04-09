@@ -29,7 +29,7 @@ value = 2
 [sub_resource type="Resource" id="Action_wait_score"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.4
+seconds = 2.4
 
 [sub_resource type="Resource" id="Action_pause"]
 script = ExtResource("2")

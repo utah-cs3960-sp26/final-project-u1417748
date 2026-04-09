@@ -388,6 +388,50 @@ At minimum validate in these contexts:
 - collisions are absent or catastrophically unstable
 - repeated impacts break scoring or state flow
 
+### AT-014A — Hoop render phases are explicit
+**Severity:** P1  
+**Type:** Functional/Rendering
+
+**Steps**
+1. Trigger a made basket in a deterministic test or smoke scenario.
+2. Inspect the ball depth ordering during the score follow-through.
+3. Trigger a true over-the-top path that clears the backboard.
+
+**Expected result**
+- A normal made shot renders in front of the backboard on approach.
+- The ball enters a visible rim-mouth phase before dropping through the hanging net.
+- The ball transitions behind the hanging front net while descending through the score follow-through.
+- The ball only renders behind the board when the path genuinely goes over the backboard.
+- The hoop exposes explicit render-phase state instead of relying on one generic depth sort.
+
+**Fail if**
+- all hoop-adjacent shots use the same depth layer
+- made shots skip straight from approach to below-net without an inside-the-rim moment
+- made shots never pass behind the front net
+- over-the-top paths cannot render behind the board
+- render phase state is unavailable to deterministic checks
+
+### AT-014B — Made baskets visibly pass through the net
+**Severity:** P1  
+**Type:** Functional/Rendering
+
+**Steps**
+1. Score a normal made basket from a clean lane.
+2. Watch the ball as the score is resolved.
+
+**Expected result**
+- The score timing remains correct.
+- The ball stays visible long enough to read the through-net finish.
+- The ball visibly sits inside the rim opening before the downward swish begins.
+- The ball passes through the visible net channel before the possession resets.
+- The test harness can observe that the scored shot used the through-net follow-through path.
+
+**Fail if**
+- made shots pop away before the net finish reads
+- score timing changes
+- through-net follow-through is not observable in deterministic mode
+- the possession resets before the visual finish completes
+
 ---
 
 ### AT-015 — Missed shot enters rebound mode
@@ -1086,6 +1130,8 @@ These manual checks must pass before calling the build demo-ready.
 23. Restart and confirm the full reset.
 24. Inspect logs and confirm useful events were written.
 25. Play another full game and confirm no obvious degradation or lingering state corruption.
+26. Confirm a normal made basket renders in front of the backboard, then behind the front net, then emerges below it before reset.
+27. Confirm a true over-the-top shot can render behind the backboard while board-side makes still stay in front of it.
 
 ---
 

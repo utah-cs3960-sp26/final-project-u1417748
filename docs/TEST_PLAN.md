@@ -21,7 +21,17 @@ Covered by `tests/TestRunner.gd`:
 - preview/live simulation agreement for released paths
 - above-floor launch height
 - ball gravity and z-height
+- guided make handoff staying exactly on the rim plane
+- guided make score gate starting below the rim so the score cannot appear at the handoff frame
+- guided make approach never going board-side before score
+- guided make score-gate crossing occurring during `guided_descent`
+- guided make descent staying centered inside the hoop cylinder
+- misses staying in free flight and never entering guided make phases
 - scoring plane crossing
+- explicit hoop render-phase ordering
+- rim-mouth then net-channel score sequencing
+- through-net score follow-through flags
+- score-triggered net swish activation
 - 2PT / 3PT classification
 - pass interception separation
 - route target generation
@@ -90,7 +100,9 @@ Smoke game scene:
 - score at least one basket
 - confirm the blue second-court half is visible and vertically oriented
 - confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
-- confirm the hoop body and front net sit on the painted top-rim area
+- confirm the hoop body plus rear/full hoop, front rim lip, and front net body all stay aligned on the painted top-rim area
+- confirm normal makes render in front of the backboard, meet the rim plane, immediately turn downward into the hanging net during the guided descent, and only go behind the board when thrown over it
+- confirm the score text does not appear while the ball is still above the rim or behind the backboard on a made shot
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases
 - force a miss and observe rebound resolution

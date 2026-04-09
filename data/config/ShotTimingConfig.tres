@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1")
-made_shot_animation_duration = 0.18
+made_shot_animation_duration = 0.52
 hold_start_delay = 0.16
 meter_cycle_duration = 0.86
 meter_green_center = 0.68

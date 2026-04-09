@@ -36,14 +36,19 @@
 - Releasing in the red causes a miss or a contest-driven block.
 - Green preview dots show the make path; red preview dots show the deterministic miss path tied to the current aim.
 - Live shots launch from an above-floor release height and use a deliberately exaggerated cinematic arc with longer hang time.
-- Made shots stay on screen briefly so the ball can finish through the hoop before the game transitions.
+- Green makes use a staged guided-make profile: free-flight approach into a legal front-half rim-plane handoff, then an immediate simulator-owned downward descent through the cylinder and net.
+- Made shots stay on screen briefly so the ball can fully finish through the hoop before the game transitions.
+- The score visual follows explicit hoop depth phases: normal makes appear in front of the backboard, may show at most a transient rim-plane handoff frame, then pass behind the hanging net body before emerging below it.
+- Score resolution for a green make happens during the simulator-owned `guided_descent` phase, not from an arbitrary pre-score free-flight crossing and not from a render-only rescue path.
 
 ## Scoring
 
 - The hoop is fixed at top center.
 - The 3PT check is determined from shooter position at release.
 - A score only counts when the simulated ball is descending and crosses the scoring plane once.
+- Green makes no longer rely on a widened forced-score loophole. They must still enter the front-half score corridor; the shot solver is responsible for producing that path.
 - Rim and backboard collisions stay live.
+- Rendering around the hoop is phase-aware so the ball can sit in the correct depth band against the rear hoop, front rim lip, and front net body instead of relying on one generic depth sort.
 
 ## Presentation
 

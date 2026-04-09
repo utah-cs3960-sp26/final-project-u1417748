@@ -30,6 +30,7 @@
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
+- owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - exposes deterministic hooks used only by the automated harness
 
@@ -42,15 +43,18 @@
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using an explicit left-half crop so the active offensive hoop lines up with the live rim anchor
 - `ShotController`
-  - hold meter timing, green-window classification, stable aim-time miss variants, apex-driven launch profile generation, and preview sampling
+  - hold meter timing, green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`
   - straight-line pass travel and interception corridor checks
 - `BallSimulator`
   - pure `RefCounted` 2D + z-height motion with explicit above-floor shot release height
+  - guided makes switch from free flight to a rim-plane handoff and then into `guided_descent -> net_exit`, so the live simulator, not the coordinator, owns the downward swish path
 - `HoopResolver`
   - score-plane, rim, and backboard resolution
+  - guided makes may still collide during approach, but only score once the simulator reports the planned guided-descent score gate crossing
 - `HoopView`
-  - composes the hoop body plus a separate front-net texture around the existing gameplay rim anchor, letting the visible net hang in front of the board without changing hoop physics
+  - composes the hoop body plus a three-piece hoop stack around the gameplay rim anchor: a rear/full hoop silhouette, a front rim lip, and a front net body with a small swish animation
+  - exposes render-phase z-order helpers so the ball can be layered in front of the backboard, inside the rim mouth, behind the hanging net, or behind the board only for true over-the-top paths
 - `PlayerController` + `PlayerVisual`
   - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, facing, animation playback, and the intentionally oversized mobile-readable sprite presentation
 - `ReboundController`

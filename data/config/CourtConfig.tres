@@ -4,3 +4,16 @@
 
 [resource]
 script = ExtResource("1")
+over_backboard_z_threshold = 320.0
+net_channel_radius = 40.0
+net_followthrough_depth = 26.0
+net_exit_z = 58.0
+score_followthrough_duration = 0.34
+score_followthrough_centering_strength = 0.78
+rim_mouth_duration = 0.06
+rim_mouth_depth = 10.0
+net_swish_duration = 0.18
+net_swish_sway_amplitude = 3.0
+net_swish_stretch = 0.08
+made_shot_entry_depth = 18.0
+score_entry_min_front_offset = 6.0

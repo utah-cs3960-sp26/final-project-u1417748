@@ -1,6 +1,9 @@
 class_name ShotController
 extends RefCounted
 
+const PROFILE_KIND_FREE_FLIGHT: String = "free_flight"
+const PROFILE_KIND_GUIDED_MAKE: String = "guided_make"
+
 var shot_config: ShotTimingConfig
 var ball_config: BallPhysicsConfig
 var court_config: CourtConfig
@@ -57,6 +60,7 @@ func release_action(
 	cancel_aim()
 	return {
 		"kind": "shot",
+		"profile_kind": params.get("profile_kind", PROFILE_KIND_FREE_FLIGHT),
 		"quality": quality,
 		"outcome": params["outcome"],
 		"launch_position": params["launch_position"],
@@ -67,8 +71,8 @@ func release_action(
 		"apex_z": params["apex_z"],
 		"target_xy": params["target_xy"],
 		"shot_value": params["shot_value"],
-		"force_make": params["force_make"],
-	}
+		"force_make": params.get("force_make", false),
+	}.merged(params, true)
 
 
 func get_meter_progress() -> float:
@@ -122,15 +126,14 @@ func build_current_launch_profile(ballhandler_position: Vector2, shooter: Player
 
 
 func build_launch_profile(launch_origin: Vector2, quality: String) -> Dictionary:
-	var is_make: bool = quality == "green"
-	var target_xy: Vector2 = court_config.hoop_position if is_make else get_current_miss_target()
+	var shot_value: int = 3 if court_config.is_three_point(launch_origin) else 2
+	if quality == "green":
+		return _build_guided_make_profile(launch_origin, quality, shot_value)
+	var target_xy: Vector2 = get_current_miss_target()
 	var shot_origin: Vector2 = _get_shot_origin(launch_origin, target_xy)
 	var distance_ratio: float = clampf(shot_origin.distance_to(court_config.hoop_position) / maxf(court_config.three_point_radius, 1.0), 0.0, 1.0)
-	var min_apex: float = lerpf(ball_config.made_shot_min_apex_near, ball_config.made_shot_min_apex_far, distance_ratio)
-	var min_flight: float = lerpf(ball_config.made_shot_min_flight_time_near, ball_config.made_shot_min_flight_time_far, distance_ratio)
-	if not is_make:
-		min_apex *= ball_config.miss_apex_scale
-		min_flight *= ball_config.miss_min_flight_time_scale
+	var min_apex: float = lerpf(ball_config.made_shot_min_apex_near, ball_config.made_shot_min_apex_far, distance_ratio) * ball_config.miss_apex_scale
+	var min_flight: float = lerpf(ball_config.made_shot_min_flight_time_near, ball_config.made_shot_min_flight_time_far, distance_ratio) * ball_config.miss_min_flight_time_scale
 	return _build_launch_to_target(
 		shot_origin,
 		target_xy,
@@ -139,31 +142,26 @@ func build_launch_profile(launch_origin: Vector2, quality: String) -> Dictionary
 		min_apex,
 		min_flight,
 		quality,
-		"make" if is_make else "miss",
-		3 if court_config.is_three_point(launch_origin) else 2,
-		is_make
+		"miss",
+		shot_value,
+		false
 	)
 
 
 func create_preview(simulator: BallSimulator, params: Dictionary) -> Array[Dictionary]:
 	var probe: BallSimulator = simulator.clone_state()
-	var launch_position: Vector2 = params.get("launch_position", Vector2.ZERO)
-	var launch_z: float = float(params.get("launch_z", ball_config.shot_release_height))
-	var velocity_xy: Vector2 = params.get("velocity_xy", Vector2.ZERO)
-	var vz: float = float(params.get("vz", 0.0))
-	var force_make: bool = bool(params.get("force_make", false))
 	var flight_time: float = maxf(float(params.get("flight_time", ball_config.preview_sample_delta)), ball_config.preview_sample_delta)
 	var segment_count: int = maxi(ball_config.preview_sample_count, int(ceil(flight_time / maxf(ball_config.preview_sample_delta, 0.01))) + 1)
 	var sample_times: Array[float] = []
 	for index in segment_count:
 		sample_times.append(flight_time * float(index + 1) / float(segment_count))
-	var apex_time: float = vz / maxf(absf(ball_config.gravity), 0.001)
+	var apex_time: float = float(params.get("apex_time", params.get("vz", 0.0) / maxf(absf(ball_config.gravity), 0.001)))
 	if apex_time > 0.0 and apex_time < flight_time:
 		sample_times.append(apex_time)
 	sample_times.sort()
-	probe.launch(launch_position, velocity_xy, launch_z, vz, force_make)
+	probe.launch_shot_profile(params)
 	var raw_points: Array[Dictionary] = []
-	var max_z: float = launch_z
+	var max_z: float = float(params.get("launch_z", ball_config.shot_release_height))
 	var elapsed: float = 0.0
 	for sample_time in sample_times:
 		var step_delta: float = maxf(float(sample_time) - elapsed, 0.0)
@@ -206,6 +204,14 @@ func create_preview(simulator: BallSimulator, params: Dictionary) -> Array[Dicti
 	return points
 
 
+func get_current_make_target() -> Vector2:
+	return _get_make_score_gate_xy()
+
+
+func get_current_make_entry_target() -> Vector2:
+	return _get_make_handoff_xy()
+
+
 func get_current_miss_target() -> Vector2:
 	if court_config == null or ball_config == null:
 		return Vector2.ZERO
@@ -225,11 +231,110 @@ func _roll_aim_variant(rng: GameRng = null) -> void:
 	aim_miss_depth_sign = -1.0 if rng.randf() < 0.5 else 1.0
 
 
-func _get_preview_origin(launch_origin: Vector2, direction: Vector2) -> Vector2:
-	if launch_origin == Vector2.ZERO:
-		return launch_origin
-	var lateral: Vector2 = direction.orthogonal()
-	return launch_origin + lateral * ball_config.preview_origin_offset.x + direction * ball_config.preview_origin_offset.y
+func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_value: int) -> Dictionary:
+	var distance_ratio: float = clampf(launch_origin.distance_to(court_config.hoop_position) / maxf(court_config.three_point_radius, 1.0), 0.0, 1.0)
+	var base_apex: float = lerpf(ball_config.made_shot_min_apex_near, ball_config.made_shot_min_apex_far, distance_ratio)
+	var base_flight: float = lerpf(ball_config.made_shot_min_flight_time_near, ball_config.made_shot_min_flight_time_far, distance_ratio)
+	var entry_xy: Vector2 = _get_make_handoff_xy()
+	var entry_z: float = court_config.rim_height
+	var shot_origin: Vector2 = _get_shot_origin(launch_origin, entry_xy)
+	var flight_boosts: Array[float] = [0.0, 0.08, 0.16, 0.24, 0.32]
+	var apex_boosts: Array[float] = [0.0, 32.0, 64.0, 96.0]
+	var fallback_profile: Dictionary = {}
+	for flight_boost in flight_boosts:
+		for apex_boost in apex_boosts:
+			var approach: Dictionary = _solve_ballistic_profile(
+				shot_origin,
+				entry_xy,
+				ball_config.shot_release_height,
+				entry_z,
+				base_apex + apex_boost,
+				base_flight + flight_boost
+			)
+			var candidate: Dictionary = _build_guided_make_profile_data(
+				launch_origin,
+				shot_origin,
+				approach,
+				entry_xy,
+				entry_z,
+				quality,
+				shot_value
+			)
+			if fallback_profile.is_empty():
+				fallback_profile = candidate
+			if _validate_guided_make_profile(candidate):
+				return candidate
+	return fallback_profile if not fallback_profile.is_empty() else _build_guided_make_profile_data(
+		launch_origin,
+		shot_origin,
+		_solve_ballistic_profile(
+			shot_origin,
+			entry_xy,
+			ball_config.shot_release_height,
+			entry_z,
+			base_apex + 96.0,
+			base_flight + 0.32
+		),
+		entry_xy,
+		entry_z,
+		quality,
+		shot_value
+	)
+
+
+func _build_guided_make_profile_data(
+	launch_origin: Vector2,
+	shot_origin: Vector2,
+	approach: Dictionary,
+	entry_xy: Vector2,
+	entry_z: float,
+	quality: String,
+	shot_value: int
+) -> Dictionary:
+	var score_gate_xy: Vector2 = entry_xy
+	var score_gate_z: float = _get_make_score_gate_z()
+	var capture_duration: float = 0.0
+	var guided_descent_duration: float = maxf(ball_config.made_shot_descent_duration, 0.12)
+	var net_exit_xy: Vector2 = Vector2(court_config.hoop_position.x, score_gate_xy.y)
+	var net_exit_z: float = court_config.net_exit_z
+	var exit_xy: Vector2 = net_exit_xy + Vector2(0.0, ball_config.ball_radius * 0.18)
+	var exit_z: float = maxf(court_config.net_exit_z - 36.0, 0.0)
+	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.12), 0.06)
+	var total_time: float = float(approach["flight_time"]) + capture_duration + guided_descent_duration + exit_duration
+	var apex_time: float = float(approach["vz"]) / maxf(absf(ball_config.gravity), 0.001)
+	return {
+		"profile_kind": PROFILE_KIND_GUIDED_MAKE,
+		"quality": quality,
+		"outcome": "make",
+		"launch_position": shot_origin,
+		"launch_z": ball_config.shot_release_height,
+		"velocity_xy": approach["velocity_xy"],
+		"vz": approach["vz"],
+		"flight_time": total_time,
+		"apex_z": approach["apex_z"],
+		"apex_time": apex_time,
+		"target_xy": score_gate_xy,
+		"shot_value": shot_value,
+		"force_make": false,
+		"approach_launch_position": shot_origin,
+		"approach_launch_z": ball_config.shot_release_height,
+		"approach_velocity_xy": approach["velocity_xy"],
+		"approach_vz": approach["vz"],
+		"entry_xy": entry_xy,
+		"entry_z": entry_z,
+		"entry_time": approach["flight_time"],
+		"score_gate_xy": score_gate_xy,
+		"score_gate_z": score_gate_z,
+		"net_exit_xy": net_exit_xy,
+		"net_exit_z": net_exit_z,
+		"exit_xy": exit_xy,
+		"exit_z": exit_z,
+		"descent_duration": ball_config.made_shot_descent_duration,
+		"capture_duration": capture_duration,
+		"guided_descent_duration": guided_descent_duration,
+		"net_exit_duration": exit_duration,
+		"launch_origin": launch_origin,
+	}
 
 
 func _build_launch_to_target(
@@ -245,7 +350,9 @@ func _build_launch_to_target(
 	force_make: bool
 ) -> Dictionary:
 	var solved_profile: Dictionary = _solve_ballistic_profile(shot_origin, target_xy, release_z, target_z, min_apex, min_flight)
+	var apex_time: float = float(solved_profile["vz"]) / maxf(absf(ball_config.gravity), 0.001)
 	return {
+		"profile_kind": PROFILE_KIND_FREE_FLIGHT,
 		"quality": quality,
 		"outcome": outcome,
 		"launch_position": shot_origin,
@@ -254,6 +361,7 @@ func _build_launch_to_target(
 		"vz": solved_profile["vz"],
 		"flight_time": solved_profile["flight_time"],
 		"apex_z": solved_profile["apex_z"],
+		"apex_time": apex_time,
 		"target_xy": target_xy,
 		"shot_value": shot_value,
 		"force_make": force_make,
@@ -265,6 +373,13 @@ func _get_shot_origin(launch_origin: Vector2, target_xy: Vector2) -> Vector2:
 	if direction.length_squared() <= 0.0001:
 		direction = Vector2.UP
 	return _get_preview_origin(launch_origin, direction)
+
+
+func _get_preview_origin(launch_origin: Vector2, direction: Vector2) -> Vector2:
+	if launch_origin == Vector2.ZERO:
+		return launch_origin
+	var lateral: Vector2 = direction.orthogonal()
+	return launch_origin + lateral * ball_config.preview_origin_offset.x + direction * ball_config.preview_origin_offset.y
 
 
 func _solve_ballistic_profile(
@@ -317,3 +432,98 @@ func _flight_time_from_apex(release_z: float, target_z: float, apex_z: float, gr
 	var rise: float = maxf(apex_z - release_z, 0.0)
 	var fall: float = maxf(apex_z - target_z, 0.0)
 	return sqrt((2.0 * rise) / gravity_strength) + sqrt((2.0 * fall) / gravity_strength)
+
+
+func _validate_guided_make_profile(profile: Dictionary) -> bool:
+	var entry_xy: Vector2 = profile["entry_xy"]
+	var entry_z: float = float(profile["entry_z"])
+	var score_gate_xy: Vector2 = profile["score_gate_xy"]
+	var score_gate_z: float = float(profile["score_gate_z"])
+	if entry_xy.distance_to(court_config.hoop_position) > ball_config.made_shot_capture_radius:
+		return false
+	if entry_xy.y < court_config.hoop_position.y + court_config.score_entry_min_front_offset:
+		return false
+	if entry_xy.y - court_config.backboard_y < ball_config.made_shot_backboard_clearance:
+		return false
+	if absf(entry_z - court_config.rim_height) > 0.001:
+		return false
+	if score_gate_xy.distance_to(court_config.hoop_position) > court_config.rim_inner_radius:
+		return false
+	if score_gate_xy.y < court_config.hoop_position.y + court_config.score_entry_min_front_offset:
+		return false
+	if score_gate_z >= court_config.rim_height:
+		return false
+	var descent_horizontal: float = maxf(entry_xy.distance_to(score_gate_xy), 0.001)
+	var descent_vertical: float = maxf(entry_z - score_gate_z, 0.001)
+	var descent_angle_deg: float = rad_to_deg(atan2(descent_vertical, descent_horizontal))
+	if descent_angle_deg < ball_config.made_shot_min_descent_angle_deg:
+		return false
+	var probe: BallSimulator = BallSimulator.new()
+	probe.gravity = ball_config.gravity
+	probe.ball_radius = ball_config.ball_radius
+	probe.launch(
+		profile["approach_launch_position"],
+		profile["approach_velocity_xy"],
+		float(profile["approach_launch_z"]),
+		float(profile["approach_vz"]),
+		false
+	)
+	var entry_time: float = float(profile["entry_time"])
+	var elapsed: float = 0.0
+	var step_delta: float = 1.0 / 60.0
+	while elapsed < entry_time - 0.0001 and probe.is_in_flight:
+		var segment: float = minf(step_delta, entry_time - elapsed)
+		probe.step(segment)
+		elapsed += segment
+		if _sample_is_board_side(probe.position_xy, probe.z):
+			return false
+		if _sample_hits_backboard(probe):
+			return false
+		if _sample_hits_outer_rim(probe):
+			return false
+	if probe.position_xy.distance_to(entry_xy) > 14.0:
+		return false
+	if absf(probe.z - entry_z) > 14.0:
+		return false
+	return true
+
+
+func _sample_is_board_side(sample_xy: Vector2, sample_z: float) -> bool:
+	return sample_z < court_config.over_backboard_z_threshold and sample_xy.y <= court_config.backboard_y + ball_config.ball_radius * 0.2
+
+
+func _sample_hits_backboard(probe: BallSimulator) -> bool:
+	var half_width: float = court_config.backboard_width * 0.5 + ball_config.ball_radius
+	var crossed: bool = probe.previous_position_xy.y >= court_config.backboard_y and probe.position_xy.y <= court_config.backboard_y
+	if not crossed:
+		return false
+	if absf(probe.position_xy.x - court_config.backboard_x_center) > half_width:
+		return false
+	return probe.z >= court_config.rim_height - 40.0 and probe.z <= court_config.rim_height + 180.0
+
+
+func _sample_hits_outer_rim(probe: BallSimulator) -> bool:
+	var current_distance: float = probe.position_xy.distance_to(court_config.hoop_position)
+	var previous_distance: float = probe.previous_position_xy.distance_to(court_config.hoop_position)
+	var outer_radius: float = court_config.rim_radius + ball_config.ball_radius
+	var near_height: bool = absf(probe.z - court_config.rim_height) <= 48.0
+	return near_height and current_distance <= outer_radius and previous_distance >= current_distance and current_distance >= court_config.rim_inner_radius
+
+
+func _get_make_entry_xy(front_depth: float) -> Vector2:
+	return court_config.hoop_position + Vector2(0.0, front_depth)
+
+
+func _get_make_handoff_xy() -> Vector2:
+	return _get_make_score_gate_xy()
+
+
+func _get_make_score_gate_xy() -> Vector2:
+	return Vector2(
+		court_config.hoop_position.x,
+		court_config.hoop_position.y + maxf(court_config.score_entry_min_front_offset, minf(ball_config.made_shot_entry_front_depth * 0.45, ball_config.made_shot_descent_centering_tolerance))
+	)
+
+
+func _get_make_score_gate_z() -> float:
+	return court_config.rim_height - minf(ball_config.ball_radius * 0.45, 10.0)

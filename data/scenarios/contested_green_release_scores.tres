@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://tests/harness/ScenarioDefinition.gd" id="1"]
 [ext_resource type="Script" path="res://tests/harness/ScenarioAction.gd" id="2"]
@@ -34,6 +34,11 @@ script = ExtResource("3")
 kind = "log_contains"
 value = "Shot released green make"
 
+[sub_resource type="Resource" id="ScenarioExpectation_through_net"]
+script = ExtResource("3")
+kind = "through_net_score"
+value = true
+
 [resource]
 script = ExtResource("1")
 scenario_id = "contested_green_release_scores"
@@ -57,5 +62,5 @@ setup = {
 }
 }
 actions = Array[ExtResource("2")]([SubResource("ScenarioAction_hold_green"), SubResource("ScenarioAction_release"), SubResource("ScenarioAction_wait_resolve")])
-expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_score"), SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_log")])
+expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_score"), SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_log"), SubResource("ScenarioExpectation_through_net")])
 tags = PackedStringArray("scenario", "shot", "green", "contest")

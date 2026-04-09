@@ -62,6 +62,9 @@ var current_preview_color: Color = Color(0.3, 0.95, 0.4, 0.95)
 var rebound_delay_timer: float = 0.0
 var active_rebound_zone: Vector2 = Vector2.ZERO
 var made_shot_animation_timer: float = 0.0
+var score_followthrough_state: Dictionary = {}
+var current_ball_render_phase: String = ""
+var last_scored_shot_passed_through_net: bool = false
 
 
 func _ready() -> void:
@@ -183,6 +186,7 @@ func _start_new_match() -> void:
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
 	made_shot_animation_timer = 0.0
+	_clear_score_followthrough()
 	current_preview_points.clear()
 	_change_state(GameState.State.MATCH_SETUP)
 	_reset_possession()
@@ -202,6 +206,7 @@ func _reset_possession() -> void:
 	pass_controller.active_pass = {}
 	shot_controller.cancel_aim()
 	made_shot_animation_timer = 0.0
+	_clear_score_followthrough(false)
 	current_preview_points.clear()
 	court_view.clear_preview()
 	court_view.clear_shot_meter()
@@ -234,7 +239,8 @@ func _process(delta: float) -> void:
 	if context.current_state == GameState.State.PAUSED or context.current_state == GameState.State.GAME_OVER:
 		_sync_projection_visuals(0.0)
 		return
-	var scaled_delta: float = delta * context.gameplay_time_scale
+	var frame_delta: float = 1.0 / 60.0 if context.deterministic_mode else delta
+	var scaled_delta: float = frame_delta * context.gameplay_time_scale
 	_update_clock(scaled_delta)
 	match context.current_state:
 		GameState.State.LIVE_OFFENSE:
@@ -333,6 +339,8 @@ func _update_pass_in_flight(delta: float) -> void:
 func _update_shot_in_flight(delta: float) -> void:
 	if made_shot_animation_timer > 0.0:
 		ball_simulator.step(delta)
+		if get_score_followthrough_active():
+			_advance_score_followthrough(delta)
 		_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 		made_shot_animation_timer = maxf(made_shot_animation_timer - delta, 0.0)
 		if made_shot_animation_timer <= 0.0:
@@ -345,7 +353,7 @@ func _update_shot_in_flight(delta: float) -> void:
 	_update_off_ball_offense(delta)
 	_update_defense(delta)
 	ball_simulator.step(delta)
-	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
+	_maybe_begin_guided_make_net_swish()
 	var interaction: Dictionary = hoop_resolver.check_hoop_interaction(ball_simulator)
 	match interaction["hit_type"]:
 		"backboard":
@@ -364,8 +372,11 @@ func _update_shot_in_flight(delta: float) -> void:
 			_show_feedback("SWISH!" if not shot_had_rim_contact else "BUCKET!", Color(0.44, 1.0, 0.58))
 			log_writer.log_match("Score %d points" % context.shot_value_pending)
 			_update_hud()
-			made_shot_animation_timer = shot_config.made_shot_animation_duration
+			_begin_score_followthrough(interaction)
+			_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
+			made_shot_animation_timer = maxf(shot_config.made_shot_animation_duration, ball_simulator.get_remaining_visual_time() + 0.08)
 			return
+	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 	if not ball_simulator.is_in_flight and not ball_simulator.already_scored:
 		_show_feedback("BRICK!", Color(1.0, 0.76, 0.36))
 		_begin_rebound()
@@ -474,18 +485,14 @@ func _on_shot_aim_released(_release_screen: Vector2, _release_world: Vector2, _d
 			current_ballhandler.trigger_shot_pose(0.28)
 			context.shot_value_pending = action["shot_value"]
 			current_ballhandler.set_has_ball(false)
-			ball_simulator.launch(
-				action["launch_position"],
-				action["velocity_xy"],
-				action["launch_z"],
-				action["vz"],
-				action["force_make"]
-			)
+			_clear_score_followthrough(false)
+			ball_simulator.launch_shot_profile(action)
 			shot_had_rim_contact = false
 			_change_state(GameState.State.SHOT_IN_FLIGHT)
 			log_writer.log_event(
 				"shot_launch",
 				{
+					"profile_kind": action.get("profile_kind", "free_flight"),
 					"quality": action["quality"],
 					"outcome": action["outcome"],
 					"flight_time": action["flight_time"],
@@ -574,6 +581,10 @@ func _sync_ball_to_handler() -> void:
 	ball_simulator.reset_to_possession(current_ballhandler.world_position)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(ball_simulator.position_xy)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(ball_simulator.position_xy)
+	var render_context: Dictionary = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, 0.0)
+	var render_phase: String = str(render_context.get("render_phase", ""))
+	var z_override: int = int(render_context.get("z_index_override", BallController.NO_Z_INDEX_OVERRIDE))
+	current_ball_render_phase = render_phase
 	ball_node.sync_visual(
 		ball_simulator.position_xy,
 		ball_simulator.z,
@@ -584,7 +595,9 @@ func _sync_ball_to_handler() -> void:
 			"ball_radius": 16.0 * current_ballhandler.projected_scale,
 			"shadow_scale": court_projection.shadow_scale(ball_simulator.position_xy, 0.0),
 			"depth_key": court_projection.depth_key(ball_simulator.position_xy, 0.0),
-		}
+		},
+		z_override,
+		render_phase
 	)
 
 
@@ -807,17 +820,15 @@ func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
 		return
 	_set_ballhandler(shooter)
 	shooter.set_has_ball(false)
+	shooter.trigger_shot_pose(0.28)
 	shot_owner = shooter
-	context.shot_value_pending = shot_value if shot_value > 0 else (3 if court_config.is_three_point(shooter.world_position) else 2)
+	var launch_profile: Dictionary = shot_controller.build_launch_profile(shooter.world_position, "green")
+	if launch_profile.is_empty():
+		return
+	context.shot_value_pending = shot_value if shot_value > 0 else int(launch_profile.get("shot_value", 3 if court_config.is_three_point(shooter.world_position) else 2))
 	shot_had_rim_contact = false
-	ball_simulator.previous_position_xy = court_config.hoop_position
-	ball_simulator.position_xy = court_config.hoop_position
-	ball_simulator.velocity_xy = Vector2.ZERO
-	ball_simulator.previous_z = court_config.rim_height + 16.0
-	ball_simulator.z = court_config.rim_height + 16.0
-	ball_simulator.vz = -1050.0
-	ball_simulator.is_in_flight = true
-	ball_simulator.already_scored = false
+	_clear_score_followthrough(false)
+	ball_simulator.launch_shot_profile(launch_profile)
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 	change_state(GameState.State.SHOT_IN_FLIGHT)
 	log_writer.log_match("Test scoring shot queued for %s" % shooter.get_display_name())
@@ -866,6 +877,22 @@ func test_force_offensive_rebound(role: String) -> void:
 	log_writer.log_match("Offensive rebound by %s" % player.get_display_name())
 
 
+func get_ball_render_phase() -> String:
+	return current_ball_render_phase
+
+
+func did_last_scored_shot_pass_through_net() -> bool:
+	return last_scored_shot_passed_through_net
+
+
+func get_score_followthrough_active() -> bool:
+	return bool(score_followthrough_state.get("active", false))
+
+
+func get_net_swish_active() -> bool:
+	return hoop_node != null and hoop_node.has_method("is_net_swish_active") and bool(hoop_node.call("is_net_swish_active"))
+
+
 func _apply_role_positions(players: Array[PlayerController], positions: Dictionary) -> void:
 	for role in positions.keys():
 		for player in players:
@@ -876,6 +903,7 @@ func _apply_role_positions(players: Array[PlayerController], positions: Dictiona
 
 
 func _apply_ball_setup(ball_setup: Dictionary) -> void:
+	_clear_score_followthrough(false)
 	ball_simulator.position_xy = ball_setup.get("position", ball_simulator.position_xy)
 	ball_simulator.previous_position_xy = ball_setup.get("previous_position", ball_simulator.position_xy)
 	ball_simulator.velocity_xy = ball_setup.get("velocity", ball_simulator.velocity_xy)
@@ -892,6 +920,7 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 		return
 	if hoop_node != null:
 		hoop_node.set_projection(court_projection)
+		hoop_node.advance_visual_animation(delta)
 	for player in offense_players + defense_players:
 		var ground_anchor: Vector2 = court_projection.world_to_screen_ground(player.world_position)
 		var shadow_offset: Vector2 = court_projection.shadow_anchor(player.world_position) - ground_anchor
@@ -909,13 +938,19 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 		_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 
 
-func _sync_ball_world_visual(world_position: Vector2, z_value: float) -> void:
+func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_context: Dictionary = {}) -> void:
 	if ball_node == null or court_projection == null:
 		return
+	var resolved_render_context: Dictionary = render_context
+	if resolved_render_context.is_empty():
+		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
 	var ball_anchor: Vector2 = court_projection.world_to_screen(world_position, z_value)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(world_position)
 	var z_ratio: float = clampf(z_value / 620.0, 0.0, 1.0)
+	var render_phase: String = str(resolved_render_context.get("render_phase", ""))
+	var z_override: int = int(resolved_render_context.get("z_index_override", BallController.NO_Z_INDEX_OVERRIDE))
+	current_ball_render_phase = render_phase
 	ball_node.sync_visual(
 		world_position,
 		z_value,
@@ -926,8 +961,120 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float) -> void:
 			"ball_radius": lerpf(15.0, 30.0, pow(z_ratio, 0.82)),
 			"shadow_scale": court_projection.shadow_scale(world_position, z_value),
 			"depth_key": court_projection.depth_key(world_position, z_value),
-		}
+		},
+		z_override,
+		render_phase
 	)
+
+
+func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
+	score_followthrough_state.clear()
+	current_ball_render_phase = ""
+	if hoop_node != null and hoop_node.has_method("stop_net_swish"):
+		hoop_node.call("stop_net_swish")
+	if reset_passed_flag:
+		last_scored_shot_passed_through_net = false
+
+
+func _begin_score_followthrough(interaction: Dictionary) -> void:
+	var start_xy: Vector2 = _clamp_score_followthrough_start(interaction.get("score_sample_xy", court_config.hoop_position))
+	var entry_offset_x: float = start_xy.x - court_config.hoop_position.x
+	score_followthrough_state = {
+		"active": true,
+		"score_sample_xy": start_xy,
+		"entry_offset_x": entry_offset_x,
+		"net_swish_started": bool(score_followthrough_state.get("net_swish_started", false)),
+	}
+	current_ball_render_phase = ball_simulator.get_render_phase_name()
+	last_scored_shot_passed_through_net = true
+	if hoop_node != null and hoop_node.has_method("trigger_net_swish") and not bool(score_followthrough_state.get("net_swish_started", false)):
+		hoop_node.call("trigger_net_swish", entry_offset_x)
+		score_followthrough_state["net_swish_started"] = true
+
+
+func _advance_score_followthrough(delta: float) -> void:
+	if score_followthrough_state.is_empty():
+		return
+	var phase: String = ball_simulator.get_render_phase_name()
+	var is_active: bool = ball_simulator.is_guided_make_profile() and ball_simulator.is_in_flight and phase != ""
+	score_followthrough_state["active"] = is_active
+	if is_active:
+		current_ball_render_phase = phase
+		return
+	current_ball_render_phase = HoopView.BALL_RENDER_PHASE_FRONT_OF_NET if last_scored_shot_passed_through_net else ""
+	if hoop_node != null and hoop_node.has_method("stop_net_swish"):
+		hoop_node.call("stop_net_swish")
+
+
+func _maybe_begin_guided_make_net_swish() -> void:
+	if not ball_simulator.is_guided_make_profile():
+		return
+	if ball_simulator.get_flight_phase() != BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT:
+		return
+	if bool(score_followthrough_state.get("net_swish_started", false)):
+		return
+	var entry_offset_x: float = ball_simulator.position_xy.x - court_config.hoop_position.x
+	score_followthrough_state["net_swish_started"] = true
+	if hoop_node != null and hoop_node.has_method("trigger_net_swish"):
+		hoop_node.call("trigger_net_swish", entry_offset_x)
+
+
+func _build_score_followthrough_visual() -> Dictionary:
+	if score_followthrough_state.is_empty() or hoop_node == null:
+		return {}
+	var render_phase: String = current_ball_render_phase if current_ball_render_phase != "" else HoopView.BALL_RENDER_PHASE_FRONT_OF_NET
+	return {
+		"position": ball_simulator.position_xy,
+		"z": ball_simulator.z,
+		"render_phase": render_phase,
+		"z_index_override": hoop_node.get_ball_z_index_for_phase(render_phase),
+	}
+
+
+func _clamp_score_followthrough_start(sample_xy: Vector2) -> Vector2:
+	var half_channel_width: float = maxf(minf(court_config.net_channel_radius * 0.5, court_config.rim_inner_radius * 0.5), 8.0)
+	return Vector2(
+		clampf(sample_xy.x, court_config.hoop_position.x - half_channel_width, court_config.hoop_position.x + half_channel_width),
+		maxf(sample_xy.y, court_config.hoop_position.y + court_config.score_entry_min_front_offset)
+	)
+
+
+func _get_legal_score_entry_anchor() -> Vector2:
+	return Vector2(
+		court_config.hoop_position.x,
+		court_config.hoop_position.y + maxf(court_config.made_shot_entry_depth, court_config.score_entry_min_front_offset)
+	)
+
+
+func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_value: float, forced_phase: String = "") -> Dictionary:
+	if hoop_node == null or court_config == null:
+		return {}
+	var render_phase: String = forced_phase
+	if render_phase == "":
+		var guided_phase: String = ball_simulator.get_render_phase_name()
+		if ball_simulator.is_guided_make_profile() and guided_phase != "":
+			render_phase = guided_phase
+	if render_phase == "" and made_shot_animation_timer > 0.0 and current_ball_render_phase != "":
+		render_phase = current_ball_render_phase
+	if render_phase == "":
+		if not _is_ball_in_hoop_render_zone(world_position, z_value):
+			return {}
+		render_phase = hoop_node.get_ball_render_phase(world_position, z_value, vz_value < 0.0, false, ball_config.ball_radius)
+	return {
+		"render_phase": render_phase,
+		"z_index_override": hoop_node.get_ball_z_index_for_phase(render_phase),
+	}
+
+
+func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bool:
+	var half_width: float = court_config.backboard_width * 0.5 + court_config.rim_radius + 56.0
+	if absf(world_position.x - court_config.backboard_x_center) > half_width:
+		return false
+	if world_position.y <= court_config.backboard_y + 24.0:
+		return true
+	if world_position.y <= court_config.hoop_position.y + court_config.net_followthrough_depth + 132.0:
+		return true
+	return z_value >= court_config.net_exit_z
 
 
 func _format_clock_text(time_remaining: float) -> String:

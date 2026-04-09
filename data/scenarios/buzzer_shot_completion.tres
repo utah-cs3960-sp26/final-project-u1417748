@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="ScenarioDefinition" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://tests/harness/ScenarioDefinition.gd" id="1"]
 [ext_resource type="Script" path="res://tests/harness/ScenarioAction.gd" id="2"]
@@ -13,7 +13,7 @@ value = 2
 [sub_resource type="Resource" id="ScenarioAction_wait"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.7
+seconds = 2.4
 
 [sub_resource type="Resource" id="ScenarioExpectation_state"]
 script = ExtResource("3")
@@ -24,6 +24,11 @@ value = "GAME_OVER"
 script = ExtResource("3")
 kind = "home_score"
 value = 2
+
+[sub_resource type="Resource" id="ScenarioExpectation_through_net"]
+script = ExtResource("3")
+kind = "through_net_score"
+value = true
 
 [resource]
 script = ExtResource("1")
@@ -38,5 +43,5 @@ setup = {
 }
 }
 actions = Array[ExtResource("2")]([SubResource("ScenarioAction_force_score"), SubResource("ScenarioAction_wait")])
-expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_score")])
+expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_score"), SubResource("ScenarioExpectation_through_net")])
 tags = PackedStringArray("scenario", "buzzer", "score")
