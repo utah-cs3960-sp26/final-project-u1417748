@@ -130,3 +130,9 @@
 - removed the authored above-rim linger from the live solver and kept any `rim_mouth` read to at most a transient transition frame
 - pushed the score gate slightly below the rim so feedback appears only after the ball has visibly started descending into the net
 - updated smoke coverage so made shots no longer require a sustained rim-mouth phase and explicitly fail if score feedback appears while the ball is above the rim
+
+### Terminal made-shot screen drop
+
+- reduced the render-only terminal drop for guided makes from 65px to about 60px so the final approach and descent sit slightly higher while keeping the same terminal path behavior
+- kept the solver, score legality, and hoop geometry unchanged; the drop is purely a presentation offset in the terminal guided-make path
+- applied the same visual-only lowering to the terminal guided-make preview samples so the last green preview segment stays aligned with the live finish without affecting miss paths

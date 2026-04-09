@@ -41,6 +41,12 @@ func preview_world_to_screen(world_xy: Vector2, z: float) -> Vector2:
 	return screen_ground + projection_config.z_lift_vector * z * projection_config.preview_projection_lift_multiplier
 
 
+func guided_make_terminal_screen_drop(weight: float) -> float:
+	if projection_config == null:
+		return 0.0
+	return projection_config.guided_make_terminal_screen_drop_px * clampf(weight, 0.0, 1.0)
+
+
 func screen_to_world_ground(screen_xy: Vector2) -> Vector2:
 	if projection_config == null or court_config == null:
 		return screen_xy

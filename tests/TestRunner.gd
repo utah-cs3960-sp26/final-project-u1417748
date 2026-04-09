@@ -105,6 +105,7 @@ func _run_pure_logic() -> void:
 	_assert_true(absf(lifted.x - ground.x) < 0.001 and lifted.y < ground.y, "projection lifts from ground anchor", "")
 	_assert_true(ground.y - lifted.y > 60.0, "projection gives cinematic z lift", "")
 	_assert_true(preview_lifted.y < lifted.y, "preview lift exceeds live ball lift", "")
+	_assert_true(absf(projection.guided_make_terminal_screen_drop(1.0) - projection_config.guided_make_terminal_screen_drop_px) < 0.001, "projection exposes guided make terminal screen drop", "")
 	_assert_true(projection.actor_scale(Vector2(540.0, 1500.0)) > projection.actor_scale(Vector2(540.0, 420.0)), "near actors render larger", "")
 	_assert_true(projection.depth_key(Vector2(540.0, 1500.0)) > projection.depth_key(Vector2(540.0, 420.0)), "near actors sort in front", "")
 	var near_origin: Vector2 = Vector2(560.0, 760.0)
@@ -125,6 +126,15 @@ func _run_pure_logic() -> void:
 	_assert_true(_is_legal_score_sample(near_green_profile["score_gate_xy"], shot_controller.court_config), "green score gate stays inside legal corridor", str(near_green_profile["score_gate_xy"]))
 	var far_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), far_green_profile)
 	_assert_true(_max_preview_z(far_preview_points) >= float(far_green_profile["apex_z"]) - 56.0, "far preview stays close to cinematic apex", "")
+	if not far_preview_points.is_empty():
+		var preview_probe: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
+		preview_probe.launch_shot_profile(far_green_profile)
+		for point in far_preview_points:
+			preview_probe.step(point["sample_delta"])
+		var far_preview_last: Dictionary = far_preview_points[maxi(far_preview_points.size() - 1, 0)]
+		var expected_preview_screen: Vector2 = projection.preview_world_to_screen(preview_probe.position_xy, preview_probe.z)
+		expected_preview_screen.y += projection.guided_make_terminal_screen_drop(preview_probe.get_terminal_visual_drop_weight())
+		_assert_true(expected_preview_screen.distance_to(far_preview_last["screen_position"]) < 0.01, "guided make preview applies terminal drop", "")
 	var make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
 	var resolver: HoopResolver = HoopResolver.new(CourtConfig.new(), BallPhysicsConfig.new())
 	make_sim.launch_shot_profile(near_green_profile)
@@ -140,6 +150,7 @@ func _run_pure_logic() -> void:
 	var saw_above_rim_after_handoff: bool = false
 	var first_guided_descent_z: float = INF
 	var first_guided_descent_vz: float = 0.0
+	var first_guided_drop_weight: float = 0.0
 	for _frame in 300:
 		make_sim.step(1.0 / 60.0)
 		match make_sim.get_flight_phase():
@@ -148,6 +159,7 @@ func _run_pure_logic() -> void:
 				if is_inf(first_guided_descent_z):
 					first_guided_descent_z = make_sim.z
 					first_guided_descent_vz = make_sim.vz
+					first_guided_drop_weight = make_sim.get_terminal_visual_drop_weight()
 			BallSimulator.FLIGHT_PHASE_NET_EXIT:
 				saw_net_exit = true
 		if make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_FREE_FLIGHT and make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_NONE:
@@ -174,6 +186,7 @@ func _run_pure_logic() -> void:
 	_assert_true(scored, "green launch scores through hoop", "")
 	if scored:
 		_assert_true(first_guided_descent_z <= shot_controller.court_config.rim_height + 0.01 and first_guided_descent_vz < 0.0, "first visible guided descent sample is already dropping from rim", "%0.2f %0.2f" % [first_guided_descent_z, first_guided_descent_vz])
+		_assert_true(absf(projection.guided_make_terminal_screen_drop(first_guided_drop_weight) - projection_config.guided_make_terminal_screen_drop_px) < 0.001, "guided descent renders at full terminal drop", str(first_guided_drop_weight))
 		_assert_true(score_phase == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green score happens during guided descent", score_phase)
 		_assert_true(_is_legal_score_sample(first_score_interaction["score_sample_xy"], shot_controller.court_config), "green score enters legal front-half corridor", str(first_score_interaction["score_sample_xy"]))
 	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)

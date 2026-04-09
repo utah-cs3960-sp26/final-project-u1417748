@@ -10,6 +10,7 @@ extends Resource
 @export var ground_lateral_scale_far: float = 1.08
 @export var z_lift_vector: Vector2 = Vector2(0.0, -0.42)
 @export var preview_projection_lift_multiplier: float = 1.08
+@export var guided_make_terminal_screen_drop_px: float = 60.0
 @export var actor_scale_near: float = 1.26
 @export var actor_scale_far: float = 1.16
 @export var actor_distance_to_hoop_scale_strength: float = 0.02

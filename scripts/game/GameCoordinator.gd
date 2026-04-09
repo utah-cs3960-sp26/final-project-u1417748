@@ -946,6 +946,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
 	var ball_anchor: Vector2 = court_projection.world_to_screen(world_position, z_value)
+	ball_anchor.y += float(resolved_render_context.get("screen_drop_px", 0.0))
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(world_position)
 	var z_ratio: float = clampf(z_value / 620.0, 0.0, 1.0)
 	var render_phase: String = str(resolved_render_context.get("render_phase", ""))
@@ -1063,7 +1064,14 @@ func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_va
 	return {
 		"render_phase": render_phase,
 		"z_index_override": hoop_node.get_ball_z_index_for_phase(render_phase),
+		"screen_drop_px": _get_guided_make_terminal_screen_drop_px(),
 	}
+
+
+func _get_guided_make_terminal_screen_drop_px() -> float:
+	if court_projection == null or not ball_simulator.is_guided_make_profile():
+		return 0.0
+	return court_projection.guided_make_terminal_screen_drop(ball_simulator.get_terminal_visual_drop_weight())
 
 
 func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bool:

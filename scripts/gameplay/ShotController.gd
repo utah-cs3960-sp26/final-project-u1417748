@@ -191,6 +191,7 @@ func create_preview(simulator: BallSimulator, params: Dictionary) -> Array[Dicti
 		var screen_position: Vector2 = point["position"] + Vector2(0.0, -point["z"] * 0.14)
 		if projection != null:
 			screen_position = projection.preview_world_to_screen(point["position"], point["z"])
+			screen_position.y += projection.guided_make_terminal_screen_drop(probe.get_terminal_visual_drop_weight())
 		points.append({
 			"position": point["position"],
 			"z": point["z"],
@@ -243,7 +244,7 @@ func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_va
 	var fallback_profile: Dictionary = {}
 	for flight_boost in flight_boosts:
 		for apex_boost in apex_boosts:
-			var approach: Dictionary = _solve_ballistic_profile(
+			var arc_result: Dictionary = _compute_arc_through_target(
 				shot_origin,
 				entry_xy,
 				ball_config.shot_release_height,
@@ -251,6 +252,12 @@ func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_va
 				base_apex + apex_boost,
 				base_flight + flight_boost
 			)
+			var approach: Dictionary = {
+				"velocity_xy": arc_result["velocity_xy"],
+				"vz": arc_result["vz"],
+				"flight_time": arc_result["flight_time"],
+				"apex_z": arc_result["apex_z"],
+			}
 			var candidate: Dictionary = _build_guided_make_profile_data(
 				launch_origin,
 				shot_origin,
@@ -258,27 +265,38 @@ func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_va
 				entry_xy,
 				entry_z,
 				quality,
-				shot_value
+				shot_value,
+				arc_result["entry_time"]
 			)
 			if fallback_profile.is_empty():
 				fallback_profile = candidate
 			if _validate_guided_make_profile(candidate):
 				return candidate
-	return fallback_profile if not fallback_profile.is_empty() else _build_guided_make_profile_data(
+	if not fallback_profile.is_empty():
+		return fallback_profile
+	var fallback_arc: Dictionary = _compute_arc_through_target(
+		shot_origin,
+		entry_xy,
+		ball_config.shot_release_height,
+		entry_z,
+		base_apex + 96.0,
+		base_flight + 0.32
+	)
+	var fallback_approach: Dictionary = {
+		"velocity_xy": fallback_arc["velocity_xy"],
+		"vz": fallback_arc["vz"],
+		"flight_time": fallback_arc["flight_time"],
+		"apex_z": fallback_arc["apex_z"],
+	}
+	return _build_guided_make_profile_data(
 		launch_origin,
 		shot_origin,
-		_solve_ballistic_profile(
-			shot_origin,
-			entry_xy,
-			ball_config.shot_release_height,
-			entry_z,
-			base_apex + 96.0,
-			base_flight + 0.32
-		),
+		fallback_approach,
 		entry_xy,
 		entry_z,
 		quality,
-		shot_value
+		shot_value,
+		fallback_arc["entry_time"]
 	)
 
 
@@ -289,7 +307,8 @@ func _build_guided_make_profile_data(
 	entry_xy: Vector2,
 	entry_z: float,
 	quality: String,
-	shot_value: int
+	shot_value: int,
+	override_entry_time: float = -1.0
 ) -> Dictionary:
 	var score_gate_xy: Vector2 = entry_xy
 	var score_gate_z: float = _get_make_score_gate_z()
@@ -300,7 +319,8 @@ func _build_guided_make_profile_data(
 	var exit_xy: Vector2 = net_exit_xy + Vector2(0.0, ball_config.ball_radius * 0.18)
 	var exit_z: float = maxf(court_config.net_exit_z - 36.0, 0.0)
 	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.12), 0.06)
-	var total_time: float = float(approach["flight_time"]) + capture_duration + guided_descent_duration + exit_duration
+	var actual_entry_time: float = override_entry_time if override_entry_time > 0.0 else float(approach["flight_time"])
+	var total_time: float = actual_entry_time + capture_duration + guided_descent_duration + exit_duration
 	var apex_time: float = float(approach["vz"]) / maxf(absf(ball_config.gravity), 0.001)
 	return {
 		"profile_kind": PROFILE_KIND_GUIDED_MAKE,
@@ -322,7 +342,7 @@ func _build_guided_make_profile_data(
 		"approach_vz": approach["vz"],
 		"entry_xy": entry_xy,
 		"entry_z": entry_z,
-		"entry_time": approach["flight_time"],
+		"entry_time": actual_entry_time,
 		"score_gate_xy": score_gate_xy,
 		"score_gate_z": score_gate_z,
 		"net_exit_xy": net_exit_xy,
@@ -527,3 +547,38 @@ func _get_make_score_gate_xy() -> Vector2:
 
 func _get_make_score_gate_z() -> float:
 	return court_config.rim_height - minf(ball_config.ball_radius * 0.45, 10.0)
+
+
+func _compute_arc_through_target(
+	shot_origin: Vector2,
+	entry_xy: Vector2,
+	release_z: float,
+	rim_z: float,
+	min_apex: float,
+	min_flight: float
+) -> Dictionary:
+	var direction: Vector2 = (entry_xy - shot_origin).normalized()
+	var overshoot_distance: float = ball_config.ball_radius * 0.7
+	var virtual_target_xy: Vector2 = entry_xy + direction * overshoot_distance
+	var virtual_target_z: float = rim_z - ball_config.ball_radius * 0.5
+	var arc: Dictionary = _solve_ballistic_profile(
+		shot_origin, virtual_target_xy, release_z, virtual_target_z,
+		min_apex, min_flight
+	)
+	var vz_launch: float = arc["vz"]
+	var g: float = maxf(absf(ball_config.gravity), 0.001)
+	var discriminant: float = vz_launch * vz_launch - 2.0 * g * (rim_z - release_z)
+	var entry_time: float = arc["flight_time"]
+	if discriminant >= 0.0:
+		entry_time = (vz_launch + sqrt(discriminant)) / g
+	var actual_entry_xy: Vector2 = shot_origin + arc["velocity_xy"] * entry_time
+	var vz_at_entry: float = vz_launch - g * entry_time
+	return {
+		"velocity_xy": arc["velocity_xy"],
+		"vz": vz_launch,
+		"flight_time": arc["flight_time"],
+		"apex_z": arc["apex_z"],
+		"entry_time": entry_time,
+		"actual_entry_xy": actual_entry_xy,
+		"vz_at_entry": vz_at_entry,
+	}

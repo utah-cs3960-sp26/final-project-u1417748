@@ -223,6 +223,23 @@ func has_passed_score_gate() -> bool:
 	return passed_score_gate
 
 
+func get_terminal_visual_drop_weight() -> float:
+	if not is_guided_make or not is_in_flight:
+		return 0.0
+	match flight_phase:
+		FLIGHT_PHASE_FREE_FLIGHT:
+			var entry_time: float = maxf(_get_entry_time(), 0.0001)
+			var approach_ratio: float = clampf(shot_elapsed / entry_time, 0.0, 1.0)
+			return clampf((approach_ratio - 0.8) / 0.2, 0.0, 1.0)
+		FLIGHT_PHASE_MAKE_CAPTURE, FLIGHT_PHASE_GUIDED_DESCENT:
+			return 1.0
+		FLIGHT_PHASE_NET_EXIT:
+			var exit_duration: float = maxf(_get_net_exit_duration(), 0.0001)
+			return clampf(1.0 - (phase_elapsed / exit_duration), 0.0, 1.0)
+		_:
+			return 0.0
+
+
 func did_score_this_step() -> bool:
 	return step_score_crossed
 
@@ -350,8 +367,6 @@ func _enter_make_capture() -> void:
 	phase_elapsed = 0.0
 	position_xy = _get_entry_xy()
 	z = _get_entry_z()
-	velocity_xy = Vector2.ZERO
-	vz = 0.0
 
 
 func _enter_guided_descent() -> void:
@@ -359,8 +374,9 @@ func _enter_guided_descent() -> void:
 	phase_elapsed = 0.0
 	position_xy = _get_entry_xy()
 	z = _get_entry_z()
-	velocity_xy = Vector2.ZERO
-	vz = -maxf((_get_entry_z() - _get_net_exit_z()) / maxf(_get_guided_descent_duration(), 0.001), 1.0)
+	velocity_xy = velocity_xy * 0.3
+	if vz >= 0.0:
+		vz = -maxf((_get_entry_z() - _get_net_exit_z()) / maxf(_get_guided_descent_duration(), 0.001), 1.0)
 
 
 func _enter_net_exit() -> void:

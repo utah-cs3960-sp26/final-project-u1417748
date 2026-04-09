@@ -169,3 +169,20 @@ Additional pure-logic coverage now includes:
   - Guided make profiles now prove a rim-plane handoff, a below-rim score gate, and a first visible descent sample that is already moving downward.
   - Smoke validation now checks that the score cannot appear while the ball is still above the rim.
   - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
+
+## 2026-04-08 Terminal Screen Drop Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit-after 3`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . res://scenes/GameRoot.tscn --quit-after 3`
+- Result:
+  - Pure logic: 90
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+- Guided makes now apply a render-only terminal drop of 60px that ramps in during the last 20% of free flight, holds through guided descent, and fades out during `net_exit`.
+  - Green preview sampling now applies the same terminal drop so the last preview segment stays aligned with the live finish.
+  - Solver output, score legality, and hoop geometry remain unchanged.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.

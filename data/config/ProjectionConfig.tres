@@ -13,6 +13,7 @@ ground_lateral_scale_near = 1.08
 ground_lateral_scale_far = 1.08
 z_lift_vector = Vector2(0, -0.42)
 preview_projection_lift_multiplier = 1.08
+guided_make_terminal_screen_drop_px = 60.0
 actor_scale_near = 1.26
 actor_scale_far = 1.16
 actor_distance_to_hoop_scale_strength = 0.02
