@@ -148,14 +148,23 @@ func _draw_shot_meter() -> void:
 	)
 	var green_start: float = float(shot_meter.get("green_start", 0.6))
 	var green_end: float = float(shot_meter.get("green_end", 0.78))
+	var yellow_start: float = float(shot_meter.get("yellow_start", 0.32))
+	var yellow_end: float = float(shot_meter.get("yellow_end", green_start))
 	var progress: float = float(shot_meter.get("progress", 0.0))
 	draw_rect(bar_rect.grow(12.0), Color(0.04, 0.04, 0.06, 0.76))
 	draw_rect(bar_rect, Color(0.74, 0.16, 0.16, 0.96))
+	var yellow_rect: Rect2 = Rect2(
+		Vector2(bar_rect.position.x + bar_rect.size.x * yellow_start, bar_rect.position.y),
+		Vector2(bar_rect.size.x * maxf(yellow_end - yellow_start, 0.0), bar_rect.size.y)
+	)
+	if yellow_rect.size.x > 0.0:
+		draw_rect(yellow_rect, Color(1.0, 0.84, 0.28, 0.98))
 	var green_rect: Rect2 = Rect2(
 		Vector2(bar_rect.position.x + bar_rect.size.x * green_start, bar_rect.position.y),
-		Vector2(bar_rect.size.x * (green_end - green_start), bar_rect.size.y)
+		Vector2(bar_rect.size.x * maxf(green_end - green_start, 0.0), bar_rect.size.y)
 	)
-	draw_rect(green_rect, Color(0.22, 0.86, 0.34, 1.0))
+	if green_rect.size.x > 0.0:
+		draw_rect(green_rect, Color(0.22, 0.86, 0.34, 1.0))
 	draw_rect(bar_rect, Color(0.98, 0.95, 0.86, 0.92), false, 4.0)
 	var marker_x: float = bar_rect.position.x + bar_rect.size.x * progress - marker_width * 0.5
 	var marker_rect: Rect2 = Rect2(Vector2(marker_x, bar_rect.position.y - 8.0), Vector2(marker_width, bar_rect.size.y + 16.0))

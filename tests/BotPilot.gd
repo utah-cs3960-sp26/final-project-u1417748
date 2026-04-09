@@ -195,7 +195,11 @@ func _set_meter_quality(quality: String) -> void:
 	var shot_controller: ShotController = coordinator.shot_controller
 	if shot_controller == null or shot_controller.shot_config == null:
 		return
-	var target_progress: float = shot_controller.shot_config.meter_green_center
-	if quality != "green":
-		target_progress = 0.08
-	shot_controller.aim_elapsed = shot_controller.shot_config.meter_cycle_duration * target_progress
+	var target_progress: float = 0.08
+	if quality == "green":
+		var green_window: Vector2 = shot_controller.get_green_window(false, 0)
+		target_progress = (green_window.x + green_window.y) * 0.5
+	elif quality == "yellow":
+		var yellow_window: Vector2 = shot_controller.get_yellow_window(false, 0)
+		target_progress = (yellow_window.x + yellow_window.y) * 0.5
+	shot_controller.aim_elapsed = shot_controller.get_full_animation_duration_seconds() * target_progress

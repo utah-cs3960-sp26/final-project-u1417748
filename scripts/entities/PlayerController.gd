@@ -61,8 +61,6 @@ func _update_label() -> void:
 
 func _draw() -> void:
 	draw_ellipse(projected_shadow_offset, 23.0 * projected_shadow_scale, 12.0 * projected_shadow_scale, shadow_color)
-	if has_ball:
-		draw_circle(Vector2(0.0, -34.0), 24.0, Color(1.0, 0.89, 0.32, 0.22))
 	if is_controlled:
 		draw_arc(Vector2(0.0, 2.0), 22.0, 0.0, TAU, 24, Color(1.0, 1.0, 1.0, 0.95), 3.0)
 
@@ -162,6 +160,30 @@ func get_debug_row_index() -> int:
 
 func get_debug_variant_index() -> int:
 	return _visual.get_debug_variant_index() if _visual != null else -1
+
+
+func get_debug_frame_number() -> int:
+	return _visual.get_debug_frame_number() if _visual != null else -1
+
+
+func get_debug_release_after_frame() -> int:
+	return _visual.get_debug_release_after_frame() if _visual != null else -1
+
+
+func get_current_animation_elapsed_time() -> float:
+	return _visual.get_current_animation_elapsed_time() if _visual != null else 0.0
+
+
+func is_current_animation_complete() -> bool:
+	return _visual.is_current_animation_complete() if _visual != null else false
+
+
+func get_current_shot_timing_profile() -> Dictionary:
+	return _visual.get_current_animation_timing_profile() if _visual != null else {}
+
+
+func is_ball_release_ready() -> bool:
+	return _visual.is_ball_release_ready() if _visual != null else false
 
 
 func get_debug_flip_h() -> bool:

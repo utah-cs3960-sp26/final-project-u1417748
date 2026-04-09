@@ -75,13 +75,19 @@ func _run_pure_logic() -> void:
 	_assert_true(meter_snapshot["visible"] and meter_snapshot["quality"] == "green", "meter snapshot visible and green", "")
 	var contested_snapshot: Dictionary = shot_controller.get_meter_snapshot(true, 10)
 	_assert_true(absf(float(contested_snapshot["green_start"]) - float(meter_snapshot["green_start"])) < 0.0001 and absf(float(contested_snapshot["green_end"]) - float(meter_snapshot["green_end"])) < 0.0001, "meter snapshot green window stays fixed", "")
-	var ping_pong_probe: ShotController = ShotController.new()
-	ping_pong_probe.shot_config = shot_controller.shot_config
-	ping_pong_probe.ball_config = shot_controller.ball_config
-	ping_pong_probe.court_config = shot_controller.court_config
-	ping_pong_probe.begin_aim(Vector2.ZERO)
-	ping_pong_probe.update_aim(ping_pong_probe.shot_config.meter_cycle_duration * 1.25, Vector2.ZERO)
-	_assert_true(absf(ping_pong_probe.get_meter_progress() - 0.75) < 0.03, "meter ping pong motion", "")
+	var synced_probe: ShotController = ShotController.new()
+	synced_probe.shot_config = shot_controller.shot_config
+	synced_probe.ball_config = shot_controller.ball_config
+	synced_probe.court_config = shot_controller.court_config
+	synced_probe.begin_aim(Vector2.ZERO)
+	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 0.25, Vector2.ZERO)
+	var synced_progress_1: float = synced_probe.get_meter_progress()
+	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 0.25, Vector2.ZERO)
+	var synced_progress_2: float = synced_probe.get_meter_progress()
+	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 1.0, Vector2.ZERO)
+	var synced_progress_3: float = synced_probe.get_meter_progress()
+	_assert_true(synced_progress_1 > 0.0 and synced_progress_2 > synced_progress_1, "meter advances forward during one-way windup", "%0.3f %0.3f" % [synced_progress_1, synced_progress_2])
+	_assert_true(synced_progress_3 >= synced_progress_2 and synced_progress_3 <= 1.0, "meter clamps instead of ping-ponging", "%0.3f" % synced_progress_3)
 
 	var far_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 320.0))
 	var near_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 1500.0))
@@ -193,7 +199,7 @@ func _run_pure_logic() -> void:
 		_assert_true(absf(projection.guided_make_terminal_screen_drop(first_guided_drop_weight) - projection_config.guided_make_terminal_screen_drop_px) < 0.001, "guided descent renders at full terminal drop", str(first_guided_drop_weight))
 		_assert_true(score_phase == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green score happens during guided descent", score_phase)
 		_assert_true(_is_legal_score_sample(first_score_interaction["score_sample_xy"], shot_controller.court_config), "green score enters legal front-half corridor", str(first_score_interaction["score_sample_xy"]))
-	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), {}, rng)
 	shot_controller.update_aim(0.04, Vector2.ZERO)
 	var red_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
 	var red_preview_points: Array[Dictionary] = shot_controller.create_preview(_new_ball_simulator(shot_controller.ball_config), red_preview_profile)
@@ -224,13 +230,13 @@ func _run_pure_logic() -> void:
 	_assert_true(not miss_scored, "red launch misses rim center", "")
 
 	var green_hold: float = shot_controller.shot_config.meter_cycle_duration * shot_controller.shot_config.meter_green_center
-	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), {}, rng)
 	shot_controller.update_aim(green_hold, Vector2.ZERO)
 	var green_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
 	var green_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, false, rng)
 	_assert_true(green_action["kind"] == "shot" and green_action["outcome"] == "make" and green_action["quality"] == "green", "green release makes shot", "")
 	_assert_true(_launch_profiles_match(green_preview_profile, green_action), "green preview matches release path", "")
-	shot_controller.begin_aim(Vector2(540.0, 1100.0), rng)
+	shot_controller.begin_aim(Vector2(540.0, 1100.0), {}, rng)
 	shot_controller.update_aim(green_hold, Vector2.ZERO)
 	var contested_green_action: Dictionary = shot_controller.release_action(Vector2(540.0, 1100.0), shooter, true, rng)
 	_assert_true(contested_green_action["kind"] == "shot" and contested_green_action["outcome"] == "make" and contested_green_action["quality"] == "green", "green release stays make under contest", "")
@@ -497,8 +503,7 @@ func _run_pure_logic() -> void:
 		_assert_true(hoop_top_y >= 128.0, "hoop clears hud banner", str(hoop_top_y))
 	if smoke_coordinator != null and smoke_coordinator.current_ballhandler != null:
 		_assert_true(smoke_coordinator.current_ballhandler.projected_scale > 1.35, "players render larger in fullscreen framing", str(smoke_coordinator.current_ballhandler.projected_scale))
-		var held_ball_anchor: Vector2 = smoke_coordinator.ball_node.global_position + smoke_coordinator.ball_node.ball_screen_offset
-		_assert_true(held_ball_anchor.distance_to(smoke_coordinator.current_ballhandler.get_ball_screen_anchor()) < 0.01, "held ball aligns to player hand", str(held_ball_anchor.distance_to(smoke_coordinator.current_ballhandler.get_ball_screen_anchor())))
+		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "held ball hidden while possessed", str(smoke_coordinator.ball_node.is_ball_visible()))
 	smoke_coordinator.begin_test_mode(2409)
 	smoke_coordinator.apply_scenario_setup(
 		{
@@ -523,7 +528,9 @@ func _run_pure_logic() -> void:
 	var pass_positions: Array[Vector2] = []
 	var pass_alignment_error: float = 0.0
 	if smoke_pass_target != null:
+		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hidden before pass", str(smoke_coordinator.ball_node.is_ball_visible()))
 		smoke_coordinator.input_controller.pass_requested.emit(smoke_pass_target)
+		_assert_true(smoke_coordinator.ball_node.is_ball_visible(), "ball visible when pass starts", str(smoke_coordinator.ball_node.is_ball_visible()))
 		for _pass_frame in 36:
 			await get_tree().process_frame
 			if smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT:
@@ -537,6 +544,7 @@ func _run_pure_logic() -> void:
 	if pass_positions.size() >= 3:
 		_assert_true(pass_positions[0].distance_to(pass_positions[-1]) > 40.0, "pass flight advances on screen", "%0.2f" % pass_positions[0].distance_to(pass_positions[-1]))
 		_assert_true(pass_alignment_error < 0.01, "in-flight ball stays aligned with projection", str(pass_alignment_error))
+	_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hides on catch", str(smoke_coordinator.ball_node.is_ball_visible()))
 	_reset_visual_test_state(smoke_coordinator)
 	var visual_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
 	var visual_rc: PlayerController = smoke_coordinator.get_offense_player_by_role("RC")
@@ -618,9 +626,9 @@ func _run_pure_logic() -> void:
 		if visual_pg != null:
 			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(0.0, 170.0)
 			visual_pg.trigger_shot_pose(0.28)
-			smoke_coordinator.player_visual_memory[visual_pg] = {"family": "close_finish_layup", "variant_index": 1, "mirror_west": false}
+			smoke_coordinator.player_visual_memory.erase(visual_pg)
 			smoke_coordinator._sync_projection_visuals(0.0)
-			_assert_player_visual(visual_pg, "close_finish_layup", 17, false, true, "near-rim layup")
+			_assert_player_visual(visual_pg, "set_shot_release", 4, false, true, "near-rim set shot")
 			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(20.0, 130.0)
 			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 180.0
 			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized()
@@ -637,12 +645,227 @@ func _run_pure_logic() -> void:
 			smoke_coordinator.player_visual_memory[visual_pg] = {"family": "close_finish_side_dunk", "variant_index": 0, "mirror_west": true}
 			smoke_coordinator._sync_projection_visuals(0.0)
 			_assert_player_visual(visual_pg, "close_finish_side_dunk", 16, true, true, "side dunk")
+			visual_pg.world_position = Vector2(520.0, 1360.0)
+			visual_pg.velocity = Vector2.ZERO
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-220.0, -16.0)
+			visual_pg.shot_pose_timer = 0.0
+			visual_pg.catch_pose_timer = 0.0
+			visual_pg.jump_pose_timer = 0.0
+			visual_pg_defender.shot_pose_timer = 0.0
+			visual_pg_defender.catch_pose_timer = 0.0
+			visual_pg_defender.jump_pose_timer = 0.0
+			smoke_coordinator.player_visual_memory.erase(visual_pg)
+			smoke_coordinator.current_move_direction = Vector2.ZERO
+			smoke_coordinator.current_move_magnitude = 0.0
+			smoke_coordinator.input_controller.shot_aim_started.emit(visual_pg.world_position)
+			for _aim_frame in 4:
+				await get_tree().process_frame
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shot stays in aim while windup plays", smoke_coordinator.get_state_name())
+			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "held ball hidden during synced shot aim", str(smoke_coordinator.ball_node.is_ball_visible()))
+			_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "shot meter visible during synced shot aim", JSON.stringify(smoke_court_view.shot_meter))
+			_assert_player_visual(visual_pg, "set_shot_release", 4, false, true, "set shot windup starts early")
+			var windup_frame_before_release: int = visual_pg.get_debug_frame_number()
+			var windup_meter_before_release: Dictionary = smoke_court_view.shot_meter.duplicate(true)
+			smoke_coordinator.input_controller.shot_aim_released.emit(Vector2.ZERO, visual_pg.world_position, Vector2.ZERO)
+			await get_tree().process_frame
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "manual early release enters shot release", smoke_coordinator.get_state_name())
+			_assert_true(visual_pg.get_debug_frame_number() >= windup_frame_before_release, "shot release continues without restarting animation", "%d %d" % [visual_pg.get_debug_frame_number(), windup_frame_before_release])
+			_assert_release_profile(visual_pg, 5, "set shot")
+			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball remains hidden before authored release frame", str(smoke_coordinator.ball_node.is_ball_visible()))
+			_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail remains visible before authored release frame", JSON.stringify(smoke_court_view.shot_meter))
+			var early_release_seen: bool = false
+			for _release_frame in 90:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
+					_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball stays hidden while the windup finishes", str(smoke_coordinator.ball_node.is_ball_visible()))
+					_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail stays visible through followthrough", JSON.stringify(smoke_court_view.shot_meter))
+					_assert_true(float(smoke_court_view.shot_meter.get("progress", 0.0)) >= float(windup_meter_before_release.get("progress", 0.0)), "meter progress keeps advancing through followthrough", "%0.3f %0.3f" % [float(smoke_court_view.shot_meter.get("progress", 0.0)), float(windup_meter_before_release.get("progress", 0.0))])
+				elif smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT:
+					early_release_seen = true
+					break
+			_assert_true(early_release_seen, "shot launches only after the authored release frame", smoke_coordinator.get_state_name())
+			_assert_true(smoke_coordinator.ball_node.is_ball_visible(), "ball becomes visible at release", str(smoke_coordinator.ball_node.is_ball_visible()))
+			_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail remains visible after launch", JSON.stringify(smoke_court_view.shot_meter))
+			_assert_true(float(smoke_court_view.shot_meter.get("progress", 0.0)) >= float(windup_meter_before_release.get("progress", 0.0)), "meter tail survives into followthrough", "%0.3f %0.3f" % [float(smoke_court_view.shot_meter.get("progress", 0.0)), float(windup_meter_before_release.get("progress", 0.0))])
 		_reset_visual_test_state(smoke_coordinator)
 		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
 		if visual_pg_defender != null:
 			visual_pg_defender.trigger_jump_pose(0.22)
 			smoke_coordinator._sync_projection_visuals(0.0)
 			_assert_player_visual(visual_pg_defender, "jump_contest", 22, false, false, "jump contest")
+		_reset_visual_test_state(smoke_coordinator)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = Vector2(520.0, 1360.0)
+			visual_pg.velocity = Vector2.ZERO
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-220.0, -16.0)
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "shot enters shot release state", smoke_coordinator.get_state_name())
+			_assert_player_visual(visual_pg, "set_shot_release", 4, false, true, "set shot release")
+			_assert_true(visual_pg.get_debug_release_after_frame() == 5, "set shot release frame metadata", str(visual_pg.get_debug_release_after_frame()))
+			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hidden during shot release", str(smoke_coordinator.ball_node.is_ball_visible()))
+			var set_release_frame_seen: int = -1
+			for _set_frame in 90:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
+					_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "set shot keeps ball hidden before release", str(smoke_coordinator.ball_node.is_ball_visible()))
+				elif smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT:
+					set_release_frame_seen = visual_pg.get_debug_frame_number()
+					break
+			_assert_true(set_release_frame_seen > visual_pg.get_debug_release_after_frame(), "set shot launches after release frame", "%d %d" % [set_release_frame_seen, visual_pg.get_debug_release_after_frame()])
+			_assert_true(smoke_coordinator.ball_node.is_ball_visible(), "ball visible after staged shot release", str(smoke_coordinator.ball_node.is_ball_visible()))
+
+		var jumper_row_seed_a: int = -1
+		_reset_visual_test_state(smoke_coordinator, "PG", 2411)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = Vector2(760.0, 1360.0)
+			visual_pg.velocity = Vector2.LEFT * 220.0
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-24.0, 8.0)
+			smoke_coordinator.current_move_direction = Vector2.LEFT
+			smoke_coordinator.current_move_magnitude = 1.0
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			jumper_row_seed_a = visual_pg.get_debug_row_index()
+			_assert_true(visual_pg.get_debug_animation_family() == "jumper_release", "jumper family when set shot is denied", visual_pg.get_debug_animation_family())
+			_assert_true(jumper_row_seed_a == 8, "moving jumper uses row 8", str(jumper_row_seed_a))
+			_assert_true(visual_pg.get_debug_flip_h(), "jumper mirrors west when hoop is left", str(visual_pg.get_debug_flip_h()))
+			_assert_release_profile(visual_pg, 11, "moving jumper")
+			var locked_flip: bool = visual_pg.get_debug_flip_h()
+			for _jumper_lock_frame in 8:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state != GameState.State.SHOT_RELEASE:
+					break
+				_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "jumper keeps ball hidden before release", str(smoke_coordinator.ball_node.is_ball_visible()))
+				_assert_true(visual_pg.get_debug_flip_h() == locked_flip, "jumper west mirror stays locked", str(visual_pg.get_debug_flip_h()))
+		var stationary_jumper_found: bool = false
+		for stationary_seed in [2412, 2413, 2414, 2415, 2416, 2417, 2418]:
+			_reset_visual_test_state(smoke_coordinator, "PG", stationary_seed)
+			visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+			visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+			if visual_pg == null or visual_pg_defender == null:
+				continue
+			visual_pg.world_position = Vector2(760.0, 1360.0)
+			visual_pg.velocity = Vector2.ZERO
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-24.0, 8.0)
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			if visual_pg.get_debug_row_index() == 10:
+				stationary_jumper_found = true
+				_assert_release_profile(visual_pg, 23, "stationary jumper")
+				break
+		_assert_true(stationary_jumper_found, "stationary jumper can use row 10", "")
+
+		_reset_visual_test_state(smoke_coordinator, "PG", 2420)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(18.0, 170.0)
+			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 150.0
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			_assert_player_visual(visual_pg, "close_finish_layup", 14, false, true, "straight layup release")
+			_assert_release_profile(visual_pg, 9, "straight layup")
+		_reset_visual_test_state(smoke_coordinator, "PG", 2421)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(86.0, 164.0)
+			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 150.0
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			_assert_player_visual(visual_pg, "close_finish_layup", 17, true, true, "side layup release")
+			_assert_release_profile(visual_pg, 11, "side layup")
+
+		var straight_dunk_profiles: Dictionary = {}
+		for straight_dunk_seed in [2422, 2423, 2424, 2425, 2426, 2427, 2428, 2429, 2430, 2431]:
+			_reset_visual_test_state(smoke_coordinator, "PG", straight_dunk_seed)
+			visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+			if visual_pg != null:
+				visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
+				visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 190.0
+				await _begin_release_test_shot(smoke_coordinator, visual_pg)
+				straight_dunk_profiles[visual_pg.get_debug_row_index()] = visual_pg.get_debug_release_after_frame()
+				_assert_true(visual_pg.get_debug_animation_family() == "close_finish_dunk", "straight dunk family", visual_pg.get_debug_animation_family())
+				if straight_dunk_profiles.has(13) and straight_dunk_profiles.has(15):
+					break
+		_assert_true(straight_dunk_profiles.has(13), "straight dunk row 13 timing profile reachable", str(straight_dunk_profiles))
+		_assert_true(straight_dunk_profiles.has(15), "straight dunk row 15 timing profile reachable", str(straight_dunk_profiles))
+		_assert_true(int(straight_dunk_profiles[13]) == 9, "straight dunk row 13 release frame", str(straight_dunk_profiles[13]))
+		_assert_true(int(straight_dunk_profiles[15]) == 10, "straight dunk row 15 release frame", str(straight_dunk_profiles[15]))
+		_reset_visual_test_state(smoke_coordinator, "PG", 2423)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		if visual_pg != null:
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(90.0, 80.0)
+			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 190.0
+			await _begin_release_test_shot(smoke_coordinator, visual_pg)
+			_assert_player_visual(visual_pg, "close_finish_side_dunk", 16, true, true, "side dunk release")
+			_assert_release_profile(visual_pg, 10, "side dunk")
+
+		_reset_visual_test_state(smoke_coordinator, "PG", 2428)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = Vector2(760.0, 1360.0)
+			visual_pg.velocity = Vector2.ZERO
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-220.0, -16.0)
+			smoke_coordinator.input_controller.shot_aim_started.emit(visual_pg.world_position)
+			var overhold_auto_release_seen: bool = false
+			var overhold_release_frame_seen: int = -1
+			var overhold_resolved: bool = false
+			for _overhold_frame in 150:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state == GameState.State.SHOT_AIM:
+					_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter stays visible while overholding", JSON.stringify(smoke_court_view.shot_meter))
+				elif smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
+					overhold_auto_release_seen = true
+					if overhold_release_frame_seen == -1:
+						overhold_release_frame_seen = visual_pg.get_debug_frame_number()
+					_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "overhold keeps ball hidden before forced launch", str(smoke_coordinator.ball_node.is_ball_visible()))
+				elif smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT:
+					overhold_auto_release_seen = true
+					overhold_release_frame_seen = visual_pg.get_debug_frame_number()
+					break
+				elif overhold_auto_release_seen:
+					overhold_resolved = true
+					break
+			_assert_true(overhold_auto_release_seen, "overhold auto-releases on authored frame", smoke_coordinator.get_state_name())
+			_assert_true(overhold_release_frame_seen >= visual_pg.get_debug_release_after_frame() and overhold_release_frame_seen <= visual_pg.get_debug_release_after_frame() + 1, "overhold launches at the authored release frame", "%d %d" % [overhold_release_frame_seen, visual_pg.get_debug_release_after_frame()])
+			for _overhold_resolve_frame in 420:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state != GameState.State.SHOT_RELEASE and smoke_coordinator.context.current_state != GameState.State.SHOT_IN_FLIGHT:
+					overhold_resolved = true
+					break
+			_assert_true(overhold_resolved, "overhold shot fully resolves", smoke_coordinator.get_state_name())
+			_assert_true(not smoke_coordinator.did_last_scored_shot_pass_through_net(), "overhold resolves as a miss", "")
+			_assert_true(smoke_coordinator.context.home_score == 0, "overhold does not score", str(smoke_coordinator.context.home_score))
+
+		_reset_visual_test_state(smoke_coordinator, "PG", 2424)
+		smoke_coordinator.test_force_offensive_rebound("RC")
+		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hidden on offensive rebound", str(smoke_coordinator.ball_node.is_ball_visible()))
+		_reset_visual_test_state(smoke_coordinator, "PG", 2425)
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg_defender != null:
+			smoke_coordinator._begin_steal_resolve(visual_pg_defender)
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.STEAL_RESOLVE, "steal resolve state smoke", smoke_coordinator.get_state_name())
+			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hidden in steal resolve", str(smoke_coordinator.ball_node.is_ball_visible()))
+
+		_reset_visual_test_state(smoke_coordinator, "PG", 2426)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg != null and visual_pg_defender != null:
+			visual_pg.world_position = Vector2(520.0, 1360.0)
+			visual_pg.velocity = Vector2.ZERO
+			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-16.0, 8.0)
+			await _begin_release_test_shot(smoke_coordinator, visual_pg, 1)
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "blocked shot also stages release", smoke_coordinator.get_state_name())
+			for _blocked_frame in 120:
+				await get_tree().process_frame
+				if smoke_coordinator.context.current_state != GameState.State.SHOT_RELEASE:
+					break
+			_assert_true(smoke_coordinator.context.current_state == GameState.State.REBOUND_LIVE, "blocked shot resolves directly to rebound", smoke_coordinator.get_state_name())
+			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "blocked shot never reveals world ball", str(smoke_coordinator.ball_node.is_ball_visible()))
+			await get_tree().process_frame
+			_assert_true(visual_pg_defender.get_debug_animation_family() == "jump_contest", "blocker uses jump contest family", visual_pg_defender.get_debug_animation_family())
+			_assert_true(visual_pg_defender.get_debug_row_index() == 22, "blocker uses jump contest row", str(visual_pg_defender.get_debug_row_index()))
 	game_root.queue_free()
 	for player in players:
 		player.free()
@@ -714,7 +937,9 @@ func _make_visual_test_setup(ballhandler_role: String = "PG") -> Dictionary:
 
 func _reset_visual_test_state(coordinator: GameCoordinator, ballhandler_role: String = "PG", seed: int = 2409) -> void:
 	coordinator.begin_test_mode(seed)
-	coordinator.apply_scenario_setup(_make_visual_test_setup(ballhandler_role))
+	var setup: Dictionary = _make_visual_test_setup(ballhandler_role)
+	setup["state"] = "LIVE_OFFENSE"
+	coordinator.apply_scenario_setup(setup)
 	for player in coordinator.offense_players + coordinator.defense_players:
 		player.velocity = Vector2.ZERO
 		player.shot_pose_timer = 0.0
@@ -738,6 +963,18 @@ func _assert_player_visual(
 	_assert_true(player.get_debug_row_index() == expected_row, "%s row" % name_prefix, str(player.get_debug_row_index()))
 	_assert_true(player.get_debug_flip_h() == expected_flip, "%s flip" % name_prefix, str(player.get_debug_flip_h()))
 	_assert_true(player.is_outline_visible() == expected_outline, "%s outline" % name_prefix, str(player.is_outline_visible()))
+
+
+func _assert_release_profile(player: PlayerController, expected_release_after_frame: int, name_prefix: String) -> void:
+	_assert_true(player.get_debug_release_after_frame() == expected_release_after_frame, "%s release frame" % name_prefix, str(player.get_debug_release_after_frame()))
+
+
+func _begin_release_test_shot(coordinator: GameCoordinator, shooter: PlayerController, aim_frames: int = 12) -> void:
+	coordinator.input_controller.shot_aim_started.emit(shooter.world_position)
+	for _aim_frame in aim_frames:
+		await get_tree().process_frame
+	coordinator.input_controller.shot_aim_released.emit(Vector2.ZERO, shooter.world_position, Vector2.ZERO)
+	await get_tree().process_frame
 
 
 func _run_hoop_render_phase_smoke() -> void:

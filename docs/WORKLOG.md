@@ -170,3 +170,19 @@
 - collapsed the facing model to east-facing sprite art plus westward X mirroring, and restricted outline rendering to the currently controlled player while leaving all other players fill-only
 - added a short defender jump pose, hooked the block check to identify the actual blocker, and routed close-finish shots into layup, straight-dunk, or side-dunk presentation using hoop proximity and approach direction
 - extended the headless suite with exact row, flip, outline, fill-texture, variant-lock, layup/dunk, and guard-state assertions so the full-sheet mapping now has deterministic regression coverage
+
+### Release-synced shot staging and hidden held-ball presentation
+
+- inserted a new `SHOT_RELEASE` coordinator state so releasing the meter now commits a locked shot family, row variant, and west-mirror flag before the ball is actually launched
+- changed shot classification so row 4 is now a defender-space set shot, row 5 is the aim hold, rows 8 and 10 are randomized jumper releases, rows 14 and 17 split straight vs side layups, and rows 13, 15, and 16 cover straight and side dunks from movement snapshots taken at shot initiation
+- hid the standalone `BallController` whenever a player-owned sprite already contains the ball, so the world ball now appears only on pass start, after the correct release frame of a committed shot, and during genuine loose/in-flight states
+- added row-specific release-after-frame metadata plus lightweight debug accessors on `PlayerVisual` / `PlayerController`, then moved the coordinator launch trigger to the first tick after the authored release frame has finished displaying
+- expanded the smoke suite with hidden-held-ball checks, staged shot-release timing, deterministic row-8-or-10 jumper selection, straight-vs-side layup routing, deterministic dunk row locks, steal/offensive-rebound hide-on-catch behavior, and delayed blocker jump-pose coverage
+
+### Aim-synced shot windup and meter alignment
+
+- switched shot aim to start the committed release row immediately so the hold bar and sprite animation advance from the same timing profile
+- aligned the tail-end green window so the end of green lands on the authored release frame for the selected row
+- kept early releases locked to the current quality while the animation continues through followthrough before launch
+- added overhold auto-release at the authored release frame, with forced-miss behavior when the player keeps holding too long
+- retained row 5 only as a fallback hold pose for non-committed or canceled cases, not as the main live shot-aim animation

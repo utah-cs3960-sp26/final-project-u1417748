@@ -12,15 +12,17 @@ var projection: CourtProjection
 var is_aiming: bool = false
 var aim_elapsed: float = 0.0
 var aim_start_world: Vector2 = Vector2.ZERO
+var aim_timing_profile: Dictionary = {}
 var aim_variant_ready: bool = false
 var aim_miss_side_sign: float = 1.0
 var aim_miss_depth_sign: float = 1.0
 
 
-func begin_aim(world_position: Vector2, rng: GameRng = null) -> void:
+func begin_aim(world_position: Vector2, timing_profile: Dictionary = {}, rng: GameRng = null) -> void:
 	is_aiming = true
 	aim_elapsed = 0.0
 	aim_start_world = world_position
+	aim_timing_profile = timing_profile.duplicate(true)
 	_roll_aim_variant(rng)
 
 
@@ -33,6 +35,7 @@ func update_aim(delta: float, _drag_vector: Vector2 = Vector2.ZERO) -> void:
 func cancel_aim() -> void:
 	is_aiming = false
 	aim_elapsed = 0.0
+	aim_timing_profile.clear()
 	aim_variant_ready = false
 
 
@@ -42,6 +45,22 @@ func get_current_quality(contested: bool, release_consistency: int) -> String:
 
 func get_timing_window(_contested: bool, _release_consistency: int) -> float:
 	return clampf(shot_config.green_window_ratio, 0.08, 0.3)
+
+
+func get_timing_profile() -> Dictionary:
+	return aim_timing_profile.duplicate(true)
+
+
+func get_release_time_seconds() -> float:
+	if not aim_timing_profile.is_empty():
+		return maxf(float(aim_timing_profile.get("release_time_seconds", 0.0)), 0.0)
+	return maxf(float(shot_config.meter_cycle_duration) * clampf(float(shot_config.meter_green_center), 0.0, 1.0), 0.0)
+
+
+func get_full_animation_duration_seconds() -> float:
+	if not aim_timing_profile.is_empty():
+		return maxf(float(aim_timing_profile.get("full_animation_duration_seconds", 0.0)), 0.0)
+	return maxf(float(shot_config.meter_cycle_duration), 0.0)
 
 
 func release_action(
@@ -57,55 +76,73 @@ func release_action(
 		_roll_aim_variant(rng)
 	var quality: String = get_current_quality(contested, shooter.release_consistency)
 	var params: Dictionary = build_launch_profile(ballhandler_position, quality)
+	var action: Dictionary = _compose_release_action(params, quality, quality)
 	cancel_aim()
-	return {
-		"kind": "shot",
-		"profile_kind": params.get("profile_kind", PROFILE_KIND_FREE_FLIGHT),
-		"quality": quality,
-		"outcome": params["outcome"],
-		"launch_position": params["launch_position"],
-		"launch_z": params["launch_z"],
-		"velocity_xy": params["velocity_xy"],
-		"vz": params["vz"],
-		"flight_time": params["flight_time"],
-		"apex_z": params["apex_z"],
-		"target_xy": params["target_xy"],
-		"shot_value": params["shot_value"],
-		"force_make": params.get("force_make", false),
-	}.merged(params, true)
+	return action
+
+
+func build_action_for_quality(
+	ballhandler_position: Vector2,
+	_shooter: PlayerData,
+	quality: String,
+	rng: GameRng = null,
+	forced_timing_result: String = "",
+	force_miss: bool = false
+) -> Dictionary:
+	if not aim_variant_ready:
+		_roll_aim_variant(rng)
+	var launch_quality: String = "red" if force_miss else quality
+	var params: Dictionary = build_launch_profile(ballhandler_position, launch_quality)
+	if force_miss:
+		params["outcome"] = "miss"
+		params["force_make"] = false
+	return _compose_release_action(params, quality, forced_timing_result if forced_timing_result != "" else quality)
 
 
 func get_meter_progress() -> float:
-	if shot_config == null or shot_config.meter_cycle_duration <= 0.0:
+	var duration: float = get_full_animation_duration_seconds()
+	if shot_config == null or duration <= 0.0:
 		return 0.0
-	var cycle_position: float = fposmod(aim_elapsed / shot_config.meter_cycle_duration, 2.0)
-	if cycle_position > 1.0:
-		cycle_position = 2.0 - cycle_position
-	return clampf(cycle_position, 0.0, 1.0)
+	return clampf(aim_elapsed / duration, 0.0, 1.0)
 
 
 func get_green_window(_contested: bool, _release_consistency: int) -> Vector2:
 	var width: float = get_timing_window(false, 0)
-	var start: float = clampf(shot_config.meter_green_center - width * 0.5, 0.0, 1.0)
-	var end: float = clampf(start + width, 0.0, 1.0)
+	var end: float = clampf(_get_release_progress(), 0.0, 1.0)
+	var start: float = clampf(end - width, 0.0, end)
 	return Vector2(start, end)
+
+
+func get_yellow_window(_contested: bool, _release_consistency: int) -> Vector2:
+	var green_window: Vector2 = get_green_window(false, 0)
+	var yellow_end: float = green_window.x
+	var yellow_width: float = clampf(shot_config.yellow_window_ratio, 0.0, 0.9)
+	var yellow_start: float = clampf(yellow_end - yellow_width, 0.0, yellow_end)
+	return Vector2(yellow_start, yellow_end)
 
 
 func classify_meter_progress(progress: float, contested: bool, release_consistency: int) -> String:
 	var green_window: Vector2 = get_green_window(contested, release_consistency)
+	var yellow_window: Vector2 = get_yellow_window(contested, release_consistency)
 	if progress >= green_window.x and progress <= green_window.y:
 		return "green"
+	if progress >= yellow_window.x and progress < yellow_window.y:
+		return "yellow"
 	return "red"
 
 
 func get_meter_snapshot(contested: bool, release_consistency: int) -> Dictionary:
 	var progress: float = get_meter_progress()
 	var green_window: Vector2 = get_green_window(contested, release_consistency)
+	var yellow_window: Vector2 = get_yellow_window(contested, release_consistency)
 	return {
 		"visible": is_aiming,
 		"progress": progress,
+		"yellow_start": yellow_window.x,
+		"yellow_end": yellow_window.y,
 		"green_start": green_window.x,
 		"green_end": green_window.y,
+		"release_progress": _get_release_progress(),
 		"quality": classify_meter_progress(progress, contested, release_consistency),
 		"width": shot_config.meter_width,
 		"height": shot_config.meter_height,
@@ -123,6 +160,32 @@ func get_preview_profile(ballhandler_position: Vector2, shooter: PlayerData, con
 
 func build_current_launch_profile(ballhandler_position: Vector2, shooter: PlayerData, contested: bool) -> Dictionary:
 	return get_preview_profile(ballhandler_position, shooter, contested)
+
+
+func _get_release_progress() -> float:
+	var full_duration: float = get_full_animation_duration_seconds()
+	if full_duration <= 0.0:
+		return clampf(float(shot_config.meter_green_center), 0.0, 1.0)
+	return clampf(get_release_time_seconds() / full_duration, 0.0, 1.0)
+
+
+func _compose_release_action(params: Dictionary, quality: String, timing_result: String) -> Dictionary:
+	return {
+		"kind": "shot",
+		"profile_kind": params.get("profile_kind", PROFILE_KIND_FREE_FLIGHT),
+		"quality": quality,
+		"timing_result": timing_result,
+		"outcome": params["outcome"],
+		"launch_position": params["launch_position"],
+		"launch_z": params["launch_z"],
+		"velocity_xy": params["velocity_xy"],
+		"vz": params["vz"],
+		"flight_time": params["flight_time"],
+		"apex_z": params["apex_z"],
+		"target_xy": params["target_xy"],
+		"shot_value": params["shot_value"],
+		"force_make": params.get("force_make", false),
+	}.merged(params, true)
 
 
 func build_launch_profile(launch_origin: Vector2, quality: String) -> Dictionary:

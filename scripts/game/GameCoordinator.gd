@@ -7,6 +7,11 @@ const HOOP_SCENE: PackedScene = preload("res://scenes/entities/Hoop.tscn")
 const PLAYER_ANIMATION_CONFIG_SCRIPT = preload("res://scripts/config/PlayerAnimationConfig.gd")
 const PLAYER_VISUAL_REQUEST_SCRIPT = preload("res://scripts/entities/PlayerVisualRequest.gd")
 
+enum BallVisualMode {
+	HIDDEN_WHILE_OWNED,
+	WORLD_VISIBLE,
+}
+
 var game_config: GameConfig
 var court_config: CourtConfig
 var projection_config: ProjectionConfig
@@ -78,6 +83,11 @@ var last_pass_commit_succeeded: bool = false
 var last_pass_eligible_interceptor_name: String = ""
 var last_pass_committed_interceptor_name: String = ""
 var player_visual_memory: Dictionary = {}
+var shot_visual_locks: Dictionary = {}
+var active_shot_sequence: Dictionary = {}
+var pending_shot_release: Dictionary = {}
+var ball_visual_mode: int = BallVisualMode.HIDDEN_WHILE_OWNED
+var ball_visual_owner: PlayerController
 
 
 func _ready() -> void:
@@ -203,6 +213,8 @@ func _start_new_match() -> void:
 	log_writer.set_prefix("match_%d" % Time.get_ticks_msec())
 	log_writer.clear_runtime_logs()
 	player_visual_memory.clear()
+	shot_visual_locks.clear()
+	active_shot_sequence.clear()
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
 	made_shot_animation_timer = 0.0
@@ -214,6 +226,9 @@ func _start_new_match() -> void:
 	last_pass_commit_succeeded = false
 	last_pass_eligible_interceptor_name = ""
 	last_pass_committed_interceptor_name = ""
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	_set_ball_visual_hidden(null)
 	_clear_score_followthrough()
 	current_preview_points.clear()
 	_change_state(GameState.State.MATCH_SETUP)
@@ -231,6 +246,9 @@ func _reset_possession() -> void:
 	current_move_magnitude = 0.0
 	shot_owner = null
 	context.gameplay_time_scale = 1.0
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	shot_visual_locks.clear()
 	pass_controller.active_pass = {}
 	shot_controller.cancel_aim()
 	made_shot_animation_timer = 0.0
@@ -278,6 +296,8 @@ func _process(delta: float) -> void:
 			_update_live_offense(scaled_delta)
 		GameState.State.SHOT_AIM:
 			_update_shot_aim(scaled_delta)
+		GameState.State.SHOT_RELEASE:
+			_update_shot_release(scaled_delta)
 		GameState.State.PASS_IN_FLIGHT:
 			_update_pass_in_flight(scaled_delta)
 		GameState.State.STEAL_RESOLVE:
@@ -296,7 +316,7 @@ func _update_clock(delta: float) -> void:
 	_update_hud()
 	if context.match_time_remaining > 0.0:
 		return
-	if context.current_state == GameState.State.SHOT_IN_FLIGHT or context.current_state == GameState.State.REBOUND_LIVE:
+	if context.current_state == GameState.State.SHOT_RELEASE or context.current_state == GameState.State.SHOT_IN_FLIGHT or context.current_state == GameState.State.REBOUND_LIVE:
 		context.buzzer_waiting_for_resolution = true
 		return
 	_finish_game()
@@ -323,7 +343,8 @@ func _update_live_offense(delta: float) -> void:
 
 func _update_shot_aim(delta: float) -> void:
 	route_phase_time += delta
-	shot_controller.update_aim(delta)
+	if not active_shot_sequence.is_empty():
+		shot_controller.update_aim(delta)
 	_update_off_ball_offense(delta)
 	_update_defense(delta)
 	if current_ballhandler == null:
@@ -341,8 +362,17 @@ func _update_shot_aim(delta: float) -> void:
 		current_preview_points = shot_controller.create_preview(ball_simulator, preview_profile)
 		current_preview_color = _quality_color(str(preview_profile.get("quality", "red")))
 		court_view.set_preview(current_preview_points, current_preview_color)
-	court_view.set_shot_meter(shot_controller.get_meter_snapshot(contested, current_ballhandler.get_player_data().release_consistency))
 	_sync_ball_to_handler()
+
+
+func _update_shot_release(delta: float) -> void:
+	route_phase_time += delta
+	if not active_shot_sequence.is_empty():
+		shot_controller.update_aim(delta)
+	_update_off_ball_offense(delta)
+	_update_defense(delta)
+	if current_ballhandler != null:
+		current_ballhandler.velocity = Vector2.ZERO
 
 
 func _update_pass_in_flight(delta: float) -> void:
@@ -426,6 +456,8 @@ func _update_steal_resolve(delta: float) -> void:
 
 
 func _update_shot_in_flight(delta: float) -> void:
+	if not active_shot_sequence.is_empty():
+		shot_controller.update_aim(delta)
 	if made_shot_animation_timer > 0.0:
 		ball_simulator.step(delta)
 		if get_score_followthrough_active():
@@ -533,6 +565,14 @@ func _on_pass_requested(target: PlayerController) -> void:
 		return
 	if target == null or target == current_ballhandler:
 		return
+	_begin_pass_to_target(target)
+
+
+func _begin_pass_to_target(target: PlayerController) -> void:
+	if target == null or target == current_ballhandler:
+		return
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
 	log_writer.log_match("Pass requested to %s" % target.get_display_name())
 	_change_state(GameState.State.PASS_IN_FLIGHT)
 	current_ballhandler.set_has_ball(false)
@@ -543,6 +583,7 @@ func _on_pass_requested(target: PlayerController) -> void:
 	last_pass_commit_succeeded = bool(pass_snapshot.get("commit_succeeded", false))
 	last_pass_eligible_interceptor_name = _player_name_or_empty(pass_snapshot.get("eligible_interceptor", null))
 	last_pass_committed_interceptor_name = _player_name_or_empty(pass_snapshot.get("active_interceptor", null))
+	_set_ball_visual_world()
 	log_writer.log_event(
 		"pass_started",
 		{
@@ -565,9 +606,10 @@ func _on_shot_aim_started(start_world: Vector2) -> void:
 		return
 	if current_ballhandler == null or current_ballhandler.world_position.distance_to(start_world) > 140.0:
 		return
+	_begin_active_shot_sequence(current_ballhandler)
 	_change_state(GameState.State.SHOT_AIM)
 	context.gameplay_time_scale = game_config.aim_time_scale
-	shot_controller.begin_aim(current_ballhandler.world_position, rng)
+	shot_controller.begin_aim(current_ballhandler.world_position, _get_active_shot_timing_profile(), rng)
 	log_writer.log_match("Shot aim started")
 
 
@@ -576,17 +618,42 @@ func _on_shot_aim_updated(_current_world: Vector2, _drag_vector: Vector2) -> voi
 		return
 
 
-func _on_shot_aim_released(_release_screen: Vector2, _release_world: Vector2, _drag_vector: Vector2) -> void:
+func _on_shot_aim_released(release_screen: Vector2, release_world: Vector2, _drag_vector: Vector2) -> void:
 	if context.current_state != GameState.State.SHOT_AIM:
 		return
+	if current_ballhandler == null:
+		return
+	var pass_target: PlayerController = _find_release_pass_target(release_world)
+	if pass_target != null and pass_config != null and pass_config.release_endpoint_pass_conversion:
+		context.gameplay_time_scale = 1.0
+		court_view.clear_preview()
+		current_preview_points.clear()
+		_begin_pass_to_target(pass_target)
+		return
+	if _is_invalid_shot_release(release_screen, release_world):
+		context.gameplay_time_scale = 1.0
+		court_view.clear_preview()
+		current_preview_points.clear()
+		_clear_pending_shot_release()
+		_clear_active_shot_sequence()
+		_change_state(GameState.State.LIVE_OFFENSE)
+		log_writer.log_match("Shot aim canceled")
+		return
 	var contested: bool = defense_controller.is_contested(current_ballhandler)
-	var action: Dictionary = shot_controller.release_action(current_ballhandler.world_position, current_ballhandler.get_player_data(), contested, rng)
+	var quality: String = shot_controller.get_current_quality(contested, current_ballhandler.get_player_data().release_consistency)
+	var action: Dictionary = shot_controller.build_action_for_quality(
+		current_ballhandler.world_position,
+		current_ballhandler.get_player_data(),
+		quality,
+		rng,
+		quality
+	)
 	context.gameplay_time_scale = 1.0
-	court_view.clear_shot_meter()
 	match action["kind"]:
 		"cancel":
 			court_view.clear_preview()
 			current_preview_points.clear()
+			_clear_active_shot_sequence()
 			_change_state(GameState.State.LIVE_OFFENSE)
 		"shot":
 			court_view.clear_preview()
@@ -594,44 +661,7 @@ func _on_shot_aim_released(_release_screen: Vector2, _release_world: Vector2, _d
 			var blocker: PlayerController = null
 			if action["outcome"] == "miss" and contested:
 				blocker = defense_controller.get_blocking_defender(current_ballhandler, rng)
-			if action["outcome"] == "miss" and blocker != null:
-				blocker.trigger_jump_pose(0.22)
-				log_writer.log_match("Shot blocked on red release")
-				_show_feedback("BLOCKED!", Color(1.0, 0.55, 0.34))
-				_begin_rebound(current_ballhandler.world_position + Vector2(0.0, -36.0))
-				return
-			shot_owner = current_ballhandler
-			current_ballhandler.trigger_shot_pose(0.28)
-			context.shot_value_pending = action["shot_value"]
-			current_ballhandler.set_has_ball(false)
-			_clear_score_followthrough(false)
-			ball_simulator.launch_shot_profile(action)
-			shot_had_rim_contact = false
-			_change_state(GameState.State.SHOT_IN_FLIGHT)
-			log_writer.log_event(
-				"shot_launch",
-				{
-					"profile_kind": action.get("profile_kind", "free_flight"),
-					"quality": action["quality"],
-					"outcome": action["outcome"],
-					"flight_time": action["flight_time"],
-					"apex_z": action["apex_z"],
-					"launch_z": action["launch_z"],
-					"target_xy": {
-						"x": action["target_xy"].x,
-						"y": action["target_xy"].y,
-					},
-				}
-			)
-			log_writer.log_match(
-				"Shot released %s %s for %d apex=%0.1f flight=%0.2f" % [
-					action["quality"],
-					action["outcome"],
-					context.shot_value_pending,
-					float(action.get("apex_z", 0.0)),
-					float(action.get("flight_time", 0.0)),
-				]
-			)
+			_queue_shot_release(action, blocker)
 
 
 func _toggle_pause() -> void:
@@ -652,6 +682,9 @@ func _resume_from_pause() -> void:
 
 func _run_opponent_possession() -> void:
 	_clear_steal_resolve()
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	_set_ball_visual_hidden(null)
 	_change_state(GameState.State.OPPONENT_SIM)
 	var result: Dictionary = opponent_sim_controller.run_possession(away_team, home_team, context.match_time_remaining, rng)
 	for event_line in result["events"]:
@@ -670,6 +703,8 @@ func _begin_rebound(override_zone: Vector2 = Vector2.INF) -> void:
 	active_rebound_zone = override_zone if override_zone != Vector2.INF else hoop_resolver.estimate_landing_position(ball_simulator)
 	rebound_delay_timer = 0.0
 	context.last_touch_offense = true
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence(true)
 	_change_state(GameState.State.REBOUND_LIVE)
 
 
@@ -694,7 +729,22 @@ func _set_ballhandler(player: PlayerController) -> void:
 		defender.set_has_ball(false)
 	input_controller.set_ballhandler(player)
 	input_controller.set_offense_players(offense_players)
+	_set_ball_visual_hidden(player)
 	log_writer.log_event("ballhandler_changed", {"player": player.get_display_name(), "role": player.get_position_role()})
+
+
+func _set_ball_visual_hidden(owner: PlayerController) -> void:
+	ball_visual_mode = BallVisualMode.HIDDEN_WHILE_OWNED
+	ball_visual_owner = owner
+	if ball_node != null and ball_node.has_method("set_ball_visible"):
+		ball_node.call("set_ball_visible", false)
+
+
+func _set_ball_visual_world() -> void:
+	ball_visual_mode = BallVisualMode.WORLD_VISIBLE
+	ball_visual_owner = null
+	if ball_node != null and ball_node.has_method("set_ball_visible"):
+		ball_node.call("set_ball_visible", true)
 
 
 func _sync_ball_to_handler() -> void:
@@ -725,6 +775,8 @@ func _sync_ball_to_player(player: PlayerController) -> void:
 		z_override,
 		render_phase
 	)
+	if ball_node != null and ball_node.has_method("set_ball_visible"):
+		ball_node.call("set_ball_visible", ball_visual_mode == BallVisualMode.WORLD_VISIBLE)
 
 
 func _sync_pass_ball_visual(world_position: Vector2) -> void:
@@ -734,6 +786,7 @@ func _sync_pass_ball_visual(world_position: Vector2) -> void:
 	ball_simulator.z = ball_config.pass_height
 	ball_simulator.vz = 0.0
 	ball_simulator.is_in_flight = false
+	_set_ball_visual_world()
 	_sync_ball_world_visual(world_position, ball_config.pass_height)
 
 
@@ -898,6 +951,9 @@ func begin_test_mode(seed: int) -> void:
 	rng.reseed(seed)
 	_reseed_visual_rng(seed)
 	player_visual_memory.clear()
+	shot_visual_locks.clear()
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
 	log_writer.set_prefix("test_%d" % seed)
 	log_writer.clear_runtime_logs()
 
@@ -913,6 +969,9 @@ func apply_scenario_setup(setup: Dictionary) -> void:
 	if setup.is_empty():
 		return
 	player_visual_memory.clear()
+	shot_visual_locks.clear()
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
 	if setup.has("route_package"):
 		context.active_route_package = int(setup["route_package"])
 	if setup.has("gameplay_time_scale"):
@@ -932,12 +991,12 @@ func apply_scenario_setup(setup: Dictionary) -> void:
 		context.shot_value_pending = int(setup["shot_value_pending"])
 	if setup.has("rebound_zone"):
 		active_rebound_zone = setup["rebound_zone"]
+	var has_explicit_ball_setup: bool = setup.has("ball")
 	if setup.has("ball"):
 		_apply_ball_setup(setup["ball"])
-	elif current_ballhandler != null and not String(setup.get("state", "")).contains("SHOT_IN_FLIGHT"):
-		_sync_ball_to_handler()
 	if setup.has("state"):
 		change_state(GameState.from_name(str(setup["state"])))
+	_restore_ball_visual_from_state(has_explicit_ball_setup)
 	_update_hud()
 	_sync_projection_visuals()
 	if debug_overlay != null:
@@ -1004,7 +1063,10 @@ func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
 		return
 	context.shot_value_pending = shot_value if shot_value > 0 else int(launch_profile.get("shot_value", 3 if court_config.is_three_point(shooter.world_position) else 2))
 	shot_had_rim_contact = false
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
 	_clear_score_followthrough(false)
+	_set_ball_visual_world()
 	ball_simulator.launch_shot_profile(launch_profile)
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 	change_state(GameState.State.SHOT_IN_FLIGHT)
@@ -1015,6 +1077,9 @@ func test_force_rebound_state(zone: Vector2) -> void:
 	active_rebound_zone = zone
 	ball_simulator.is_in_flight = false
 	ball_simulator.already_scored = false
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	_set_ball_visual_world()
 	change_state(GameState.State.REBOUND_LIVE)
 	log_writer.log_match("Test rebound queued")
 
@@ -1097,6 +1162,7 @@ func _apply_ball_setup(ball_setup: Dictionary) -> void:
 	ball_simulator.vz = float(ball_setup.get("vz", ball_simulator.vz))
 	ball_simulator.is_in_flight = bool(ball_setup.get("in_flight", ball_simulator.is_in_flight))
 	ball_simulator.already_scored = bool(ball_setup.get("already_scored", ball_simulator.already_scored))
+	_set_ball_visual_world()
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 
 
@@ -1117,17 +1183,29 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 			court_projection.depth_key(player.world_position)
 		)
 		player.sync_visual_state(_build_player_visual_request(player), delta)
-	if current_ballhandler != null and (context.current_state == GameState.State.LIVE_OFFENSE or context.current_state == GameState.State.SHOT_AIM):
-		_sync_ball_to_handler()
-	elif context.current_state == GameState.State.STEAL_RESOLVE and current_steal_holder != null:
-		_sync_ball_to_player(current_steal_holder)
-	elif ball_node != null:
-		_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
+	_maybe_commit_pending_shot_release()
+	_maybe_finish_active_shot_sequence()
+	_sync_shot_meter_display()
+	_sync_ball_visuals()
+
+
+func _sync_ball_visuals() -> void:
+	if ball_node == null:
+		return
+	if ball_visual_mode == BallVisualMode.HIDDEN_WHILE_OWNED:
+		if ball_visual_owner != null:
+			_sync_ball_to_player(ball_visual_owner)
+		elif ball_node.has_method("set_ball_visible"):
+			ball_node.call("set_ball_visible", false)
+		return
+	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 
 
 func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_context: Dictionary = {}) -> void:
 	if ball_node == null or court_projection == null:
 		return
+	if ball_node.has_method("set_ball_visible"):
+		ball_node.call("set_ball_visible", true)
 	var resolved_render_context: Dictionary = render_context
 	if resolved_render_context.is_empty():
 		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
@@ -1294,18 +1372,21 @@ func _format_clock_text(time_remaining: float) -> String:
 
 
 func _build_player_visual_request(player: PlayerController):
+	if player.shot_pose_timer <= 0.0 and not _has_active_shot_sequence_for_player(player):
+		shot_visual_locks.erase(player)
 	var family: String = _resolve_player_animation_family(player)
 	var memory: Dictionary = player_visual_memory.get(player, {})
-	var variant_count: int = _get_variant_count_for_family(family)
+	var locked_shot_visual: Dictionary = _get_locked_shot_visual(player)
 	var variant_index: int = 0
-	if variant_count > 1 and str(memory.get("family", "")) == family:
-		variant_index = clampi(int(memory.get("variant_index", 0)), 0, variant_count - 1)
-	elif variant_count > 1 and visual_rng != null:
-		variant_index = visual_rng.randi_range(0, variant_count - 1)
-	var action_vector: Vector2 = _resolve_player_action_vector(player, family)
 	var mirror_west: bool = bool(memory.get("mirror_west", false))
-	if action_vector.length_squared() > 0.001:
-		mirror_west = action_vector.normalized().x < -0.12
+	if not locked_shot_visual.is_empty():
+		variant_index = int(locked_shot_visual.get("variant_index", 0))
+		mirror_west = bool(locked_shot_visual.get("mirror_west", false))
+	else:
+		variant_index = _resolve_variant_index_for_family(player, family, memory)
+		var action_vector: Vector2 = _resolve_player_action_vector(player, family)
+		if action_vector.length_squared() > 0.001:
+			mirror_west = action_vector.normalized().x < -0.12
 	var force_restart: bool = str(memory.get("family", "")) != family or int(memory.get("variant_index", -1)) != variant_index
 	player_visual_memory[player] = {
 		"family": family,
@@ -1319,6 +1400,9 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 	var speed: float = _get_player_visual_speed(player)
 	if player.jump_pose_timer > 0.0:
 		return "jump_contest"
+	var locked_shot_visual: Dictionary = _get_locked_shot_visual(player)
+	if not locked_shot_visual.is_empty():
+		return str(locked_shot_visual.get("family", "jumper_release"))
 	if player.shot_pose_timer > 0.0:
 		return _resolve_shot_release_family(player)
 	if player.catch_pose_timer > 0.0:
@@ -1341,19 +1425,7 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 
 
 func _resolve_shot_release_family(player: PlayerController) -> String:
-	var to_hoop: Vector2 = court_config.hoop_position - player.world_position
-	var distance_to_hoop: float = to_hoop.length()
-	if distance_to_hoop > player_animation_config.close_finish_radius:
-		return "jumper_release"
-	var release_vector: Vector2 = _resolve_player_motion_vector(player)
-	var toward_hoop: bool = false
-	if release_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
-		toward_hoop = release_vector.normalized().dot(to_hoop.normalized()) >= player_animation_config.toward_hoop_dot_threshold
-	if distance_to_hoop <= player_animation_config.dunk_finish_radius and toward_hoop:
-		if absf(player.world_position.x - court_config.hoop_position.x) >= player_animation_config.side_dunk_lateral_threshold:
-			return "close_finish_side_dunk"
-		return "close_finish_dunk"
-	return "close_finish_layup"
+	return str(_resolve_shot_release_visual(player).get("family", "jumper_release"))
 
 
 func _resolve_defender_animation_family(player: PlayerController, speed: float) -> String:
@@ -1368,8 +1440,10 @@ func _resolve_defender_animation_family(player: PlayerController, speed: float) 
 
 func _resolve_player_action_vector(player: PlayerController, family: String) -> Vector2:
 	match family:
-		"shot_aim", "jumper_release", "close_finish_layup", "close_finish_dunk", "close_finish_side_dunk":
+		"shot_aim":
 			return court_config.hoop_position - player.world_position
+		"set_shot_release", "jumper_release", "close_finish_layup", "close_finish_dunk", "close_finish_side_dunk":
+			return _resolve_shot_release_action_vector(player)
 		"ball_move_small", "ball_move_run", "off_ball_run":
 			return _resolve_player_motion_vector(player)
 		"ball_idle_open", "ball_idle_pressured":
@@ -1388,16 +1462,91 @@ func _resolve_player_action_vector(player: PlayerController, family: String) -> 
 
 func _resolve_player_motion_vector(player: PlayerController) -> Vector2:
 	if player == current_ballhandler and context.current_state == GameState.State.LIVE_OFFENSE and current_move_direction.length() > 0.08:
-		return current_move_direction
+		return current_move_direction.normalized() * player.velocity.length()
 	if player.velocity.length() > 1.0:
 		return player.velocity
 	return Vector2.ZERO
 
 
 func _get_player_visual_speed(player: PlayerController) -> float:
-	if player == current_ballhandler and context.current_state == GameState.State.LIVE_OFFENSE and current_move_direction.length() > 0.08:
-		return player.velocity.length()
-	return player.velocity.length()
+	return _resolve_player_motion_vector(player).length()
+
+
+func _get_locked_shot_visual(player: PlayerController) -> Dictionary:
+	if player == null:
+		return {}
+	if _has_active_shot_sequence_for_player(player):
+		return {
+			"family": str(active_shot_sequence.get("family", "jumper_release")),
+			"variant_index": int(active_shot_sequence.get("variant_index", 0)),
+			"mirror_west": bool(active_shot_sequence.get("mirror_west", false)),
+		}
+	if player.shot_pose_timer <= 0.0:
+		return {}
+	return shot_visual_locks.get(player, {})
+
+
+func _resolve_variant_index_for_family(player: PlayerController, family: String, memory: Dictionary) -> int:
+	var variant_count: int = _get_variant_count_for_family(family)
+	if variant_count <= 1:
+		return 0
+	if str(memory.get("family", "")) == family:
+		return clampi(int(memory.get("variant_index", 0)), 0, variant_count - 1)
+	match family:
+		"close_finish_layup":
+			return 1 if absf(player.world_position.x - court_config.hoop_position.x) >= player_animation_config.side_finish_lateral_threshold else 0
+		"set_shot_release", "close_finish_side_dunk":
+			return 0
+		_:
+			if visual_rng != null:
+				return visual_rng.randi_range(0, variant_count - 1)
+	return 0
+
+
+func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
+	var motion_vector: Vector2 = motion_vector_override
+	if motion_vector == Vector2.INF:
+		motion_vector = _resolve_player_motion_vector(player)
+	var speed: float = motion_vector.length()
+	var defender_distance: float = defender_distance_override
+	if defender_distance < 0.0:
+		defender_distance = _get_primary_defender_distance(player)
+	var to_hoop: Vector2 = court_config.hoop_position - player.world_position
+	var distance_to_hoop: float = to_hoop.length()
+	var lateral_offset: float = absf(player.world_position.x - court_config.hoop_position.x)
+	var toward_hoop_dot: float = -1.0
+	if motion_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
+		toward_hoop_dot = motion_vector.normalized().dot(to_hoop.normalized())
+	var toward_hoop: bool = speed >= player_animation_config.finish_momentum_speed_threshold and toward_hoop_dot >= player_animation_config.toward_hoop_dot_threshold
+	if speed < player_animation_config.finish_momentum_speed_threshold and defender_distance >= player_animation_config.set_shot_space_radius:
+		return {"family": "set_shot_release", "variant_index": 0}
+	if toward_hoop:
+		if distance_to_hoop <= player_animation_config.dunk_finish_radius:
+			if lateral_offset >= player_animation_config.side_finish_lateral_threshold:
+				return {"family": "close_finish_side_dunk", "variant_index": 0}
+			return {"family": "close_finish_dunk", "variant_index": visual_rng.randi_range(0, 1) if visual_rng != null else 0}
+		if distance_to_hoop <= player_animation_config.close_finish_radius:
+			return {"family": "close_finish_layup", "variant_index": 1 if lateral_offset >= player_animation_config.side_finish_lateral_threshold else 0}
+	return {
+		"family": "jumper_release",
+		"variant_index": 0 if speed > player_animation_config.stationary_speed_threshold else 1,
+	}
+
+
+func _resolve_shot_release_action_vector(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF) -> Vector2:
+	var motion_vector: Vector2 = motion_vector_override
+	if motion_vector == Vector2.INF:
+		motion_vector = _resolve_player_motion_vector(player)
+	if motion_vector.length_squared() > 0.001:
+		return motion_vector
+	return court_config.hoop_position - player.world_position
+
+
+func _get_primary_defender_distance(player: PlayerController) -> float:
+	var defender: PlayerController = defense_controller.get_assigned_defender(player)
+	if defender == null:
+		return INF
+	return defender.world_position.distance_to(player.world_position)
 
 
 func _is_player_pressured(player: PlayerController) -> bool:
@@ -1427,8 +1576,263 @@ func _get_variant_count_for_family(family: String) -> int:
 	return rows.size()
 
 
+func _has_active_shot_sequence_for_player(player: PlayerController) -> bool:
+	return player != null and not active_shot_sequence.is_empty() and active_shot_sequence.get("player", null) == player
+
+
+func _get_active_shot_timing_profile() -> Dictionary:
+	if active_shot_sequence.is_empty():
+		return {}
+	return Dictionary(active_shot_sequence.get("timing_profile", {})).duplicate(true)
+
+
+func _begin_active_shot_sequence(shooter: PlayerController) -> void:
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	if shooter == null:
+		return
+	var motion_vector: Vector2 = _resolve_player_motion_vector(shooter)
+	var defender_distance: float = _get_primary_defender_distance(shooter)
+	var shot_visual: Dictionary = _resolve_shot_release_visual(shooter, motion_vector, defender_distance)
+	var shot_family: String = str(shot_visual.get("family", "jumper_release"))
+	var variant_index: int = int(shot_visual.get("variant_index", 0))
+	var action_vector: Vector2 = _resolve_shot_release_action_vector(shooter, motion_vector)
+	var mirror_west: bool = action_vector.length_squared() > 0.001 and action_vector.normalized().x < -0.12
+	var timing_profile: Dictionary = PlayerVisual.build_timing_profile_for_family_variant(shot_family, variant_index)
+	active_shot_sequence = {
+		"player": shooter,
+		"family": shot_family,
+		"variant_index": variant_index,
+		"mirror_west": mirror_west,
+		"timing_profile": timing_profile,
+		"committed": false,
+		"launched": false,
+		"timing_result": "",
+	}
+	shot_visual_locks[shooter] = {
+		"family": shot_family,
+		"variant_index": variant_index,
+		"mirror_west": mirror_west,
+	}
+	shot_owner = shooter
+
+
+func _clear_active_shot_sequence(preserve_visual_lock: bool = false) -> void:
+	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+	active_shot_sequence.clear()
+	shot_controller.cancel_aim()
+	if court_view != null:
+		court_view.clear_shot_meter()
+	if not preserve_visual_lock and shooter != null:
+		shot_visual_locks.erase(shooter)
+
+
+func _sync_shot_meter_display() -> void:
+	if active_shot_sequence.is_empty() or not shot_controller.is_aiming:
+		if court_view != null:
+			court_view.clear_shot_meter()
+		return
+	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+	if shooter == null or shooter.get_player_data() == null:
+		if court_view != null:
+			court_view.clear_shot_meter()
+		return
+	var contested: bool = defense_controller.is_contested(shooter)
+	court_view.set_shot_meter(shot_controller.get_meter_snapshot(contested, shooter.get_player_data().release_consistency))
+
+
+func _maybe_finish_active_shot_sequence() -> void:
+	if active_shot_sequence.is_empty():
+		return
+	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+	if shooter == null:
+		_clear_active_shot_sequence()
+		return
+	if shooter.is_current_animation_complete() and shot_controller.get_meter_progress() >= 0.999:
+		_clear_active_shot_sequence(true)
+
+
+func _find_release_pass_target(release_world: Vector2) -> PlayerController:
+	if current_ballhandler == null:
+		return null
+	for teammate in offense_players:
+		if teammate == current_ballhandler:
+			continue
+		if teammate.world_position.distance_to(release_world) <= pass_controller.get_offense_claim_radius(teammate):
+			return teammate
+	return null
+
+
+func _is_invalid_shot_release(release_screen: Vector2, release_world: Vector2) -> bool:
+	if current_ballhandler == null:
+		return true
+	if release_screen == Vector2.ZERO:
+		return false
+	if input_controller != null and input_controller.find_teammate_at_screen(release_screen) != null:
+		return false
+	var minimum_release_distance: float = maxf(shot_config.teammate_conversion_radius * 0.45, 18.0)
+	return current_ballhandler.world_position.distance_to(release_world) <= minimum_release_distance
+
+
+func _get_remaining_shot_pose_duration() -> float:
+	var full_duration: float = maxf(shot_controller.get_full_animation_duration_seconds(), 0.0)
+	var elapsed: float = 0.0
+	if not active_shot_sequence.is_empty():
+		var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+		if shooter != null:
+			elapsed = shooter.get_current_animation_elapsed_time()
+	return maxf(full_duration - elapsed + 0.02, 0.08)
+
+
+func _queue_auto_overhold_release(shooter: PlayerController) -> void:
+	if shooter == null or not _has_active_shot_sequence_for_player(shooter):
+		return
+	var action: Dictionary = shot_controller.build_action_for_quality(
+		shooter.world_position,
+		shooter.get_player_data(),
+		"red",
+		rng,
+		"late_overhold",
+		true
+	)
+	action["overhold_forced"] = true
+	log_writer.log_match("Shot auto-released late")
+	_queue_shot_release(action, null)
+
+
+func _queue_shot_release(action: Dictionary, blocker: PlayerController = null) -> void:
+	if current_ballhandler == null:
+		return
+	var shooter: PlayerController = current_ballhandler
+	if active_shot_sequence.is_empty() or active_shot_sequence.get("player", null) != shooter:
+		_begin_active_shot_sequence(shooter)
+		shot_controller.begin_aim(shooter.world_position, _get_active_shot_timing_profile(), rng)
+	var shot_pose_duration: float = _get_remaining_shot_pose_duration()
+	shot_owner = shooter
+	context.shot_value_pending = int(action.get("shot_value", 0))
+	shot_had_rim_contact = false
+	shooter.trigger_shot_pose(shot_pose_duration)
+	shooter.velocity = Vector2.ZERO
+	current_move_direction = Vector2.ZERO
+	current_move_magnitude = 0.0
+	if not active_shot_sequence.is_empty():
+		active_shot_sequence["committed"] = true
+		active_shot_sequence["timing_result"] = str(action.get("timing_result", action.get("quality", "red")))
+	pending_shot_release = {
+		"player": shooter,
+		"action": action,
+		"blocked": action.get("outcome", "") == "miss" and blocker != null,
+		"blocker": blocker,
+	}
+	_clear_score_followthrough(false)
+	_set_ball_visual_hidden(shooter)
+	_change_state(GameState.State.SHOT_RELEASE)
+
+
+func _get_release_pose_duration(family: String, variant_index: int) -> float:
+	var row_index: int = _get_row_index_for_family_variant(family, variant_index)
+	var frame_count: int = PlayerVisual.ROW_FRAME_COUNTS[row_index - 1] if row_index >= 1 and row_index <= PlayerVisual.ROW_FRAME_COUNTS.size() else 1
+	var fps: float = float(PlayerVisual.FAMILY_FPS.get(family, 16.0))
+	return maxf(float(frame_count) / maxf(fps, 0.001) + 0.06, 0.3)
+
+
+func _get_row_index_for_family_variant(family: String, variant_index: int) -> int:
+	var rows: Array = PlayerVisual.FAMILY_ROWS.get(family, [1])
+	var clamped_variant: int = clampi(variant_index, 0, maxi(rows.size() - 1, 0))
+	return int(rows[clamped_variant])
+
+
+func _maybe_commit_pending_shot_release() -> void:
+	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+	if shooter == null:
+		if not pending_shot_release.is_empty():
+			_clear_pending_shot_release()
+		return
+	if context.current_state == GameState.State.SHOT_AIM and pending_shot_release.is_empty() and shooter.is_ball_release_ready():
+		_queue_auto_overhold_release(shooter)
+	if context.current_state != GameState.State.SHOT_RELEASE or pending_shot_release.is_empty():
+		return
+	shooter = pending_shot_release.get("player", null) as PlayerController
+	if shooter == null:
+		_clear_pending_shot_release()
+		return
+	if not shooter.is_ball_release_ready():
+		return
+	_commit_pending_shot_release(shooter)
+
+
+func _commit_pending_shot_release(shooter: PlayerController) -> void:
+	var action: Dictionary = pending_shot_release.get("action", {})
+	var blocker: PlayerController = pending_shot_release.get("blocker", null) as PlayerController
+	var is_blocked: bool = bool(pending_shot_release.get("blocked", false))
+	shooter.set_has_ball(false)
+	if not active_shot_sequence.is_empty():
+		active_shot_sequence["launched"] = true
+	_clear_pending_shot_release()
+	if is_blocked and blocker != null:
+		blocker.trigger_jump_pose(0.22)
+		log_writer.log_match("Shot blocked on release")
+		_show_feedback("BLOCKED!", Color(1.0, 0.55, 0.34))
+		_begin_rebound(shooter.world_position + Vector2(0.0, -36.0))
+		_set_ball_visual_hidden(null)
+		return
+	_set_ball_visual_world()
+	ball_simulator.launch_shot_profile(action)
+	_change_state(GameState.State.SHOT_IN_FLIGHT)
+	log_writer.log_event(
+		"shot_launch",
+		{
+			"profile_kind": action.get("profile_kind", "free_flight"),
+			"quality": action.get("quality", "red"),
+			"timing_result": action.get("timing_result", action.get("quality", "red")),
+			"outcome": action.get("outcome", "miss"),
+			"flight_time": action.get("flight_time", 0.0),
+			"apex_z": action.get("apex_z", 0.0),
+			"launch_z": action.get("launch_z", 0.0),
+			"target_xy": {
+				"x": action.get("target_xy", Vector2.ZERO).x,
+				"y": action.get("target_xy", Vector2.ZERO).y,
+			},
+		}
+	)
+	log_writer.log_match(
+		"Shot released %s %s for %d apex=%0.1f flight=%0.2f" % [
+			str(action.get("timing_result", action.get("quality", "red"))),
+			str(action.get("outcome", "miss")),
+			context.shot_value_pending,
+			float(action.get("apex_z", 0.0)),
+			float(action.get("flight_time", 0.0)),
+		]
+	)
+
+
+func _clear_pending_shot_release() -> void:
+	pending_shot_release.clear()
+
+
+func _restore_ball_visual_from_state(has_explicit_ball_setup: bool) -> void:
+	if has_explicit_ball_setup:
+		_set_ball_visual_world()
+		return
+	if context.current_state == GameState.State.STEAL_RESOLVE and current_steal_holder != null:
+		_set_ball_visual_hidden(current_steal_holder)
+		return
+	if current_ballhandler != null and (
+		context.current_state == GameState.State.LIVE_OFFENSE
+		or context.current_state == GameState.State.SHOT_AIM
+		or context.current_state == GameState.State.SHOT_RELEASE
+		or context.current_state == GameState.State.MATCH_SETUP
+		or context.current_state == GameState.State.PAUSED
+	):
+		_set_ball_visual_hidden(current_ballhandler)
+		return
+	_set_ball_visual_world()
+
+
 func _begin_steal_resolve(stealer: PlayerController) -> void:
 	_clear_steal_resolve()
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
 	current_steal_holder = stealer
 	steal_resolve_timer = pass_config.steal_resolve_hold_duration
 	for offense in offense_players:
@@ -1440,6 +1844,7 @@ func _begin_steal_resolve(stealer: PlayerController) -> void:
 	_change_state(GameState.State.STEAL_RESOLVE)
 	_show_feedback("STEAL!", Color(1.0, 0.45, 0.35))
 	ball_simulator.reset_to_possession(stealer.world_position)
+	_set_ball_visual_hidden(stealer)
 	_sync_ball_to_player(stealer)
 
 
@@ -1448,6 +1853,8 @@ func _clear_steal_resolve() -> void:
 	if current_steal_holder != null:
 		current_steal_holder.set_has_ball(false)
 	current_steal_holder = null
+	if ball_visual_mode == BallVisualMode.HIDDEN_WHILE_OWNED and ball_visual_owner != current_ballhandler:
+		ball_visual_owner = null
 
 
 func _vector2_payload(value: Vector2) -> Dictionary:

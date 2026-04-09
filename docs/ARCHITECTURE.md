@@ -34,6 +34,8 @@
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - owns the full-sheet animation classifier, including family selection, deterministic variant locking, close-finish layup/dunk routing, westward mirroring, and controlled-player outline visibility
+- owns the `SHOT_RELEASE` staging state, the pending shot-release snapshot, and the presentation-only ball visibility mode that keeps the rendered world ball hidden while a player-held sprite already includes the ball
+- polls `PlayerVisual` after each animation advance so the actual shot launch and ball reveal happen only after the configured release frame for the committed row
 - exposes deterministic hooks used only by the automated harness
 
 ## Core Systems
@@ -45,7 +47,7 @@
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using an explicit left-half crop so the active offensive hoop lines up with the live rim anchor
 - `ShotController`
-  - hold meter timing, green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
+  - one-way hold meter timing, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`
   - straight-line pass travel, fixed release-time catch points, eligible interceptor selection, a ratings-and-risk commit roll, rating-scaled claim radii, and live catch-vs-steal resolution after commitment
 - `BallSimulator`
@@ -62,6 +64,7 @@
   - use a `PlayerVisualRequest` contract carrying animation family, variant index, westward mirroring, controlled-player outline visibility, and restart intent instead of the old plain string state
   - treat the sprite sheet as east-facing art by default and mirror westward motion in presentation only
   - keep outline rendering separate from fill playback so only the currently controlled player shows the matching outline sheet
+  - expose lightweight debug/runtime frame accessors so the coordinator can sync the held bar, gate launch on row-specific thresholds, and keep the committed row playing through followthrough without moving shot logic into the art layer
 - `ReboundController`
   - rebound candidate scoring and winner selection
 - `RouteController` + `SpacingSolver`

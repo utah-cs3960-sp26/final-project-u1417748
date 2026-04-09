@@ -70,15 +70,15 @@ Passed scenarios:
 - `GameRoot.tscn` booted headless without script/runtime errors
 - headless validation kept the gameplay scene stable after the cinematic arc refactor and restored aim-preview path
 - the projected court now fills the full screen behind the HUD, with the floor mapping from `(0, 0)` to `(1080, 1920)` in smoke validation
-- the resized hoop art still clears the 128 px HUD banner, the held ball stays pinned to the handler hand, and pass-flight ball anchors stay aligned with projection
-- the deterministic smoke pass stayed visible for 30 frames and advanced about 418 px on screen before the catch resolved
+- the resized hoop art still clears the 128 px HUD banner, the world ball now stays hidden while a player-held sprite owns possession, and pass-flight ball anchors stay aligned with projection
+- the deterministic smoke pass stayed visible for 30 frames and advanced about 514 px on screen before the catch resolved
 
 Additional pure-logic coverage now includes:
 
 - meter green-window sizing
 - meter green-window stability under contest and ratings
 - meter red/green classification
-- ping-pong meter motion
+- one-way shot bar timing against the committed windup row
 - cinematic near-shot airtime band
 - cinematic far-shot airtime band
 - cinematic far-shot apex band
@@ -115,17 +115,22 @@ Additional pure-logic coverage now includes:
 - court filling the screen behind the HUD in a booted `GameRoot`
 - hoop art clearing the HUD banner after the fullscreen rescale
 - enlarged player presentation under the fullscreen framing
-- held-ball hand alignment on the first rendered frame
+- hidden-held-ball presentation on the first rendered possession frame
 - in-flight ball/projection alignment during the smoke pass
 - home player fill textures binding to `Character1_NEW.png`
 - away player fill textures binding to `Character2_NEW.png`
 - controlled-player-only outline rendering plus outline transfer when control changes
 - exact row assertions for no-ball idle, open dribble idle, pressured dribble idle, small dribble move, run dribble, off-ball run, guard idle, guard shuffle, guard run, and jump contest
 - westward mirroring assertions for run dribbles and close-finish dunks
+- staged `SHOT_RELEASE` entry before the world ball becomes visible
+- row-4 set-shot selection when the defender-space gate is satisfied
 - deterministic jumper-release variant locking across repeated syncs
-- near-rim layup row selection
+- deterministic row-8-vs-10 jumper selection by seed once the set-shot gate is denied
+- straight-vs-side layup row selection inside the close-finish radius
 - straight-dunk row selection inside the stricter dunk gate
 - side-dunk row selection when the approach stays close and lateral
+- delayed blocker jump-contest activation on the actual release frame of a blocked shot
+- ball hiding again on catches, offensive rebounds, and steal resolves
 - hoop render-phase z-band ordering
 - coordinator ball render-phase accessors
 - score follow-through remaining active immediately after a made basket
@@ -151,6 +156,34 @@ Additional pure-logic coverage now includes:
 - Godot emitted the known macOS `get_system_ca_certificates` warning in headless mode. It did not block import, tests, or smoke validation.
 - The current fullscreen-rescale validation completed in-sandbox; `user://logs` writes succeeded during the suite rerun.
 - The current headless test run exits with non-failing Godot leak/resource warnings after the suite summary. Gameplay and assertions still pass; the warning is tracked as a non-blocking issue.
+
+## 2026-04-09 Release-Synced Shot Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 248
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now validates the hidden-held-ball contract, immediate pass-flight visibility, the staged `SHOT_RELEASE` state, and row-specific launch timing after the authored release frame finishes displaying.
+  - Deterministic coverage now includes row-4 set shots, seed-stable row-8-vs-10 jumper selection, straight-vs-side layups, deterministic straight-dunk row locks, side dunks, and delayed blocker jump-contest activation on blocked releases.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
+
+## 2026-04-09 Aim-Synced Shot Windup Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd'`
+- Result:
+  - Pure logic: 248
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now validates the one-way shot bar, the synced committed windup row, the tail-end green window, and the authored release-frame launch gate.
+  - Early releases lock the current quality and still play through followthrough, while overholds auto-fire on the release frame and are forced to miss.
+  - Row 5 remains a fallback hold pose, not the main live shot-aim row.
 
 ## 2026-04-09 Full-Sheet Animation Validation
 
@@ -193,7 +226,7 @@ Additional pure-logic coverage now includes:
   - Failures: 0
 - Notes:
   - The fullscreen projection retune now proves full-screen court bounds in pure logic and smoke validation without changing `CourtConfig` world dimensions.
-  - Smoke validation confirms the hoop remains below the HUD banner, the enlarged players stay readable, the held ball stays attached to the handler hand, and pass-flight rendering stays aligned with projection.
+  - Smoke validation confirms the hoop remains below the HUD banner, the enlarged players stay readable, the possessed world ball can stay hidden until release, and pass-flight rendering stays aligned with projection.
   - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
 
 ## 2026-04-09 Probabilistic Pass Commit Validation

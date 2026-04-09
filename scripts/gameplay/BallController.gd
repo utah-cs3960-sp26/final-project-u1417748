@@ -24,6 +24,7 @@ var ball_screen_offset: Vector2 = Vector2.ZERO
 var shadow_local_position: Vector2 = Vector2(0.0, 18.0)
 var current_ball_radius: float = 14.0
 var current_shadow_scale: float = 1.0
+var _ball_visible: bool = true
 
 var _fill_sprite: Sprite2D
 var _outline_sprite: Sprite2D
@@ -31,10 +32,12 @@ var _outline_sprite: Sprite2D
 
 func _ready() -> void:
 	_ensure_sprites()
+	_apply_ball_visibility()
 
 
 func sync_visual(world_position: Vector2, z_value: float, projection_data: Dictionary = {}, z_index_override: int = NO_Z_INDEX_OVERRIDE, render_phase: String = "") -> void:
 	_ensure_sprites()
+	_apply_ball_visibility()
 	current_z = z_value
 	current_render_phase = render_phase if render_phase != "" else str(projection_data.get("render_phase", ""))
 	position = projection_data.get("ground_anchor", world_position)
@@ -54,6 +57,18 @@ func sync_visual(world_position: Vector2, z_value: float, projection_data: Dicti
 		z_index = int(round(projection_data.get("depth_key", position.y))) + 8
 	_sync_sprite_transform()
 	queue_redraw()
+
+
+func set_ball_visible(is_visible: bool) -> void:
+	if _ball_visible == is_visible:
+		return
+	_ball_visible = is_visible
+	_apply_ball_visibility()
+	queue_redraw()
+
+
+func is_ball_visible() -> bool:
+	return _ball_visible
 
 
 func _draw() -> void:
@@ -84,6 +99,14 @@ func _ensure_sprites() -> void:
 		_fill_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(_fill_sprite)
 	_sync_sprite_transform()
+
+
+func _apply_ball_visibility() -> void:
+	visible = _ball_visible
+	if _fill_sprite != null:
+		_fill_sprite.visible = _ball_visible
+	if _outline_sprite != null:
+		_outline_sprite.visible = _ball_visible
 
 
 func _sync_sprite_transform() -> void:

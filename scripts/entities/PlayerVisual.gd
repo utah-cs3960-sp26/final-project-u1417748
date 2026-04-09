@@ -3,6 +3,16 @@ extends Node2D
 
 const FRAME_SIZE: Vector2i = Vector2i(64, 64)
 const ROW_FRAME_COUNTS: Array[int] = [4, 5, 23, 7, 8, 7, 14, 17, 7, 29, 5, 5, 15, 15, 14, 18, 15, 5, 5, 7, 4, 6]
+const RELEASE_AFTER_FRAME_BY_ROW: Dictionary = {
+	4: 5,
+	8: 11,
+	10: 23,
+	13: 9,
+	14: 9,
+	15: 10,
+	16: 10,
+	17: 11,
+}
 const HOME_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW.png")
 const HOME_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW_outline.png")
 const AWAY_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW.png")
@@ -15,7 +25,8 @@ const FAMILY_ROWS: Dictionary = {
 	"ball_idle_pressured": [6, 7],
 	"ball_move_small": [12],
 	"ball_move_run": [9],
-	"shot_aim": [4],
+	"shot_aim": [5],
+	"set_shot_release": [4],
 	"jumper_release": [8, 10],
 	"close_finish_layup": [14, 17],
 	"close_finish_dunk": [13, 15],
@@ -35,6 +46,7 @@ const FAMILY_FPS: Dictionary = {
 	"ball_move_small": 8.0,
 	"ball_move_run": 10.0,
 	"shot_aim": 8.0,
+	"set_shot_release": 16.0,
 	"jumper_release": 16.0,
 	"close_finish_layup": 16.0,
 	"close_finish_dunk": 16.0,
@@ -47,6 +59,7 @@ const FAMILY_FPS: Dictionary = {
 }
 
 const NON_LOOPING_FAMILIES: Dictionary = {
+	"set_shot_release": true,
 	"jumper_release": true,
 	"close_finish_layup": true,
 	"close_finish_dunk": true,
@@ -67,6 +80,10 @@ var _frame_index: int = 0
 var _frame_elapsed: float = 0.0
 var _mirror_west: bool = false
 var _show_outline: bool = false
+var _release_after_frame: int = -1
+var _release_ready_this_tick: bool = false
+var _animation_elapsed: float = 0.0
+var _animation_completed: bool = false
 
 
 func _ready() -> void:
@@ -93,15 +110,21 @@ func apply_state(request, delta: float) -> void:
 		or next_family != _animation_family \
 		or next_variant != _variant_index \
 		or next_row != _current_row_index
+	var previous_frame_number: int = 1 if should_restart else _frame_index + 1
 	_animation_family = next_family
 	_variant_index = next_variant
 	_current_row_index = next_row
 	_mirror_west = request.mirror_west
 	_show_outline = request.show_outline
+	_release_after_frame = int(RELEASE_AFTER_FRAME_BY_ROW.get(_current_row_index, -1))
+	_release_ready_this_tick = false
 	if should_restart:
 		_frame_index = 0
 		_frame_elapsed = 0.0
+		_animation_elapsed = 0.0
+		_animation_completed = false
 	_advance_frames(delta)
+	_release_ready_this_tick = _is_release_crossed(previous_frame_number)
 	_apply_current_frame()
 	_apply_sprite_flags()
 
@@ -120,6 +143,30 @@ func get_debug_row_index() -> int:
 
 func get_debug_variant_index() -> int:
 	return _variant_index
+
+
+func get_debug_frame_number() -> int:
+	return _frame_index + 1
+
+
+func get_debug_release_after_frame() -> int:
+	return _release_after_frame
+
+
+func get_current_animation_elapsed_time() -> float:
+	return _animation_elapsed
+
+
+func is_current_animation_complete() -> bool:
+	return _animation_completed
+
+
+func get_current_animation_timing_profile() -> Dictionary:
+	return build_timing_profile_for_family_variant(_animation_family, _variant_index)
+
+
+func is_ball_release_ready() -> bool:
+	return _release_ready_this_tick
 
 
 func get_debug_flip_h() -> bool:
@@ -170,10 +217,19 @@ func _apply_team_textures() -> void:
 
 func _advance_frames(delta: float) -> void:
 	var frame_count: int = _get_frame_count_for_row(_current_row_index)
+	var timing_profile: Dictionary = build_timing_profile_for_family_variant(_animation_family, _variant_index)
+	var full_duration: float = float(timing_profile.get("full_animation_duration_seconds", 0.0))
+	if delta > 0.0:
+		if _is_looping_family(_animation_family) or full_duration <= 0.0:
+			_animation_elapsed += delta
+		else:
+			_animation_elapsed = minf(_animation_elapsed + delta, full_duration)
 	if delta <= 0.0 or frame_count <= 1:
+		_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
 		return
 	var fps: float = float(FAMILY_FPS.get(_animation_family, 6.0))
 	if fps <= 0.0:
+		_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
 		return
 	var frame_duration: float = 1.0 / fps
 	_frame_elapsed += delta
@@ -184,6 +240,16 @@ func _advance_frames(delta: float) -> void:
 			_frame_index %= frame_count
 		else:
 			_frame_index = mini(_frame_index, frame_count - 1)
+	_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
+
+
+func _is_release_crossed(previous_frame_number: int) -> bool:
+	if _release_after_frame <= 0:
+		return false
+	if _is_looping_family(_animation_family):
+		return false
+	var current_frame_number: int = _frame_index + 1
+	return previous_frame_number <= _release_after_frame and current_frame_number > _release_after_frame
 
 
 func _apply_current_frame() -> void:
@@ -219,3 +285,32 @@ func _get_frame_count_for_row(row_index: int) -> int:
 
 func _is_looping_family(animation_family: String) -> bool:
 	return not NON_LOOPING_FAMILIES.has(animation_family)
+
+
+static func get_row_index_for_family_variant(animation_family: String, variant_index: int) -> int:
+	var rows: Array = FAMILY_ROWS.get(animation_family, [1])
+	var clamped_variant: int = clampi(variant_index, 0, maxi(rows.size() - 1, 0))
+	return int(rows[clamped_variant])
+
+
+static func build_timing_profile_for_family_variant(animation_family: String, variant_index: int) -> Dictionary:
+	var row_index: int = get_row_index_for_family_variant(animation_family, variant_index)
+	return build_timing_profile_for_row(row_index, animation_family)
+
+
+static func build_timing_profile_for_row(row_index: int, animation_family: String = "") -> Dictionary:
+	var resolved_row_index: int = clampi(row_index, 1, ROW_FRAME_COUNTS.size())
+	var total_frames: int = ROW_FRAME_COUNTS[resolved_row_index - 1]
+	var fps: float = float(FAMILY_FPS.get(animation_family, 16.0))
+	var release_after_frame: int = int(RELEASE_AFTER_FRAME_BY_ROW.get(resolved_row_index, -1))
+	var release_time_seconds: float = 0.0
+	if release_after_frame > 0 and fps > 0.0:
+		release_time_seconds = float(release_after_frame) / fps
+	return {
+		"row_index": resolved_row_index,
+		"total_frames": total_frames,
+		"release_after_frame": release_after_frame,
+		"fps": fps,
+		"release_time_seconds": release_time_seconds,
+		"full_animation_duration_seconds": float(total_frames) / maxf(fps, 0.001),
+	}

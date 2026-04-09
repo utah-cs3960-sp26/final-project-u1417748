@@ -8,8 +8,8 @@ Covered by `tests/TestRunner.gd`:
 
 - joystick normalization
 - meter green-window sizing stays fixed under contest and ratings
-- red/green meter classification
-- meter ping-pong movement
+- red/yellow/green timing classification on the one-way shot bar
+- synced windup timing against the committed shot row
 - flat rectangular court width consistency
 - flat projection linear depth mapping
 - flat projection ground-coordinate round trip
@@ -74,6 +74,7 @@ Resource-backed batches under `data/balance/`:
 
 - home players binding to `Character1_NEW.png`
 - away players binding to `Character2_NEW.png`
+- possessed players keeping the standalone world ball hidden until a pass or the correct shot-release frame reveals it
 - controlled-player-only outline rendering and outline transfer when control changes
 - stationary no-ball idle
 - stationary with-ball idle versus pressured idle
@@ -81,9 +82,14 @@ Resource-backed batches under `data/balance/`:
 - off-ball run
 - guard idle versus shuffle versus run
 - westward mirroring
+- set-shot row selection when the defender is far and the shooter is below the finish-momentum threshold
+- staged shot-release gating from `SHOT_RELEASE` into `SHOT_IN_FLIGHT`
 - jumper-release variant locking
-- layup selection near the hoop
-- dunk and side-dunk selection inside the closer finish radius
+- early release locking while the committed row continues to the authored release frame
+- overhold auto-release on the authored release frame with a forced miss
+- deterministic row-8-vs-10 jumper selection by seed once the set-shot gate is denied
+- straight-vs-side layup selection inside the close-finish radius
+- straight-dunk random row selection plus side-dunk row selection inside the closer finish radius
 - jump-contest row selection for the actual blocking defender
 
 ## Commands
@@ -122,6 +128,11 @@ Smoke game scene:
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the possession jump-cut
 - enter shot aim and confirm slow-motion + bottom red/green meter + visible preview dots
+- confirm the committed shot row starts playing immediately during aim and the meter advances in one direction only
+- confirm the tail-end green window ends exactly on the authored release frame for the selected row
+- confirm an early release locks shot quality immediately while the animation continues to the release frame before launch
+- confirm holding past the release frame auto-fires there and counts as a miss
+- confirm the standalone ball is hidden while a player sprite owns possession and only appears on pass start or once a shot animation reaches its authored release frame
 - release once in green and confirm the ball visibly climbs into a dramatic arc and finishes through the hoop
 - release once in red and confirm a miss or block
 - score at least one basket
@@ -133,7 +144,8 @@ Smoke game scene:
 - confirm only the currently controlled player shows the outline sheet
 - confirm westward dribble/run movement mirrors the player sprite along X
 - confirm a stationary ballhandler can show open dribble or pressured dribble idles while off-ball teammates stay on the no-ball idle/run rows
-- confirm close shots near the rim can show layups, straight dunks, or side dunks depending on approach
+- confirm a stationary ballhandler with clear defender space can use the row-4 set shot, while non-set jumpers use the randomized row-8/row-10 release rows
+- confirm close shots near the rim can show straight layups, side layups, straight dunks, or side dunks depending on approach and momentum
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases
 - force a miss and observe rebound resolution

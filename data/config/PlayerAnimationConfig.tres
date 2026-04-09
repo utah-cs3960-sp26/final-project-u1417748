@@ -4,3 +4,11 @@
 
 [resource]
 script = ExtResource("1")
+stationary_speed_threshold = 18.0
+small_move_speed_threshold = 110.0
+close_finish_radius = 200.0
+dunk_finish_radius = 135.0
+side_finish_lateral_threshold = 70.0
+finish_momentum_speed_threshold = 70.0
+set_shot_space_radius = 150.0
+toward_hoop_dot_threshold = 0.35

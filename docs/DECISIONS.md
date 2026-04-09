@@ -98,6 +98,14 @@ The first guided-make rewrite still let the arc terminate above the rim before t
 
 ## 2026-04-09
 
+### Shot release is now animation-gated and the world ball stays hidden while possessed
+
+The old visual contract still rendered the standalone `BallController` on the handler hand even though the new character rows already drew the ball inside the sprite sheet, and shots still launched on the exact input-release frame before the release animation had actually reached the handoff frame. The current contract is staged instead. Releasing the meter now commits a shot family, variant, and mirror direction into a brief `SHOT_RELEASE` state. The world ball stays hidden during that staged beat, and the coordinator only reveals and launches it after `PlayerVisual` reports that the committed row has crossed its configured release-after-frame threshold. Passes still reveal the ball immediately on pass start, while catches, rebounds, steal resolves, and possession resets hide it again as soon as a sprite regains possession. This was chosen to stop double-ball rendering and to make jumpers, layups, and dunks read off the authored sprite timing rather than off the input event.
+
+### Shot aim now plays the committed release row while the meter fills
+
+The live shot meter is no longer a separate ping-pong widget that runs independently of the sprite. `SHOT_AIM` now starts the real committed shot row immediately, the bar advances in one direction only, and the tail-end green window is aligned so its end lands on the row's authored release frame. If the player releases early, the shot quality locks at that moment and the animation keeps playing to the release frame before launch. If the player keeps holding through the release frame, the game auto-fires there and forces a miss as an overhold. Row 5 remains only a fallback hold pose for non-committed cases, not the main live shot-aim animation.
+
 ### Pass steals now use a commit roll plus a visible live-ball race
 
 The earlier interception rewrite fixed the presentation problem by making the ball flight authoritative and resolving catches or steals on the live ball, but it also made any lane-eligible defender feel too sticky because commitment was automatic. The current contract is hybrid. Each pass still identifies one best eligible defender by lane ETA, but that defender only gets the visible lane-cut override after a seeded commit roll based on pass geometry, defender pressure, passer accuracy, receiver catch security, and the current difficulty defense multiplier. Once a defender commits, the rest of the play stays visually honest: the ball keeps traveling on the same straight segment, the receiver breaks to the release-time catch point, the defender cuts into the lane, and the first player to the live ball wins. Ties still favor the offense on the claim frame, and steals still enter a short `STEAL_RESOLVE` state before the opponent sim jump-cut.
