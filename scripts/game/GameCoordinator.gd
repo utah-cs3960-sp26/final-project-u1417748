@@ -4,6 +4,8 @@ extends Node
 const PLAYER_SCENE: PackedScene = preload("res://scenes/entities/Player.tscn")
 const BALL_SCENE: PackedScene = preload("res://scenes/entities/Ball.tscn")
 const HOOP_SCENE: PackedScene = preload("res://scenes/entities/Hoop.tscn")
+const PLAYER_ANIMATION_CONFIG_SCRIPT = preload("res://scripts/config/PlayerAnimationConfig.gd")
+const PLAYER_VISUAL_REQUEST_SCRIPT = preload("res://scripts/entities/PlayerVisualRequest.gd")
 
 var game_config: GameConfig
 var court_config: CourtConfig
@@ -16,6 +18,7 @@ var defense_config: DefenseConfig
 var rebound_config: ReboundConfig
 var opponent_sim_config: OpponentSimConfig
 var difficulty_config: DifficultyConfig
+var player_animation_config
 var debug_config: DebugConfig
 
 var home_team: TeamData
@@ -23,6 +26,7 @@ var away_team: TeamData
 
 var context: MatchContext = MatchContext.new()
 var rng: GameRng
+var visual_rng: GameRng
 var log_writer: LogWriter
 
 var shot_controller: ShotController = ShotController.new()
@@ -73,6 +77,7 @@ var last_pass_commit_chance: float = 0.0
 var last_pass_commit_succeeded: bool = false
 var last_pass_eligible_interceptor_name: String = ""
 var last_pass_committed_interceptor_name: String = ""
+var player_visual_memory: Dictionary = {}
 
 
 func _ready() -> void:
@@ -111,6 +116,7 @@ func _load_resources() -> void:
 	rebound_config = _load_or_default("res://data/config/ReboundConfig.tres", ReboundConfig.new()) as ReboundConfig
 	opponent_sim_config = _load_or_default("res://data/config/OpponentSimConfig.tres", OpponentSimConfig.new()) as OpponentSimConfig
 	difficulty_config = _load_or_default("res://data/config/DifficultyConfig.tres", DifficultyConfig.new()) as DifficultyConfig
+	player_animation_config = _load_or_default("res://data/config/PlayerAnimationConfig.tres", PLAYER_ANIMATION_CONFIG_SCRIPT.new())
 	debug_config = _load_or_default("res://data/config/DebugConfig.tres", DebugConfig.new()) as DebugConfig
 	home_team = _load_or_default("res://data/teams/HOM.tres", TeamData.new()) as TeamData
 	away_team = _load_or_default("res://data/teams/AWY.tres", TeamData.new()) as TeamData
@@ -123,6 +129,8 @@ func _load_resources() -> void:
 func _build_services() -> void:
 	rng = GameRng.new()
 	rng.reseed(game_config.default_seed)
+	visual_rng = GameRng.new()
+	_reseed_visual_rng(game_config.default_seed)
 	log_writer = LogWriter.new()
 	log_writer.set_prefix("match")
 	context.difficulty_level = difficulty_config.level
@@ -151,6 +159,7 @@ func _build_services() -> void:
 
 func _spawn_entities() -> void:
 	_clear_entity_children()
+	player_visual_memory.clear()
 	hoop_node = HOOP_SCENE.instantiate() as HoopView
 	entities_node.add_child(hoop_node)
 	hoop_node.setup(court_config, court_projection)
@@ -190,8 +199,10 @@ func _wire_input_and_ui() -> void:
 func _start_new_match() -> void:
 	context.reset(game_config.match_length_seconds, game_config.default_seed)
 	rng.reseed(context.current_seed)
+	_reseed_visual_rng(context.current_seed)
 	log_writer.set_prefix("match_%d" % Time.get_ticks_msec())
 	log_writer.clear_runtime_logs()
+	player_visual_memory.clear()
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
 	made_shot_animation_timer = 0.0
@@ -580,7 +591,11 @@ func _on_shot_aim_released(_release_screen: Vector2, _release_world: Vector2, _d
 		"shot":
 			court_view.clear_preview()
 			current_preview_points.clear()
-			if action["outcome"] == "miss" and contested and defense_controller.can_block_shot(current_ballhandler, rng):
+			var blocker: PlayerController = null
+			if action["outcome"] == "miss" and contested:
+				blocker = defense_controller.get_blocking_defender(current_ballhandler, rng)
+			if action["outcome"] == "miss" and blocker != null:
+				blocker.trigger_jump_pose(0.22)
 				log_writer.log_match("Shot blocked on red release")
 				_show_feedback("BLOCKED!", Color(1.0, 0.55, 0.34))
 				_begin_rebound(current_ballhandler.world_position + Vector2(0.0, -36.0))
@@ -758,6 +773,12 @@ func _quality_color(quality: String) -> Color:
 			return Color(1.0, 0.3, 0.28, 0.95)
 
 
+func _reseed_visual_rng(seed: int) -> void:
+	if visual_rng == null:
+		visual_rng = GameRng.new()
+	visual_rng.reseed(seed ^ 0x51A91E)
+
+
 func _load_or_default(path: String, fallback: Resource) -> Resource:
 	var loaded: Resource = ResourceLoader.load(path)
 	if loaded == null:
@@ -770,6 +791,7 @@ func _clear_entity_children() -> void:
 		child.queue_free()
 	offense_players.clear()
 	defense_players.clear()
+	player_visual_memory.clear()
 
 
 func _create_default_team(is_home: bool) -> TeamData:
@@ -874,6 +896,8 @@ func begin_test_mode(seed: int) -> void:
 	context.deterministic_mode = true
 	context.current_seed = seed
 	rng.reseed(seed)
+	_reseed_visual_rng(seed)
+	player_visual_memory.clear()
 	log_writer.set_prefix("test_%d" % seed)
 	log_writer.clear_runtime_logs()
 
@@ -888,6 +912,7 @@ func apply_test_setup(home_score: int, away_score: int, time_remaining: float) -
 func apply_scenario_setup(setup: Dictionary) -> void:
 	if setup.is_empty():
 		return
+	player_visual_memory.clear()
 	if setup.has("route_package"):
 		context.active_route_package = int(setup["route_package"])
 	if setup.has("gameplay_time_scale"):
@@ -1091,7 +1116,7 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 			court_projection.shadow_scale(player.world_position),
 			court_projection.depth_key(player.world_position)
 		)
-		player.sync_visual_state(_resolve_player_visual_state(player), _resolve_player_facing(player), delta)
+		player.sync_visual_state(_build_player_visual_request(player), delta)
 	if current_ballhandler != null and (context.current_state == GameState.State.LIVE_OFFENSE or context.current_state == GameState.State.SHOT_AIM):
 		_sync_ball_to_handler()
 	elif context.current_state == GameState.State.STEAL_RESOLVE and current_steal_holder != null:
@@ -1268,31 +1293,138 @@ func _format_clock_text(time_remaining: float) -> String:
 	return "%d:%02d" % [total_seconds / 60, total_seconds % 60]
 
 
-func _resolve_player_visual_state(player: PlayerController) -> String:
+func _build_player_visual_request(player: PlayerController):
+	var family: String = _resolve_player_animation_family(player)
+	var memory: Dictionary = player_visual_memory.get(player, {})
+	var variant_count: int = _get_variant_count_for_family(family)
+	var variant_index: int = 0
+	if variant_count > 1 and str(memory.get("family", "")) == family:
+		variant_index = clampi(int(memory.get("variant_index", 0)), 0, variant_count - 1)
+	elif variant_count > 1 and visual_rng != null:
+		variant_index = visual_rng.randi_range(0, variant_count - 1)
+	var action_vector: Vector2 = _resolve_player_action_vector(player, family)
+	var mirror_west: bool = bool(memory.get("mirror_west", false))
+	if action_vector.length_squared() > 0.001:
+		mirror_west = action_vector.normalized().x < -0.12
+	var force_restart: bool = str(memory.get("family", "")) != family or int(memory.get("variant_index", -1)) != variant_index
+	player_visual_memory[player] = {
+		"family": family,
+		"variant_index": variant_index,
+		"mirror_west": mirror_west,
+	}
+	return PLAYER_VISUAL_REQUEST_SCRIPT.new(family, variant_index, mirror_west, player.is_controlled, force_restart)
+
+
+func _resolve_player_animation_family(player: PlayerController) -> String:
+	var speed: float = _get_player_visual_speed(player)
+	if player.jump_pose_timer > 0.0:
+		return "jump_contest"
 	if player.shot_pose_timer > 0.0:
-		return "shoot"
+		return _resolve_shot_release_family(player)
 	if player.catch_pose_timer > 0.0:
-		return "catch"
+		return "ball_hold_secure"
 	if player == current_ballhandler and context.current_state == GameState.State.SHOT_AIM:
-		return "aim"
-	if player.velocity.length() > 18.0:
-		return "move"
-	if player == current_ballhandler and context.current_state == GameState.State.LIVE_OFFENSE and current_move_magnitude > 0.08:
-		return "move"
-	return "idle"
+		return "shot_aim"
+	if player.has_ball:
+		if speed > player_animation_config.small_move_speed_threshold:
+			return "ball_move_run"
+		if speed > player_animation_config.stationary_speed_threshold:
+			return "ball_move_small"
+		if _is_player_pressured(player):
+			return "ball_idle_pressured"
+		return "ball_idle_open"
+	if not player.is_offense:
+		return _resolve_defender_animation_family(player, speed)
+	if speed > player_animation_config.stationary_speed_threshold:
+		return "off_ball_run"
+	return "no_ball_idle"
 
 
-func _resolve_player_facing(player: PlayerController) -> Vector2:
-	if player == current_ballhandler:
-		if context.current_state == GameState.State.SHOT_AIM or player.shot_pose_timer > 0.0:
-			return (court_config.hoop_position - player.world_position).normalized()
-		if context.current_state == GameState.State.LIVE_OFFENSE and current_move_direction.length() > 0.08:
-			return current_move_direction.normalized()
+func _resolve_shot_release_family(player: PlayerController) -> String:
+	var to_hoop: Vector2 = court_config.hoop_position - player.world_position
+	var distance_to_hoop: float = to_hoop.length()
+	if distance_to_hoop > player_animation_config.close_finish_radius:
+		return "jumper_release"
+	var release_vector: Vector2 = _resolve_player_motion_vector(player)
+	var toward_hoop: bool = false
+	if release_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
+		toward_hoop = release_vector.normalized().dot(to_hoop.normalized()) >= player_animation_config.toward_hoop_dot_threshold
+	if distance_to_hoop <= player_animation_config.dunk_finish_radius and toward_hoop:
+		if absf(player.world_position.x - court_config.hoop_position.x) >= player_animation_config.side_dunk_lateral_threshold:
+			return "close_finish_side_dunk"
+		return "close_finish_dunk"
+	return "close_finish_layup"
+
+
+func _resolve_defender_animation_family(player: PlayerController, speed: float) -> String:
+	var guard_target: Vector2 = _get_defender_guard_target(player)
+	var recover_distance: float = player.world_position.distance_to(guard_target)
+	if speed > player_animation_config.small_move_speed_threshold or recover_distance > 28.0:
+		return "guard_run"
+	if speed > player_animation_config.stationary_speed_threshold:
+		return "guard_shuffle"
+	return "guard_idle"
+
+
+func _resolve_player_action_vector(player: PlayerController, family: String) -> Vector2:
+	match family:
+		"shot_aim", "jumper_release", "close_finish_layup", "close_finish_dunk", "close_finish_side_dunk":
+			return court_config.hoop_position - player.world_position
+		"ball_move_small", "ball_move_run", "off_ball_run":
+			return _resolve_player_motion_vector(player)
+		"ball_idle_open", "ball_idle_pressured":
+			return court_config.hoop_position - player.world_position
+		"ball_hold_secure":
+			if player.is_offense:
+				return court_config.hoop_position - player.world_position
+			return _get_defender_assignment_vector(player)
+		"guard_run":
+			return _get_defender_guard_target(player) - player.world_position
+		"guard_shuffle", "guard_idle", "jump_contest":
+			return _get_defender_assignment_vector(player)
+		_:
+			return Vector2.ZERO
+
+
+func _resolve_player_motion_vector(player: PlayerController) -> Vector2:
+	if player == current_ballhandler and context.current_state == GameState.State.LIVE_OFFENSE and current_move_direction.length() > 0.08:
+		return current_move_direction
 	if player.velocity.length() > 1.0:
-		return player.velocity.normalized()
-	if player == shot_owner and context.current_state == GameState.State.SHOT_IN_FLIGHT:
-		return (court_config.hoop_position - player.world_position).normalized()
+		return player.velocity
 	return Vector2.ZERO
+
+
+func _get_player_visual_speed(player: PlayerController) -> float:
+	if player == current_ballhandler and context.current_state == GameState.State.LIVE_OFFENSE and current_move_direction.length() > 0.08:
+		return player.velocity.length()
+	return player.velocity.length()
+
+
+func _is_player_pressured(player: PlayerController) -> bool:
+	var defender: PlayerController = defense_controller.get_assigned_defender(player)
+	return defender != null and defender.world_position.distance_to(player.world_position) <= defense_config.pressure_radius
+
+
+func _get_defender_guard_target(defender: PlayerController) -> Vector2:
+	var assignment: PlayerController = defense_controller.assignments.get(defender, null) as PlayerController
+	if assignment == null:
+		return defender.world_position
+	var to_hoop: Vector2 = court_config.hoop_position - assignment.world_position
+	if to_hoop.length_squared() <= 0.001:
+		return assignment.world_position
+	return assignment.world_position + to_hoop.normalized() * defense_config.guard_distance
+
+
+func _get_defender_assignment_vector(defender: PlayerController) -> Vector2:
+	var assignment: PlayerController = defense_controller.assignments.get(defender, null) as PlayerController
+	if assignment == null:
+		return Vector2.ZERO
+	return assignment.world_position - defender.world_position
+
+
+func _get_variant_count_for_family(family: String) -> int:
+	var rows: Array = PlayerVisual.FAMILY_ROWS.get(family, [1])
+	return rows.size()
 
 
 func _begin_steal_resolve(stealer: PlayerController) -> void:

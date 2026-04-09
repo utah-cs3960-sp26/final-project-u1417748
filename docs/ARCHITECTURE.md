@@ -33,6 +33,7 @@
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
+- owns the full-sheet animation classifier, including family selection, deterministic variant locking, close-finish layup/dunk routing, westward mirroring, and controlled-player outline visibility
 - exposes deterministic hooks used only by the automated harness
 
 ## Core Systems
@@ -57,7 +58,10 @@
   - composes the hoop body plus a three-piece hoop stack around the gameplay rim anchor: a rear/full hoop silhouette, a front rim lip, and a front net body with a small swish animation
   - exposes render-phase z-order helpers so the ball can be layered in front of the backboard, inside the rim mouth, behind the hanging net, or behind the board only for true over-the-top paths
 - `PlayerController` + `PlayerVisual`
-  - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, facing, animation playback, and the intentionally oversized mobile-readable sprite presentation
+  - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, row playback, deterministic variant resolution, and the intentionally oversized mobile-readable sprite presentation
+  - use a `PlayerVisualRequest` contract carrying animation family, variant index, westward mirroring, controlled-player outline visibility, and restart intent instead of the old plain string state
+  - treat the sprite sheet as east-facing art by default and mirror westward motion in presentation only
+  - keep outline rendering separate from fill playback so only the currently controlled player shows the matching outline sheet
 - `ReboundController`
   - rebound candidate scoring and winner selection
 - `RouteController` + `SpacingSolver`

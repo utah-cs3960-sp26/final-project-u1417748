@@ -2,10 +2,57 @@ class_name PlayerVisual
 extends Node2D
 
 const FRAME_SIZE: Vector2i = Vector2i(64, 64)
+const ROW_FRAME_COUNTS: Array[int] = [4, 5, 23, 7, 8, 7, 14, 17, 7, 29, 5, 5, 15, 15, 14, 18, 15, 5, 5, 7, 4, 6]
 const HOME_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW.png")
 const HOME_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW_outline.png")
 const AWAY_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW.png")
 const AWAY_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW_outline.png")
+
+const FAMILY_ROWS: Dictionary = {
+	"no_ball_idle": [1],
+	"ball_idle_open": [2, 3, 11],
+	"ball_hold_secure": [5],
+	"ball_idle_pressured": [6, 7],
+	"ball_move_small": [12],
+	"ball_move_run": [9],
+	"shot_aim": [4],
+	"jumper_release": [8, 10],
+	"close_finish_layup": [14, 17],
+	"close_finish_dunk": [13, 15],
+	"close_finish_side_dunk": [16],
+	"guard_idle": [18, 21],
+	"guard_shuffle": [19],
+	"guard_run": [20],
+	"off_ball_run": [20],
+	"jump_contest": [22],
+}
+
+const FAMILY_FPS: Dictionary = {
+	"no_ball_idle": 5.0,
+	"ball_idle_open": 6.0,
+	"ball_hold_secure": 6.0,
+	"ball_idle_pressured": 7.0,
+	"ball_move_small": 8.0,
+	"ball_move_run": 10.0,
+	"shot_aim": 8.0,
+	"jumper_release": 16.0,
+	"close_finish_layup": 16.0,
+	"close_finish_dunk": 16.0,
+	"close_finish_side_dunk": 16.0,
+	"guard_idle": 5.0,
+	"guard_shuffle": 8.0,
+	"guard_run": 10.0,
+	"off_ball_run": 10.0,
+	"jump_contest": 14.0,
+}
+
+const NON_LOOPING_FAMILIES: Dictionary = {
+	"jumper_release": true,
+	"close_finish_layup": true,
+	"close_finish_dunk": true,
+	"close_finish_side_dunk": true,
+	"jump_contest": true,
+}
 
 @export var sprite_offset: Vector2 = Vector2(0.0, -72.0)
 @export var sprite_base_scale: float = 2.3
@@ -13,65 +60,20 @@ const AWAY_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Characte
 var _fill_sprite: Sprite2D
 var _outline_sprite: Sprite2D
 var _team_key: String = "home"
-var _animation_state: String = "idle"
-var _direction_bucket: String = "down"
+var _animation_family: String = "no_ball_idle"
+var _variant_index: int = 0
+var _current_row_index: int = 1
 var _frame_index: int = 0
 var _frame_elapsed: float = 0.0
-var _last_non_zero_facing: Vector2 = Vector2.DOWN
-
-var _profiles: Dictionary = {
-	"idle_down": {
-		"frames": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
-		"fps": 5.0,
-		"loop": true,
-	},
-	"move_down": {
-		"frames": [Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1)],
-		"fps": 10.0,
-		"loop": true,
-	},
-	"idle_side": {
-		"frames": [Vector2i(0, 10), Vector2i(1, 10), Vector2i(2, 10), Vector2i(3, 10), Vector2i(4, 10)],
-		"fps": 5.0,
-		"loop": true,
-	},
-	"move_side": {
-		"frames": [Vector2i(0, 11), Vector2i(1, 11), Vector2i(2, 11), Vector2i(3, 11), Vector2i(4, 11)],
-		"fps": 10.0,
-		"loop": true,
-	},
-	"idle_up": {
-		"frames": [Vector2i(0, 17), Vector2i(1, 17), Vector2i(2, 17), Vector2i(3, 17), Vector2i(4, 17)],
-		"fps": 5.0,
-		"loop": true,
-	},
-	"move_up": {
-		"frames": [Vector2i(0, 18), Vector2i(1, 18), Vector2i(2, 18), Vector2i(3, 18), Vector2i(4, 18)],
-		"fps": 10.0,
-		"loop": true,
-	},
-	"aim": {
-		"frames": [Vector2i(0, 12), Vector2i(1, 12), Vector2i(2, 12), Vector2i(3, 12), Vector2i(4, 12)],
-		"fps": 8.0,
-		"loop": true,
-	},
-	"shoot": {
-		"frames": [Vector2i(0, 13), Vector2i(1, 13), Vector2i(2, 13), Vector2i(3, 13), Vector2i(4, 13), Vector2i(5, 13)],
-		"fps": 14.0,
-		"loop": false,
-	},
-	"catch": {
-		"frames": [Vector2i(0, 19), Vector2i(1, 19), Vector2i(2, 19), Vector2i(3, 19), Vector2i(4, 19), Vector2i(5, 19)],
-		"fps": 12.0,
-		"loop": false,
-	},
-}
+var _mirror_west: bool = false
+var _show_outline: bool = false
 
 
 func _ready() -> void:
 	_ensure_sprites()
 	_apply_team_textures()
-	_apply_profile_frame()
+	_apply_current_frame()
+	_apply_sprite_flags()
 
 
 func set_team_key(team_key: String) -> void:
@@ -79,45 +81,59 @@ func set_team_key(team_key: String) -> void:
 	_apply_team_textures()
 
 
-func apply_state(animation_state: String, facing_direction: Vector2, delta: float) -> void:
+func apply_state(request, delta: float) -> void:
 	_ensure_sprites()
-	var effective_facing: Vector2 = facing_direction
-	if effective_facing.length_squared() > 0.001:
-		_last_non_zero_facing = effective_facing.normalized()
-	else:
-		effective_facing = _last_non_zero_facing
-	var next_bucket: String = _bucket_for_facing(effective_facing)
-	var next_profile_key: String = _profile_key_for(animation_state, next_bucket)
-	var current_profile_key: String = _profile_key_for(_animation_state, _direction_bucket)
-	if next_profile_key != current_profile_key:
-		_animation_state = animation_state
-		_direction_bucket = next_bucket
+	if request == null:
+		return
+	var next_family: String = request.animation_family if FAMILY_ROWS.has(request.animation_family) else "no_ball_idle"
+	var next_rows: Array = FAMILY_ROWS.get(next_family, [1])
+	var next_variant: int = clampi(request.variant_index, 0, maxi(next_rows.size() - 1, 0))
+	var next_row: int = int(next_rows[next_variant])
+	var should_restart: bool = request.force_restart \
+		or next_family != _animation_family \
+		or next_variant != _variant_index \
+		or next_row != _current_row_index
+	_animation_family = next_family
+	_variant_index = next_variant
+	_current_row_index = next_row
+	_mirror_west = request.mirror_west
+	_show_outline = request.show_outline
+	if should_restart:
 		_frame_index = 0
 		_frame_elapsed = 0.0
-	else:
-		_animation_state = animation_state
-		_direction_bucket = next_bucket
-	var profile: Dictionary = _get_profile(next_profile_key)
-	var frames: Array = profile.get("frames", [])
-	if frames.is_empty():
-		return
-	var fps: float = float(profile.get("fps", 1.0))
-	if delta > 0.0 and frames.size() > 1 and fps > 0.0:
-		_frame_elapsed += delta
-		var frame_duration: float = 1.0 / fps
-		while _frame_elapsed >= frame_duration:
-			_frame_elapsed -= frame_duration
-			_frame_index += 1
-			if bool(profile.get("loop", true)):
-				_frame_index %= frames.size()
-			else:
-				_frame_index = mini(_frame_index, frames.size() - 1)
-	_apply_profile_frame()
-	_apply_direction_flip(effective_facing)
+	_advance_frames(delta)
+	_apply_current_frame()
+	_apply_sprite_flags()
 
 
 func has_configured_sprites() -> bool:
 	return _fill_sprite != null and _outline_sprite != null and _fill_sprite.texture != null
+
+
+func get_debug_animation_family() -> String:
+	return _animation_family
+
+
+func get_debug_row_index() -> int:
+	return _current_row_index
+
+
+func get_debug_variant_index() -> int:
+	return _variant_index
+
+
+func get_debug_flip_h() -> bool:
+	return _fill_sprite != null and _fill_sprite.flip_h
+
+
+func is_outline_visible() -> bool:
+	return _outline_sprite != null and _outline_sprite.visible
+
+
+func get_debug_fill_texture_path() -> String:
+	if _fill_sprite == null or _fill_sprite.texture == null:
+		return ""
+	return _fill_sprite.texture.resource_path
 
 
 func _ensure_sprites() -> void:
@@ -152,44 +168,54 @@ func _apply_team_textures() -> void:
 		_outline_sprite.texture = HOME_OUTLINE_TEXTURE
 
 
-func _apply_profile_frame() -> void:
+func _advance_frames(delta: float) -> void:
+	var frame_count: int = _get_frame_count_for_row(_current_row_index)
+	if delta <= 0.0 or frame_count <= 1:
+		return
+	var fps: float = float(FAMILY_FPS.get(_animation_family, 6.0))
+	if fps <= 0.0:
+		return
+	var frame_duration: float = 1.0 / fps
+	_frame_elapsed += delta
+	while _frame_elapsed >= frame_duration:
+		_frame_elapsed -= frame_duration
+		_frame_index += 1
+		if _is_looping_family(_animation_family):
+			_frame_index %= frame_count
+		else:
+			_frame_index = mini(_frame_index, frame_count - 1)
+
+
+func _apply_current_frame() -> void:
 	if _fill_sprite == null or _outline_sprite == null:
 		return
-	var profile_key: String = _profile_key_for(_animation_state, _direction_bucket)
-	var profile: Dictionary = _get_profile(profile_key)
-	var frames: Array = profile.get("frames", [])
-	if frames.is_empty():
+	var frame_count: int = _get_frame_count_for_row(_current_row_index)
+	if frame_count <= 0:
 		return
-	_frame_index = clampi(_frame_index, 0, frames.size() - 1)
-	var frame: Vector2i = frames[_frame_index]
-	var region: Rect2 = Rect2(frame.x * FRAME_SIZE.x, frame.y * FRAME_SIZE.y, FRAME_SIZE.x, FRAME_SIZE.y)
+	_frame_index = clampi(_frame_index, 0, frame_count - 1)
+	var region: Rect2 = Rect2(
+		_frame_index * FRAME_SIZE.x,
+		(_current_row_index - 1) * FRAME_SIZE.y,
+		FRAME_SIZE.x,
+		FRAME_SIZE.y
+	)
 	_fill_sprite.region_rect = region
 	_outline_sprite.region_rect = region
 
 
-func _apply_direction_flip(facing_direction: Vector2) -> void:
+func _apply_sprite_flags() -> void:
 	if _fill_sprite == null or _outline_sprite == null:
 		return
-	var flip_h: bool = absf(facing_direction.x) > 0.12 and facing_direction.x < 0.0
-	_fill_sprite.flip_h = flip_h
-	_outline_sprite.flip_h = flip_h
+	_fill_sprite.flip_h = _mirror_west
+	_outline_sprite.flip_h = _mirror_west
+	_outline_sprite.visible = _show_outline
 
 
-func _bucket_for_facing(facing_direction: Vector2) -> String:
-	if absf(facing_direction.x) > absf(facing_direction.y):
-		return "side"
-	if facing_direction.y < -0.1:
-		return "up"
-	return "down"
+func _get_frame_count_for_row(row_index: int) -> int:
+	if row_index < 1 or row_index > ROW_FRAME_COUNTS.size():
+		return ROW_FRAME_COUNTS[0]
+	return ROW_FRAME_COUNTS[row_index - 1]
 
 
-func _profile_key_for(animation_state: String, direction_bucket: String) -> String:
-	match animation_state:
-		"idle", "move":
-			return "%s_%s" % [animation_state, direction_bucket]
-		_:
-			return animation_state
-
-
-func _get_profile(profile_key: String) -> Dictionary:
-	return _profiles.get(profile_key, _profiles["idle_down"])
+func _is_looping_family(animation_family: String) -> bool:
+	return not NON_LOOPING_FAMILIES.has(animation_family)

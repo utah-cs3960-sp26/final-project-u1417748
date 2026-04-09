@@ -68,6 +68,24 @@ Resource-backed batches under `data/balance/`:
 - difficulty ordering
 - rebound distribution
 
+### Animation Coverage
+
+`tests/TestRunner.gd` now uses stable `PlayerController` / `PlayerVisual` debug hooks to assert:
+
+- home players binding to `Character1_NEW.png`
+- away players binding to `Character2_NEW.png`
+- controlled-player-only outline rendering and outline transfer when control changes
+- stationary no-ball idle
+- stationary with-ball idle versus pressured idle
+- small-move dribble versus run dribble
+- off-ball run
+- guard idle versus shuffle versus run
+- westward mirroring
+- jumper-release variant locking
+- layup selection near the hoop
+- dunk and side-dunk selection inside the closer finish radius
+- jump-contest row selection for the actual blocking defender
+
 ## Commands
 
 Import / script registration:
@@ -112,6 +130,10 @@ Smoke game scene:
 - confirm the hoop body plus rear/full hoop, front rim lip, and front net body all stay aligned on the painted top-rim area
 - confirm normal makes render in front of the backboard, meet the rim plane, immediately turn downward into the hanging net during the guided descent, and only go behind the board when thrown over it
 - confirm the score text does not appear while the ball is still above the rim or behind the backboard on a made shot
+- confirm only the currently controlled player shows the outline sheet
+- confirm westward dribble/run movement mirrors the player sprite along X
+- confirm a stationary ballhandler can show open dribble or pressured dribble idles while off-ball teammates stay on the no-ball idle/run rows
+- confirm close shots near the rim can show layups, straight dunks, or side dunks depending on approach
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases
 - force a miss and observe rebound resolution

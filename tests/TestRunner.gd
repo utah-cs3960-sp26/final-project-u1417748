@@ -537,6 +537,112 @@ func _run_pure_logic() -> void:
 	if pass_positions.size() >= 3:
 		_assert_true(pass_positions[0].distance_to(pass_positions[-1]) > 40.0, "pass flight advances on screen", "%0.2f" % pass_positions[0].distance_to(pass_positions[-1]))
 		_assert_true(pass_alignment_error < 0.01, "in-flight ball stays aligned with projection", str(pass_alignment_error))
+	_reset_visual_test_state(smoke_coordinator)
+	var visual_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
+	var visual_rc: PlayerController = smoke_coordinator.get_offense_player_by_role("RC")
+	var visual_pg_defender: PlayerController = smoke_coordinator.get_defense_player_by_role("PG")
+	_assert_true(visual_pg != null and visual_pg.get_debug_fill_texture_path().contains("Character1_NEW.png"), "home player uses Character1 sheet", visual_pg.get_debug_fill_texture_path() if visual_pg != null else "")
+	_assert_true(visual_pg_defender != null and visual_pg_defender.get_debug_fill_texture_path().contains("Character2_NEW.png"), "away player uses Character2 sheet", visual_pg_defender.get_debug_fill_texture_path() if visual_pg_defender != null else "")
+	if visual_pg != null and visual_rc != null and visual_pg_defender != null:
+		smoke_coordinator.player_visual_memory[visual_pg] = {"family": "ball_idle_open", "variant_index": 2, "mirror_west": false}
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg, "ball_idle_open", 11, false, true, "controlled open idle")
+		_assert_true(not visual_rc.is_outline_visible(), "non-controlled offense outline hidden", "")
+		_assert_true(not visual_pg_defender.is_outline_visible(), "defender outline hidden", "")
+
+	_reset_visual_test_state(smoke_coordinator, "RC")
+	visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+	visual_rc = smoke_coordinator.get_offense_player_by_role("RC")
+	if visual_pg != null and visual_rc != null:
+		_assert_true(not visual_pg.is_outline_visible() and visual_rc.is_outline_visible(), "outline follows controlled player", "%s %s" % [visual_pg.is_outline_visible(), visual_rc.is_outline_visible()])
+
+	_reset_visual_test_state(smoke_coordinator)
+	visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+	visual_rc = smoke_coordinator.get_offense_player_by_role("RC")
+	visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+	if visual_rc != null:
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball idle")
+	if visual_pg != null and visual_pg_defender != null:
+		smoke_coordinator.player_visual_memory[visual_pg] = {"family": "ball_idle_open", "variant_index": 2, "mirror_west": false}
+		visual_pg_defender.world_position += Vector2(-180.0, 60.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg, "ball_idle_open", 11, false, true, "stationary open dribble")
+		smoke_coordinator.player_visual_memory[visual_pg] = {"family": "ball_idle_pressured", "variant_index": 1, "mirror_west": false}
+		visual_pg_defender.world_position = visual_pg.world_position + Vector2(-24.0, 12.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg, "ball_idle_pressured", 7, false, true, "pressured dribble idle")
+		smoke_coordinator.current_move_direction = Vector2.RIGHT
+		smoke_coordinator.current_move_magnitude = 0.6
+		visual_pg.velocity = Vector2.RIGHT * 82.0
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg, "ball_move_small", 12, false, true, "slow dribble move")
+		smoke_coordinator.current_move_direction = Vector2.LEFT
+		smoke_coordinator.current_move_magnitude = 1.0
+		visual_pg.velocity = Vector2.LEFT * 180.0
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg, "ball_move_run", 9, true, true, "run dribble west")
+		smoke_coordinator.current_move_direction = Vector2.ZERO
+		smoke_coordinator.current_move_magnitude = 0.0
+		if visual_rc != null:
+			visual_rc.velocity = Vector2.RIGHT * 140.0
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "off_ball_run", 20, false, false, "off-ball run")
+		var guard_target: Vector2 = smoke_coordinator._get_defender_guard_target(visual_pg_defender)
+		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_idle", "variant_index": 1, "mirror_west": false}
+		visual_pg_defender.world_position = guard_target
+		visual_pg_defender.velocity = Vector2.ZERO
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_idle", 21, false, false, "guard idle")
+		visual_pg_defender.velocity = Vector2.RIGHT * 44.0
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_shuffle", 19, false, false, "guard shuffle")
+		visual_pg_defender.world_position -= Vector2(120.0, 0.0)
+		visual_pg_defender.velocity = Vector2.RIGHT * 180.0
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_run", 20, false, false, "guard run")
+		visual_pg.trigger_shot_pose(0.28)
+		visual_pg.world_position = Vector2(520.0, 1360.0)
+		visual_pg.velocity = Vector2.RIGHT * 120.0
+		smoke_coordinator.current_move_direction = Vector2.RIGHT
+		smoke_coordinator.current_move_magnitude = 1.0
+		smoke_coordinator.player_visual_memory.erase(visual_pg)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		var jumper_variant: int = visual_pg.get_debug_variant_index()
+		var jumper_row: int = visual_pg.get_debug_row_index()
+		_assert_true(visual_pg.get_debug_animation_family() == "jumper_release", "jumper release family", visual_pg.get_debug_animation_family())
+		smoke_coordinator._sync_projection_visuals(0.1)
+		_assert_true(visual_pg.get_debug_variant_index() == jumper_variant and visual_pg.get_debug_row_index() == jumper_row, "jumper release variant stays locked", "%s %s" % [visual_pg.get_debug_variant_index(), visual_pg.get_debug_row_index()])
+		_reset_visual_test_state(smoke_coordinator)
+		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
+		if visual_pg != null:
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(0.0, 170.0)
+			visual_pg.trigger_shot_pose(0.28)
+			smoke_coordinator.player_visual_memory[visual_pg] = {"family": "close_finish_layup", "variant_index": 1, "mirror_west": false}
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_pg, "close_finish_layup", 17, false, true, "near-rim layup")
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(20.0, 130.0)
+			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 180.0
+			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized()
+			smoke_coordinator.current_move_magnitude = 1.0
+			visual_pg.trigger_shot_pose(0.28)
+			smoke_coordinator.player_visual_memory[visual_pg] = {"family": "close_finish_dunk", "variant_index": 1, "mirror_west": false}
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_pg, "close_finish_dunk", 15, true, true, "straight dunk")
+			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(80.0, 80.0)
+			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 190.0
+			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized()
+			smoke_coordinator.current_move_magnitude = 1.0
+			visual_pg.trigger_shot_pose(0.28)
+			smoke_coordinator.player_visual_memory[visual_pg] = {"family": "close_finish_side_dunk", "variant_index": 0, "mirror_west": true}
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_pg, "close_finish_side_dunk", 16, true, true, "side dunk")
+		_reset_visual_test_state(smoke_coordinator)
+		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
+		if visual_pg_defender != null:
+			visual_pg_defender.trigger_jump_pose(0.22)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_pg_defender, "jump_contest", 22, false, false, "jump contest")
 	game_root.queue_free()
 	for player in players:
 		player.free()
@@ -584,6 +690,54 @@ func _assert_true(condition: bool, name: String, detail: String) -> void:
 	pure_logic_results.append(result)
 	if not condition:
 		total_failed += 1
+
+
+func _make_visual_test_setup(ballhandler_role: String = "PG") -> Dictionary:
+	return {
+		"ballhandler_role": ballhandler_role,
+		"defense_positions": {
+			"LC": Vector2(300, 620),
+			"LW": Vector2(300, 1060),
+			"PG": Vector2(320, 1460),
+			"RC": Vector2(830, 640),
+			"RW": Vector2(800, 1060),
+		},
+		"offense_positions": {
+			"LC": Vector2(260, 640),
+			"LW": Vector2(360, 1040),
+			"PG": Vector2(520, 1360),
+			"RC": Vector2(620, 900),
+			"RW": Vector2(740, 1100),
+		},
+	}
+
+
+func _reset_visual_test_state(coordinator: GameCoordinator, ballhandler_role: String = "PG", seed: int = 2409) -> void:
+	coordinator.begin_test_mode(seed)
+	coordinator.apply_scenario_setup(_make_visual_test_setup(ballhandler_role))
+	for player in coordinator.offense_players + coordinator.defense_players:
+		player.velocity = Vector2.ZERO
+		player.shot_pose_timer = 0.0
+		player.catch_pose_timer = 0.0
+		player.jump_pose_timer = 0.0
+	coordinator.current_move_direction = Vector2.ZERO
+	coordinator.current_move_magnitude = 0.0
+	coordinator.player_visual_memory.clear()
+	coordinator._sync_projection_visuals(0.0)
+
+
+func _assert_player_visual(
+	player: PlayerController,
+	expected_family: String,
+	expected_row: int,
+	expected_flip: bool,
+	expected_outline: bool,
+	name_prefix: String
+) -> void:
+	_assert_true(player.get_debug_animation_family() == expected_family, "%s family" % name_prefix, player.get_debug_animation_family())
+	_assert_true(player.get_debug_row_index() == expected_row, "%s row" % name_prefix, str(player.get_debug_row_index()))
+	_assert_true(player.get_debug_flip_h() == expected_flip, "%s flip" % name_prefix, str(player.get_debug_flip_h()))
+	_assert_true(player.is_outline_visible() == expected_outline, "%s outline" % name_prefix, str(player.is_outline_visible()))
 
 
 func _run_hoop_render_phase_smoke() -> void:

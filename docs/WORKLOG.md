@@ -162,3 +162,11 @@
 - moved held-ball radius, live-ball min/max radius, and hoop visual scale into `ProjectionConfig` so the court, ball, and hoop all scale from one presentation resource instead of mixed hardcoded render constants
 - retuned the hoop screen offset so the larger backboard and rim art still clear the 128 px HUD banner while the court art continues rendering behind it
 - extended pure-logic and smoke validation with fullscreen court bounds, hoop-over-HUD clearance, larger player presentation, held-ball hand alignment, and in-flight ball/projection alignment coverage
+
+### Full-sheet player animation overhaul
+
+- added `PlayerAnimationConfig` plus a runtime `PlayerVisualRequest` contract so `GameCoordinator` now classifies player presentation into full-sheet animation families without moving gameplay ownership into the art layer
+- replaced the old coarse `idle/move/aim/shoot/catch` player art pass with row-driven playback covering no-ball idle, multiple with-ball idle/dribble states, jumper releases, layups, dunks, side dunks, guard states, off-ball runs, and jump contests
+- collapsed the facing model to east-facing sprite art plus westward X mirroring, and restricted outline rendering to the currently controlled player while leaving all other players fill-only
+- added a short defender jump pose, hooked the block check to identify the actual blocker, and routed close-finish shots into layup, straight-dunk, or side-dunk presentation using hoop proximity and approach direction
+- extended the headless suite with exact row, flip, outline, fill-texture, variant-lock, layup/dunk, and guard-state assertions so the full-sheet mapping now has deterministic regression coverage

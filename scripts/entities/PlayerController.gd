@@ -21,6 +21,7 @@ var projected_shadow_scale: float = 1.0
 var input_hit_radius: float = 58.0
 var shot_pose_timer: float = 0.0
 var catch_pose_timer: float = 0.0
+var jump_pose_timer: float = 0.0
 
 var _label: Label
 var _visual: PlayerVisual
@@ -125,13 +126,14 @@ func apply_projection(
 	queue_redraw()
 
 
-func sync_visual_state(animation_state: String, facing_direction: Vector2, delta: float) -> void:
+func sync_visual_state(request, delta: float) -> void:
 	_ensure_visual()
 	shot_pose_timer = maxf(shot_pose_timer - delta, 0.0)
 	catch_pose_timer = maxf(catch_pose_timer - delta, 0.0)
+	jump_pose_timer = maxf(jump_pose_timer - delta, 0.0)
 	if _visual == null:
 		return
-	_visual.apply_state(animation_state, facing_direction, delta)
+	_visual.apply_state(request, delta)
 
 
 func trigger_shot_pose(duration: float = 0.28) -> void:
@@ -142,8 +144,36 @@ func trigger_catch_pose(duration: float = 0.18) -> void:
 	catch_pose_timer = maxf(duration, 0.0)
 
 
+func trigger_jump_pose(duration: float = 0.18) -> void:
+	jump_pose_timer = maxf(duration, 0.0)
+
+
 func has_sprite_visuals() -> bool:
 	return _visual != null and _visual.has_configured_sprites()
+
+
+func get_debug_animation_family() -> String:
+	return _visual.get_debug_animation_family() if _visual != null else ""
+
+
+func get_debug_row_index() -> int:
+	return _visual.get_debug_row_index() if _visual != null else -1
+
+
+func get_debug_variant_index() -> int:
+	return _visual.get_debug_variant_index() if _visual != null else -1
+
+
+func get_debug_flip_h() -> bool:
+	return _visual.get_debug_flip_h() if _visual != null else false
+
+
+func is_outline_visible() -> bool:
+	return _visual.is_outline_visible() if _visual != null else false
+
+
+func get_debug_fill_texture_path() -> String:
+	return _visual.get_debug_fill_texture_path() if _visual != null else ""
 
 
 func get_screen_anchor() -> Vector2:

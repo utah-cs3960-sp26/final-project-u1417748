@@ -117,6 +117,15 @@ Additional pure-logic coverage now includes:
 - enlarged player presentation under the fullscreen framing
 - held-ball hand alignment on the first rendered frame
 - in-flight ball/projection alignment during the smoke pass
+- home player fill textures binding to `Character1_NEW.png`
+- away player fill textures binding to `Character2_NEW.png`
+- controlled-player-only outline rendering plus outline transfer when control changes
+- exact row assertions for no-ball idle, open dribble idle, pressured dribble idle, small dribble move, run dribble, off-ball run, guard idle, guard shuffle, guard run, and jump contest
+- westward mirroring assertions for run dribbles and close-finish dunks
+- deterministic jumper-release variant locking across repeated syncs
+- near-rim layup row selection
+- straight-dunk row selection inside the stricter dunk gate
+- side-dunk row selection when the approach stays close and lateral
 - hoop render-phase z-band ordering
 - coordinator ball render-phase accessors
 - score follow-through remaining active immediately after a made basket
@@ -142,6 +151,20 @@ Additional pure-logic coverage now includes:
 - Godot emitted the known macOS `get_system_ca_certificates` warning in headless mode. It did not block import, tests, or smoke validation.
 - The current fullscreen-rescale validation completed in-sandbox; `user://logs` writes succeeded during the suite rerun.
 - The current headless test run exits with non-failing Godot leak/resource warnings after the suite summary. Gameplay and assertions still pass; the warning is tracked as a non-blocking issue.
+
+## 2026-04-09 Full-Sheet Animation Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 176
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now validates exact animation families, resolved rows, variant locking, X-flip state, outline visibility, and fill-sheet selection through the new player visual debug accessors.
+  - Close-finish presentation is covered with deterministic layup, straight-dunk, and side-dunk assertions.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
 
 ## 2026-04-09 Pass Flight And Steal Resolve Validation
 

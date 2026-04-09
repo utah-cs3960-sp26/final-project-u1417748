@@ -51,15 +51,19 @@ func is_contested(shooter: PlayerController) -> bool:
 
 
 func can_block_shot(shooter: PlayerController, rng: GameRng) -> bool:
+	return get_blocking_defender(shooter, rng) != null
+
+
+func get_blocking_defender(shooter: PlayerController, rng: GameRng) -> PlayerController:
 	var defender: PlayerController = get_assigned_defender(shooter)
 	if defender == null:
-		return false
+		return null
 	var distance_value: float = defender.world_position.distance_to(shooter.world_position)
 	if distance_value > defense_config.block_radius:
-		return false
+		return null
 	var data: PlayerData = defender.get_player_data()
 	var chance: float = clampf((float(data.block) / 100.0) * (1.0 - distance_value / defense_config.block_radius), 0.0, 0.4)
-	return rng.randf() < chance
+	return defender if rng.randf() < chance else null
 
 
 func should_trigger_pressure_turnover(
