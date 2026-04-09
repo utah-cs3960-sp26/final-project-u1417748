@@ -33,7 +33,12 @@ Covered by `tests/TestRunner.gd`:
 - through-net score follow-through flags
 - score-triggered net swish activation
 - 2PT / 3PT classification
-- pass interception separation
+- pass commit-roll failure on an otherwise eligible short lane
+- pass commit-roll success on a risky long/cross-court lane
+- committed defenders still being able to lose the live race
+- pass outcome race separation between receiver-first and defender-first cases
+- out-of-bounds pass resolution happening before later claims
+- multi-frame pass flight visual progression surviving coordinator projection sync
 - route target generation
 - rebound fallback generation
 - opponent sim validity
@@ -93,7 +98,11 @@ Smoke game scene:
 
 - run the project and confirm live gameplay appears immediately
 - move the ballhandler
-- pass to at least one teammate
+- pass to at least one teammate and confirm the ball visibly travels between players instead of teleporting
+- confirm a clean pass transfers control only after the live ball reaches the receiver
+- confirm a safe short pass usually reaches the target even if a defender was lane-eligible
+- confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
+- confirm a steal shows the defender securing the ball before the possession jump-cut
 - enter shot aim and confirm slow-motion + bottom red/green meter + visible preview dots
 - release once in green and confirm the ball visibly climbs into a dramatic arc and finishes through the hoop
 - release once in red and confirm a miss or block

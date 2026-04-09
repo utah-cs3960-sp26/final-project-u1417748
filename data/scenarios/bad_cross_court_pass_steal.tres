@@ -12,16 +12,31 @@ target_id = "RC"
 [sub_resource type="Resource" id="ScenarioAction_wait"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.25
+seconds = 0.18
 
 [sub_resource type="Resource" id="ScenarioAction_force_intercept"]
 script = ExtResource("2")
 kind = "force_pass_interception"
 
+[sub_resource type="Resource" id="ScenarioAction_wait_steal"]
+script = ExtResource("2")
+kind = "wait"
+seconds = 0.2
+
+[sub_resource type="Resource" id="ScenarioAction_assert_steal_state"]
+script = ExtResource("2")
+kind = "assert_state"
+value = "STEAL_RESOLVE"
+
+[sub_resource type="Resource" id="ScenarioAction_assert_steal_log"]
+script = ExtResource("2")
+kind = "assert_last_log_contains"
+value = "Pass intercepted"
+
 [sub_resource type="Resource" id="ScenarioAction_wait_resolve"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.4
+seconds = 0.72
 
 [sub_resource type="Resource" id="ScenarioExpectation_log"]
 script = ExtResource("3")
@@ -32,6 +47,11 @@ value = "Pass intercepted"
 script = ExtResource("3")
 kind = "state"
 value = "LIVE_OFFENSE"
+
+[sub_resource type="Resource" id="ScenarioExpectation_feedback"]
+script = ExtResource("3")
+kind = "feedback_contains"
+value = "STEAL!"
 
 [resource]
 script = ExtResource("1")
@@ -55,6 +75,6 @@ setup = {
 "RW": Vector2(660, 1060)
 }
 }
-actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait"), SubResource("ScenarioAction_force_intercept"), SubResource("ScenarioAction_wait_resolve")])
-expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_log"), SubResource("ScenarioExpectation_state")])
+actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait"), SubResource("ScenarioAction_force_intercept"), SubResource("ScenarioAction_wait_steal"), SubResource("ScenarioAction_assert_steal_state"), SubResource("ScenarioAction_assert_steal_log"), SubResource("ScenarioAction_wait_resolve")])
+expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_log"), SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_feedback")])
 tags = PackedStringArray("scenario", "pass", "steal")

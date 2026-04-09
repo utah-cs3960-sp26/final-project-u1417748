@@ -91,6 +91,10 @@ func _run_pure_logic() -> void:
 	var top_right: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.end.x, court_rect.position.y))
 	var bottom_left: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.position.x, court_rect.end.y))
 	var bottom_right: Vector2 = projection.world_to_screen_ground(court_rect.end)
+	_assert_true(absf(top_left.y) < 0.001 and absf(top_right.y) < 0.001, "projection maps court top to screen top", "")
+	_assert_true(absf(bottom_left.y - 1920.0) < 0.001 and absf(bottom_right.y - 1920.0) < 0.001, "projection maps court bottom to screen bottom", "")
+	_assert_true(absf(top_left.x) < 0.001 and absf(bottom_left.x) < 0.001, "projection maps left sideline to screen edge", "")
+	_assert_true(absf(top_right.x - 1080.0) < 0.001 and absf(bottom_right.x - 1080.0) < 0.001, "projection maps right sideline to screen edge", "")
 	_assert_true(absf((top_right.x - top_left.x) - (bottom_right.x - bottom_left.x)) < 0.001, "projection keeps court width constant", "")
 	var mid_world_y: float = court_rect.position.y + court_rect.size.y * 0.5
 	var mid_ground: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.get_center().x, mid_world_y))
@@ -267,31 +271,164 @@ func _run_pure_logic() -> void:
 	var pass_controller: PassController = PassController.new()
 	pass_controller.pass_config = PassConfig.new()
 	pass_controller.court_config = court
+	pass_controller.difficulty_config = DifficultyConfig.new()
+	var passer: PlayerController = PlayerController.new()
+	var passer_data: PlayerData = PlayerData.new()
+	passer_data.pass_accuracy = 88
+	passer.setup(passer_data, true, Color.BLUE)
 	var defender: PlayerController = PlayerController.new()
 	var defender_data: PlayerData = PlayerData.new()
-	defender_data.steal = 85
-	defender_data.perimeter_defense = 82
+	defender_data.steal = 92
+	defender_data.perimeter_defense = 88
+	defender_data.speed = 84
 	defender.setup(defender_data, false, Color.RED)
 	defender.world_position = Vector2(540.0, 720.0)
 	var short_target: PlayerController = PlayerController.new()
-	short_target.setup(PlayerData.new(), true, Color.BLUE)
+	var short_target_data: PlayerData = PlayerData.new()
+	short_target_data.catch_rating = 86
+	short_target_data.speed = 78
+	short_target.setup(short_target_data, true, Color.BLUE)
 	short_target.world_position = Vector2(600.0, 840.0)
 	var long_target: PlayerController = PlayerController.new()
-	long_target.setup(PlayerData.new(), true, Color.BLUE)
+	var long_target_data: PlayerData = PlayerData.new()
+	long_target_data.catch_rating = 54
+	long_target_data.speed = 66
+	long_target.setup(long_target_data, true, Color.BLUE)
 	long_target.world_position = Vector2(820.0, 420.0)
-	rng.reseed(11)
-	var short_found: int = 0
-	var long_found: int = 0
-	for _i in 40:
-		if pass_controller._find_interceptor(Vector2(520.0, 900.0), short_target.world_position, [defender], rng).size() > 0:
-			short_found += 1
-		if pass_controller._find_interceptor(Vector2(260.0, 1180.0), long_target.world_position, [defender], rng).size() > 0:
-			long_found += 1
-	_assert_true(long_found > short_found, "risky pass intercepted more", "short=%d long=%d" % [short_found, long_found])
+	var race_target: PlayerController = PlayerController.new()
+	var race_target_data: PlayerData = PlayerData.new()
+	race_target_data.catch_rating = 84
+	race_target_data.speed = 80
+	race_target.setup(race_target_data, true, Color.BLUE)
+	race_target.world_position = Vector2(720.0, 580.0)
+	var normal_defense_scale: float = DifficultyConfig.new().get_defense_multiplier()
+	var pass_rng: GameRng = GameRng.new()
+	pass_rng.reseed(11)
+	short_target.world_position = Vector2(612.0, 840.0)
+	defender.world_position = Vector2(578.0, 820.0)
+	var safe_result: Dictionary = _simulate_pass_race(
+		pass_controller,
+		Vector2(520.0, 900.0),
+		short_target,
+		[defender],
+		Vector2(32.0, 44.0),
+		1.0,
+		normal_defense_scale,
+		240,
+		pass_rng,
+		passer
+	)
+	var safe_snapshot: Dictionary = safe_result.get("start_snapshot", {})
+	_assert_true(safe_snapshot.get("eligible_interceptor", null) != null, "eligible defender detected on short pass", JSON.stringify(safe_snapshot))
+	_assert_true(not bool(safe_snapshot.get("commit_succeeded", true)), "eligible defender can fail commit roll", JSON.stringify(safe_snapshot))
+	_assert_true(safe_result["state"] == "complete_offense", "receiver-first claim completes pass", JSON.stringify(safe_result))
+	passer_data.pass_accuracy = 68
+	var steal_seed: int = _find_commit_seed(
+		pass_controller,
+		Vector2(260.0, 1180.0),
+		long_target,
+		[defender],
+		passer
+	)
+	_assert_true(steal_seed != -1, "risky pass finds deterministic commit seed", str(steal_seed))
+	pass_rng.reseed(steal_seed)
+	long_target.world_position = Vector2(820.0, 420.0)
+	defender.world_position = Vector2(540.0, 720.0)
+	var steal_result: Dictionary = _simulate_pass_race(
+		pass_controller,
+		Vector2(260.0, 1180.0),
+		long_target,
+		[defender],
+		Vector2(120.0, 160.0),
+		1.0,
+		normal_defense_scale,
+		240,
+		pass_rng,
+		passer
+	)
+	var steal_snapshot: Dictionary = steal_result.get("start_snapshot", {})
+	_assert_true(bool(steal_snapshot.get("commit_succeeded", false)), "risky pass can trigger commit roll", JSON.stringify(steal_snapshot))
+	_assert_true(steal_result["state"] == "complete_steal", "defender-first lane cut steals pass", JSON.stringify(steal_result))
+	defender_data.steal = 48
+	defender_data.perimeter_defense = 52
+	defender_data.speed = 70
+	defender.world_position = Vector2(760.0, 580.0)
+	var committed_but_late_seed: int = _find_commit_seed(
+		pass_controller,
+		Vector2(320.0, 1140.0),
+		race_target,
+		[defender],
+		passer
+	)
+	_assert_true(committed_but_late_seed != -1, "late-race pass finds deterministic commit seed", str(committed_but_late_seed))
+	pass_rng.reseed(committed_but_late_seed)
+	race_target.world_position = Vector2(720.0, 580.0)
+	var committed_but_late_result: Dictionary = _simulate_pass_race(
+		pass_controller,
+		Vector2(320.0, 1140.0),
+		race_target,
+		[defender],
+		Vector2.ZERO,
+		1.0,
+		normal_defense_scale,
+		240,
+		pass_rng,
+		passer
+	)
+	var committed_but_late_snapshot: Dictionary = committed_but_late_result.get("start_snapshot", {})
+	_assert_true(bool(committed_but_late_snapshot.get("commit_succeeded", false)), "committed defender test arms a lane cut", JSON.stringify(committed_but_late_snapshot))
+	_assert_true(committed_but_late_result["state"] == "complete_offense", "committed defender can still lose live race", JSON.stringify(committed_but_late_result))
+	defender_data.steal = 92
+	defender_data.perimeter_defense = 88
+	defender_data.speed = 84
+	passer_data.pass_accuracy = 88
+	pass_rng.reseed(11)
+	short_target.world_position = Vector2(612.0, 840.0)
+	defender.world_position = Vector2(578.0, 820.0)
+	var forced_start_snapshot: Dictionary = pass_controller.start_pass(Vector2(520.0, 900.0), short_target, [defender], pass_rng, passer)
+	_assert_true(not bool(forced_start_snapshot.get("commit_succeeded", true)), "force interception starts from a failed commit", JSON.stringify(forced_start_snapshot))
+	var forced_pass: Dictionary = pass_controller.force_interception([defender])
+	_assert_true(bool(forced_pass.get("commit_succeeded", false)), "force interception bypasses commit roll", JSON.stringify(forced_pass))
+	var forced_release_target: Vector2 = pass_controller.get_active_pass_snapshot().get("end", short_target.world_position)
+	short_target.world_position = forced_release_target + Vector2(32.0, 44.0)
+	short_target.velocity = Vector2.ZERO
+	var forced_result: Dictionary = {"state": "traveling"}
+	for _forced_frame in 240:
+		var forced_snapshot_live: Dictionary = pass_controller.get_active_pass_snapshot()
+		if forced_snapshot_live.is_empty():
+			break
+		short_target.move_toward_target(forced_release_target, 1.0, 1.0 / 60.0)
+		var forced_interceptor: PlayerController = forced_snapshot_live.get("active_interceptor", null) as PlayerController
+		if forced_interceptor != null:
+			forced_interceptor.move_toward_target(forced_snapshot_live.get("chase_point", forced_interceptor.world_position), normal_defense_scale, 1.0 / 60.0)
+		forced_result = pass_controller.step_pass(1.0 / 60.0)
+		if forced_result.get("state", "") != "traveling":
+			break
+	_assert_true(forced_result["state"] == "complete_steal", "forced interception still resolves through live steal path", JSON.stringify(forced_result))
+	var out_target: PlayerController = PlayerController.new()
+	var out_target_data: PlayerData = PlayerData.new()
+	out_target_data.catch_rating = 74
+	out_target.setup(out_target_data, true, Color.BLUE)
+	out_target.world_position = Vector2(court.court_rect.end.x + 120.0, 860.0)
+	pass_rng.reseed(7)
+	defender.world_position = Vector2(700.0, 760.0)
+	var out_result: Dictionary = _simulate_pass_race(
+		pass_controller,
+		Vector2(520.0, 900.0),
+		out_target,
+		[defender],
+		Vector2.ZERO,
+		1.0,
+		normal_defense_scale,
+		240,
+		pass_rng,
+		passer
+	)
+	_assert_true(out_result["state"] == "out_of_bounds", "out-of-bounds resolves before catch", JSON.stringify(out_result))
 	var input_controller: InputController = InputController.new()
 	input_controller.set_projection(projection)
 	input_controller.set_ballhandler(short_target)
-	input_controller.set_offense_players([short_target, long_target])
+	input_controller.set_offense_players([short_target, long_target, out_target])
 	input_controller.shot_hold_delay = shot_controller.shot_config.hold_start_delay
 	short_target.apply_projection(projection.world_to_screen_ground(short_target.world_position), projection.actor_scale(short_target.world_position), projection.shadow_anchor(short_target.world_position) - projection.world_to_screen_ground(short_target.world_position), projection.shadow_scale(short_target.world_position), projection.depth_key(short_target.world_position))
 	long_target.apply_projection(projection.world_to_screen_ground(long_target.world_position), projection.actor_scale(long_target.world_position), projection.shadow_anchor(long_target.world_position) - projection.world_to_screen_ground(long_target.world_position), projection.shadow_scale(long_target.world_position), projection.depth_key(long_target.world_position))
@@ -335,6 +472,7 @@ func _run_pure_logic() -> void:
 	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
 	var game_root: Node2D = game_root_scene.instantiate() as Node2D
 	add_child(game_root)
+	await get_tree().process_frame
 	var smoke_court_view: CourtView = game_root.get_node("CourtView") as CourtView
 	var smoke_coordinator: GameCoordinator = game_root.get_node("GameCoordinator") as GameCoordinator
 	_assert_true(smoke_court_view != null and smoke_court_view.has_textured_court(), "court art smoke", "")
@@ -349,12 +487,63 @@ func _run_pure_logic() -> void:
 				home_visual_ok = false
 				break
 	_assert_true(home_visual_ok, "player art smoke", "")
+	if smoke_coordinator != null and smoke_coordinator.court_projection != null and smoke_coordinator.court_config != null:
+		var smoke_rect: Rect2 = smoke_coordinator.court_config.court_rect
+		var smoke_top_left: Vector2 = smoke_coordinator.court_projection.world_to_screen_ground(smoke_rect.position)
+		var smoke_bottom_right: Vector2 = smoke_coordinator.court_projection.world_to_screen_ground(smoke_rect.end)
+		_assert_true(absf(smoke_top_left.x) < 0.01 and absf(smoke_top_left.y) < 0.01 and absf(smoke_bottom_right.x - 1080.0) < 0.01 and absf(smoke_bottom_right.y - 1920.0) < 0.01, "court fills screen behind HUD", "%s %s" % [smoke_top_left, smoke_bottom_right])
+	if smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_visual_top_screen_y"):
+		var hoop_top_y: float = float(smoke_coordinator.hoop_node.call("get_visual_top_screen_y"))
+		_assert_true(hoop_top_y >= 128.0, "hoop clears hud banner", str(hoop_top_y))
+	if smoke_coordinator != null and smoke_coordinator.current_ballhandler != null:
+		_assert_true(smoke_coordinator.current_ballhandler.projected_scale > 1.35, "players render larger in fullscreen framing", str(smoke_coordinator.current_ballhandler.projected_scale))
+		var held_ball_anchor: Vector2 = smoke_coordinator.ball_node.global_position + smoke_coordinator.ball_node.ball_screen_offset
+		_assert_true(held_ball_anchor.distance_to(smoke_coordinator.current_ballhandler.get_ball_screen_anchor()) < 0.01, "held ball aligns to player hand", str(held_ball_anchor.distance_to(smoke_coordinator.current_ballhandler.get_ball_screen_anchor())))
+	smoke_coordinator.begin_test_mode(2409)
+	smoke_coordinator.apply_scenario_setup(
+		{
+			"ballhandler_role": "PG",
+			"defense_positions": {
+				"LC": Vector2(300, 620),
+				"LW": Vector2(300, 1060),
+				"PG": Vector2(320, 1460),
+				"RC": Vector2(830, 640),
+				"RW": Vector2(800, 1060),
+			},
+			"offense_positions": {
+				"LC": Vector2(260, 640),
+				"LW": Vector2(360, 1040),
+				"PG": Vector2(520, 1360),
+				"RC": Vector2(620, 900),
+				"RW": Vector2(740, 1100),
+			},
+		}
+	)
+	var smoke_pass_target: PlayerController = smoke_coordinator.get_offense_player_by_role("RC")
+	var pass_positions: Array[Vector2] = []
+	var pass_alignment_error: float = 0.0
+	if smoke_pass_target != null:
+		smoke_coordinator.input_controller.pass_requested.emit(smoke_pass_target)
+		for _pass_frame in 36:
+			await get_tree().process_frame
+			if smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT:
+				var visible_ball_anchor: Vector2 = smoke_coordinator.ball_node.global_position + smoke_coordinator.ball_node.ball_screen_offset
+				pass_positions.append(visible_ball_anchor)
+				var expected_pass_anchor: Vector2 = smoke_coordinator.court_projection.world_to_screen(smoke_coordinator.ball_simulator.position_xy, smoke_coordinator.ball_simulator.z)
+				pass_alignment_error = maxf(pass_alignment_error, visible_ball_anchor.distance_to(expected_pass_anchor))
+			elif not pass_positions.is_empty():
+				break
+	_assert_true(pass_positions.size() >= 3, "pass flight stays visible across frames", str(pass_positions.size()))
+	if pass_positions.size() >= 3:
+		_assert_true(pass_positions[0].distance_to(pass_positions[-1]) > 40.0, "pass flight advances on screen", "%0.2f" % pass_positions[0].distance_to(pass_positions[-1]))
+		_assert_true(pass_alignment_error < 0.01, "in-flight ball stays aligned with projection", str(pass_alignment_error))
 	game_root.queue_free()
 	for player in players:
 		player.free()
 	defender.free()
 	short_target.free()
 	long_target.free()
+	out_target.free()
 	await get_tree().process_frame
 	await _run_hoop_render_phase_smoke()
 
@@ -508,3 +697,52 @@ func _is_legal_score_sample(sample_pos: Vector2, court: CourtConfig) -> bool:
 	if sample_pos.distance_to(court.hoop_position) > court.rim_inner_radius:
 		return false
 	return sample_pos.y >= court.hoop_position.y + court.score_entry_min_front_offset
+
+
+func _simulate_pass_race(
+	pass_controller: PassController,
+	start_position: Vector2,
+	target: PlayerController,
+	defenders: Array[PlayerController],
+	receiver_release_offset: Vector2 = Vector2.ZERO,
+	receiver_speed_scale: float = 1.0,
+	defender_speed_scale: float = 1.0,
+	max_frames: int = 240,
+	rng: GameRng = null,
+	passer: PlayerController = null
+) -> Dictionary:
+	var start_snapshot: Dictionary = pass_controller.start_pass(start_position, target, defenders, rng, passer)
+	var release_target: Vector2 = pass_controller.get_active_pass_snapshot().get("end", target.world_position)
+	target.world_position = release_target + receiver_release_offset
+	target.velocity = Vector2.ZERO
+	for frame in max_frames:
+		var snapshot: Dictionary = pass_controller.get_active_pass_snapshot()
+		if snapshot.is_empty():
+			break
+		target.move_toward_target(release_target, receiver_speed_scale, 1.0 / 60.0)
+		var interceptor: PlayerController = snapshot.get("active_interceptor", null) as PlayerController
+		if interceptor != null:
+			interceptor.move_toward_target(snapshot.get("chase_point", interceptor.world_position), defender_speed_scale, 1.0 / 60.0)
+		var result: Dictionary = pass_controller.step_pass(1.0 / 60.0)
+		if result.get("state", "") != "traveling":
+			result["start_snapshot"] = start_snapshot
+			return result
+	return {"state": "traveling", "frames": max_frames, "start_snapshot": start_snapshot}
+
+
+func _find_commit_seed(
+	pass_controller: PassController,
+	start_position: Vector2,
+	target: PlayerController,
+	defenders: Array[PlayerController],
+	passer: PlayerController,
+	min_seed: int = 1,
+	max_seed: int = 128
+) -> int:
+	var rng: GameRng = GameRng.new()
+	for seed in range(min_seed, max_seed + 1):
+		rng.reseed(seed)
+		var snapshot: Dictionary = pass_controller.start_pass(start_position, target, defenders, rng, passer)
+		if bool(snapshot.get("commit_succeeded", false)):
+			return seed
+	return -1

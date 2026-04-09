@@ -39,6 +39,8 @@ func run_scenario(tree: SceneTree, definition: ScenarioDefinition) -> Dictionary
 	await tree.process_frame
 
 	var failures: PackedStringArray = PackedStringArray()
+	for pilot_failure in pilot.get_failures():
+		failures.append(pilot_failure)
 	for expectation in definition.expectations:
 		var failure: String = _check_expectation(coordinator, expectation)
 		if failure != "":
@@ -93,6 +95,15 @@ func _queue_actions(pilot: BotPilot, actions: Array[ScenarioAction]) -> void:
 				pilot.force_pressure_turnover()
 			"force_offensive_rebound":
 				pilot.force_offensive_rebound(action.target_id)
+			"assert_state":
+				pilot.assert_state(str(action.value))
+			"assert_score":
+				var expected_score: Dictionary = action.value if action.value is Dictionary else {}
+				pilot.assert_score(int(expected_score.get("home", 0)), int(expected_score.get("away", 0)))
+			"assert_controlled_player":
+				pilot.assert_controlled_player(action.target_id)
+			"assert_last_log_contains":
+				pilot.assert_last_log_contains(str(action.value))
 
 
 func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpectation) -> String:

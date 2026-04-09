@@ -94,6 +94,16 @@ func supports_render_phases() -> bool:
 	return supports_three_piece_visuals()
 
 
+func get_visual_top_screen_y() -> float:
+	if not supports_three_piece_visuals():
+		return global_position.y
+	var min_local_y: float = _backboard_sprite.position.y
+	min_local_y = minf(min_local_y, _rear_hoop_sprite.position.y)
+	min_local_y = minf(min_local_y, _front_rim_sprite.position.y)
+	min_local_y = minf(min_local_y, _front_net_sprite.position.y)
+	return global_position.y + min_local_y
+
+
 func get_ball_render_phase(
 	world_position: Vector2,
 	z_value: float,
@@ -149,7 +159,11 @@ func get_ball_z_index_for_phase(phase: String) -> int:
 func get_front_net_exit_screen_y() -> float:
 	if projection == null or court_config == null:
 		return 0.0
-	return position.y + hoop_front_net_offset.y + (_get_front_net_height() - hoop_front_net_rim_anchor.y) * hoop_front_net_scale + BALL_RENDER_EXIT_SCREEN_MARGIN
+	var visual_scale: float = _get_visual_scale_multiplier()
+	return position.y \
+		+ hoop_front_net_offset.y * visual_scale \
+		+ (_get_front_net_height() - hoop_front_net_rim_anchor.y) * hoop_front_net_scale * visual_scale \
+		+ BALL_RENDER_EXIT_SCREEN_MARGIN * visual_scale
 
 
 func trigger_net_swish(entry_offset_x: float = 0.0) -> void:
@@ -225,15 +239,19 @@ func _ensure_sprites() -> void:
 func _sync_sprite_positions() -> void:
 	if not supports_three_piece_visuals():
 		return
+	var visual_scale: float = _get_visual_scale_multiplier()
+	var body_scale: float = hoop_body_scale * visual_scale
+	var rear_scale: float = hoop_rear_scale * visual_scale
+	var front_rim_scale: float = hoop_front_rim_scale * visual_scale
 	_backboard_sprite.region_rect = hoop_body_region
-	_backboard_sprite.scale = Vector2.ONE * hoop_body_scale
-	_backboard_sprite.position = hoop_body_offset - hoop_body_rim_anchor * hoop_body_scale
+	_backboard_sprite.scale = Vector2.ONE * body_scale
+	_backboard_sprite.position = hoop_body_offset * visual_scale - hoop_body_rim_anchor * body_scale
 	_rear_hoop_sprite.texture = _get_texture(hoop_rear_texture_path)
-	_rear_hoop_sprite.scale = Vector2.ONE * hoop_rear_scale
-	_rear_hoop_sprite.position = _base_overlay_position(hoop_rear_offset, hoop_rear_rim_anchor, hoop_rear_scale)
+	_rear_hoop_sprite.scale = Vector2.ONE * rear_scale
+	_rear_hoop_sprite.position = _base_overlay_position(hoop_rear_offset * visual_scale, hoop_rear_rim_anchor, rear_scale)
 	_front_rim_sprite.texture = _get_texture(hoop_front_rim_texture_path)
-	_front_rim_sprite.scale = Vector2.ONE * hoop_front_rim_scale
-	_front_rim_sprite.position = _base_overlay_position(hoop_front_rim_offset, hoop_front_rim_anchor, hoop_front_rim_scale)
+	_front_rim_sprite.scale = Vector2.ONE * front_rim_scale
+	_front_rim_sprite.position = _base_overlay_position(hoop_front_rim_offset * visual_scale, hoop_front_rim_anchor, front_rim_scale)
 	_front_net_sprite.texture = _get_texture(hoop_front_net_texture_path)
 	_apply_front_net_transform()
 
@@ -245,8 +263,10 @@ func _base_overlay_position(offset: Vector2, anchor: Vector2, scale_value: float
 func _apply_front_net_transform() -> void:
 	if _front_net_sprite == null:
 		return
-	var base_position: Vector2 = _base_overlay_position(hoop_front_net_offset, hoop_front_net_rim_anchor, hoop_front_net_scale)
-	var base_scale: Vector2 = Vector2.ONE * hoop_front_net_scale
+	var visual_scale: float = _get_visual_scale_multiplier()
+	var scaled_scale: float = hoop_front_net_scale * visual_scale
+	var base_position: Vector2 = _base_overlay_position(hoop_front_net_offset * visual_scale, hoop_front_net_rim_anchor, scaled_scale)
+	var base_scale: Vector2 = Vector2.ONE * scaled_scale
 	_front_net_sprite.position = base_position
 	_front_net_sprite.scale = base_scale
 	if not _net_swish_active or court_config == null or _net_swish_duration <= 0.0:
@@ -258,6 +278,12 @@ func _apply_front_net_transform() -> void:
 	var width_ratio: float = 1.0 - court_config.net_swish_stretch * 0.35 * envelope
 	_front_net_sprite.position = base_position + Vector2(sway, 0.0)
 	_front_net_sprite.scale = Vector2(base_scale.x * width_ratio, base_scale.y * stretch_ratio)
+
+
+func _get_visual_scale_multiplier() -> float:
+	if projection == null or projection.projection_config == null:
+		return 1.0
+	return maxf(projection.projection_config.hoop_visual_scale_multiplier, 0.01)
 
 
 func _get_texture(path: String) -> Texture2D:

@@ -62,9 +62,17 @@ var current_preview_color: Color = Color(0.3, 0.95, 0.4, 0.95)
 var rebound_delay_timer: float = 0.0
 var active_rebound_zone: Vector2 = Vector2.ZERO
 var made_shot_animation_timer: float = 0.0
+var steal_resolve_timer: float = 0.0
 var score_followthrough_state: Dictionary = {}
 var current_ball_render_phase: String = ""
 var last_scored_shot_passed_through_net: bool = false
+var current_steal_holder: PlayerController
+var last_pass_resolution_point: Vector2 = Vector2.INF
+var last_pass_resolution_outcome: String = ""
+var last_pass_commit_chance: float = 0.0
+var last_pass_commit_succeeded: bool = false
+var last_pass_eligible_interceptor_name: String = ""
+var last_pass_committed_interceptor_name: String = ""
 
 
 func _ready() -> void:
@@ -125,6 +133,7 @@ func _build_services() -> void:
 	shot_controller.projection = court_projection
 	pass_controller.pass_config = pass_config
 	pass_controller.court_config = court_config
+	pass_controller.difficulty_config = difficulty_config
 	route_controller.route_config = route_config
 	route_controller.court_config = court_config
 	defense_controller.defense_config = defense_config
@@ -186,6 +195,14 @@ func _start_new_match() -> void:
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
 	made_shot_animation_timer = 0.0
+	steal_resolve_timer = 0.0
+	current_steal_holder = null
+	last_pass_resolution_point = Vector2.INF
+	last_pass_resolution_outcome = ""
+	last_pass_commit_chance = 0.0
+	last_pass_commit_succeeded = false
+	last_pass_eligible_interceptor_name = ""
+	last_pass_committed_interceptor_name = ""
 	_clear_score_followthrough()
 	current_preview_points.clear()
 	_change_state(GameState.State.MATCH_SETUP)
@@ -206,6 +223,7 @@ func _reset_possession() -> void:
 	pass_controller.active_pass = {}
 	shot_controller.cancel_aim()
 	made_shot_animation_timer = 0.0
+	_clear_steal_resolve()
 	_clear_score_followthrough(false)
 	current_preview_points.clear()
 	court_view.clear_preview()
@@ -214,11 +232,13 @@ func _reset_possession() -> void:
 	for player in offense_players:
 		player.world_position = anchors[player.get_position_role()]
 		player.velocity = Vector2.ZERO
+		player.set_has_ball(false)
 	for defender in defense_players:
 		var match_anchor: Vector2 = anchors[defender.get_position_role()]
 		var offset: Vector2 = (court_config.hoop_position - match_anchor).normalized() * defense_config.guard_distance
 		defender.world_position = match_anchor + offset
 		defender.velocity = Vector2.ZERO
+		defender.set_has_ball(false)
 	defense_controller.setup_assignments(offense_players, defense_players)
 	var point_guard: PlayerController = offense_players[0]
 	for player in offense_players:
@@ -249,6 +269,8 @@ func _process(delta: float) -> void:
 			_update_shot_aim(scaled_delta)
 		GameState.State.PASS_IN_FLIGHT:
 			_update_pass_in_flight(scaled_delta)
+		GameState.State.STEAL_RESOLVE:
+			_update_steal_resolve(scaled_delta)
 		GameState.State.SHOT_IN_FLIGHT:
 			_update_shot_in_flight(scaled_delta)
 		GameState.State.REBOUND_LIVE:
@@ -314,26 +336,82 @@ func _update_shot_aim(delta: float) -> void:
 
 func _update_pass_in_flight(delta: float) -> void:
 	route_phase_time += delta
-	_update_off_ball_offense(delta)
-	_update_defense(delta)
+	var pass_snapshot: Dictionary = pass_controller.get_active_pass_snapshot()
+	var intended_receiver: PlayerController = pass_snapshot.get("intended_receiver", null) as PlayerController
+	var active_interceptor: PlayerController = pass_snapshot.get("active_interceptor", null) as PlayerController
+	_update_off_ball_offense(delta, [intended_receiver])
+	if intended_receiver != null:
+		intended_receiver.move_toward_target(pass_snapshot.get("end", intended_receiver.world_position), 1.0, delta)
+		_clamp_to_court(intended_receiver)
+	_update_defense(delta, [active_interceptor])
+	if active_interceptor != null:
+		active_interceptor.move_toward_target(pass_snapshot.get("chase_point", active_interceptor.world_position), difficulty_config.get_defense_multiplier(), delta)
+		_clamp_to_court(active_interceptor)
 	var result: Dictionary = pass_controller.step_pass(delta)
 	if result.get("state", "") == "traveling":
-		_sync_ball_world_visual(result["position"], ball_config.pass_height)
+		_sync_pass_ball_visual(result["position"])
 	elif result.get("state", "") == "out_of_bounds":
+		last_pass_resolution_point = result.get("resolved_position", result.get("position", Vector2.ZERO))
+		last_pass_resolution_outcome = "out_of_bounds"
+		log_writer.log_event(
+			"pass_resolved",
+			{
+				"outcome": "out_of_bounds",
+				"catch_point": _vector2_payload(last_pass_resolution_point),
+				"target_point": _vector2_payload(result.get("target_point", Vector2.ZERO)),
+			}
+		)
 		log_writer.log_match("Pass out of bounds")
 		_run_opponent_possession()
-	elif result.get("state", "") == "complete":
-		var receiver: PlayerController = result["receiver"]
-		if result["intercepted"]:
-			_show_feedback("STEAL!", Color(1.0, 0.45, 0.35))
-			log_writer.log_match("Pass intercepted by %s" % receiver.get_display_name())
-			_run_opponent_possession()
+	elif result.get("state", "") == "complete_offense":
+		var receiver: PlayerController = result.get("intended_receiver", null) as PlayerController
+		last_pass_resolution_point = result.get("resolved_position", result.get("position", Vector2.ZERO))
+		last_pass_resolution_outcome = "offense"
+		log_writer.log_event(
+			"pass_resolved",
+			{
+				"outcome": "offense",
+				"receiver": receiver.get_display_name() if receiver != null else "",
+				"catch_point": _vector2_payload(last_pass_resolution_point),
+				"target_point": _vector2_payload(result.get("target_point", Vector2.ZERO)),
+			}
+		)
+		if receiver == null:
+			_change_state(GameState.State.LIVE_OFFENSE)
 			return
 		receiver.trigger_catch_pose(0.24)
 		_set_ballhandler(receiver)
 		_change_state(GameState.State.LIVE_OFFENSE)
 		_sync_ball_to_handler()
 		log_writer.log_match("Pass caught by %s" % receiver.get_display_name())
+	elif result.get("state", "") == "complete_steal":
+		var stealer: PlayerController = result.get("active_interceptor", null) as PlayerController
+		last_pass_resolution_point = result.get("resolved_position", result.get("position", Vector2.ZERO))
+		last_pass_resolution_outcome = "steal"
+		log_writer.log_event(
+			"pass_resolved",
+			{
+				"outcome": "steal",
+				"stealer": stealer.get_display_name() if stealer != null else "",
+				"catch_point": _vector2_payload(last_pass_resolution_point),
+				"target_point": _vector2_payload(result.get("target_point", Vector2.ZERO)),
+				"chase_point": _vector2_payload(result.get("chase_point", Vector2.ZERO)),
+			}
+		)
+		if stealer == null:
+			_run_opponent_possession()
+			return
+		log_writer.log_match("Pass intercepted by %s" % stealer.get_display_name())
+		_begin_steal_resolve(stealer)
+
+
+func _update_steal_resolve(delta: float) -> void:
+	if current_steal_holder != null:
+		current_steal_holder.velocity = Vector2.ZERO
+		_sync_ball_to_player(current_steal_holder)
+	steal_resolve_timer = maxf(steal_resolve_timer - delta, 0.0)
+	if steal_resolve_timer <= 0.0:
+		_run_opponent_possession()
 
 
 func _update_shot_in_flight(delta: float) -> void:
@@ -414,18 +492,23 @@ func _update_rebound_live(delta: float) -> void:
 		_run_opponent_possession()
 
 
-func _update_off_ball_offense(delta: float) -> void:
+func _update_off_ball_offense(delta: float, excluded_players: Array = []) -> void:
 	var targets: Dictionary = route_controller.get_route_targets(offense_players, current_ballhandler, context.active_route_package, route_phase_time)
 	for player in offense_players:
-		if player == current_ballhandler:
+		if player == current_ballhandler or excluded_players.has(player):
 			continue
 		player.move_toward_target(targets.get(player, player.world_position), route_config.route_move_speed_multiplier, delta)
 		_clamp_to_court(player)
 
 
-func _update_defense(delta: float) -> void:
-	defense_controller.update_defense(delta, offense_players, defense_players, current_ballhandler)
+func _update_defense(delta: float, excluded_defenders: Array = []) -> void:
+	var active_defenders: Array[PlayerController] = []
 	for defender in defense_players:
+		if excluded_defenders.has(defender):
+			continue
+		active_defenders.append(defender)
+	defense_controller.update_defense(delta, offense_players, active_defenders, current_ballhandler)
+	for defender in active_defenders:
 		_clamp_to_court(defender)
 
 
@@ -442,7 +525,28 @@ func _on_pass_requested(target: PlayerController) -> void:
 	log_writer.log_match("Pass requested to %s" % target.get_display_name())
 	_change_state(GameState.State.PASS_IN_FLIGHT)
 	current_ballhandler.set_has_ball(false)
-	pass_controller.start_pass(current_ballhandler.world_position, target, defense_players, rng)
+	last_pass_resolution_point = Vector2.INF
+	last_pass_resolution_outcome = ""
+	var pass_snapshot: Dictionary = pass_controller.start_pass(current_ballhandler.world_position, target, defense_players, rng, current_ballhandler)
+	last_pass_commit_chance = float(pass_snapshot.get("commit_chance", 0.0))
+	last_pass_commit_succeeded = bool(pass_snapshot.get("commit_succeeded", false))
+	last_pass_eligible_interceptor_name = _player_name_or_empty(pass_snapshot.get("eligible_interceptor", null))
+	last_pass_committed_interceptor_name = _player_name_or_empty(pass_snapshot.get("active_interceptor", null))
+	log_writer.log_event(
+		"pass_started",
+		{
+			"from": current_ballhandler.get_display_name(),
+			"to": target.get_display_name(),
+			"start": _vector2_payload(current_ballhandler.world_position),
+			"target_point": _vector2_payload(pass_snapshot.get("end", target.world_position)),
+			"eligible_interceptor": last_pass_eligible_interceptor_name,
+			"interceptor": _player_name_or_empty(pass_snapshot.get("active_interceptor", null)),
+			"commit_chance": last_pass_commit_chance,
+			"commit_succeeded": last_pass_commit_succeeded,
+			"chase_point": _vector2_payload(pass_snapshot.get("chase_point", target.world_position)),
+		}
+	)
+	_sync_pass_ball_visual(current_ballhandler.world_position)
 
 
 func _on_shot_aim_started(start_world: Vector2) -> void:
@@ -532,6 +636,7 @@ func _resume_from_pause() -> void:
 
 
 func _run_opponent_possession() -> void:
+	_clear_steal_resolve()
 	_change_state(GameState.State.OPPONENT_SIM)
 	var result: Dictionary = opponent_sim_controller.run_possession(away_team, home_team, context.match_time_remaining, rng)
 	for event_line in result["events"]:
@@ -570,15 +675,21 @@ func _set_ballhandler(player: PlayerController) -> void:
 	for offense in offense_players:
 		offense.set_controlled(offense == player)
 		offense.set_has_ball(offense == player)
+	for defender in defense_players:
+		defender.set_has_ball(false)
 	input_controller.set_ballhandler(player)
 	input_controller.set_offense_players(offense_players)
 	log_writer.log_event("ballhandler_changed", {"player": player.get_display_name(), "role": player.get_position_role()})
 
 
 func _sync_ball_to_handler() -> void:
-	if current_ballhandler == null:
+	_sync_ball_to_player(current_ballhandler)
+
+
+func _sync_ball_to_player(player: PlayerController) -> void:
+	if player == null:
 		return
-	ball_simulator.reset_to_possession(current_ballhandler.world_position)
+	ball_simulator.reset_to_possession(player.world_position)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(ball_simulator.position_xy)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(ball_simulator.position_xy)
 	var render_context: Dictionary = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, 0.0)
@@ -590,15 +701,25 @@ func _sync_ball_to_handler() -> void:
 		ball_simulator.z,
 		{
 			"ground_anchor": ground_anchor,
-			"ball_anchor": current_ballhandler.get_ball_screen_anchor(),
+			"ball_anchor": player.get_ball_screen_anchor(),
 			"shadow_anchor": shadow_anchor,
-			"ball_radius": 16.0 * current_ballhandler.projected_scale,
+			"ball_radius": _get_held_ball_render_radius() * player.projected_scale,
 			"shadow_scale": court_projection.shadow_scale(ball_simulator.position_xy, 0.0),
 			"depth_key": court_projection.depth_key(ball_simulator.position_xy, 0.0),
 		},
 		z_override,
 		render_phase
 	)
+
+
+func _sync_pass_ball_visual(world_position: Vector2) -> void:
+	ball_simulator.previous_position_xy = ball_simulator.position_xy
+	ball_simulator.position_xy = world_position
+	ball_simulator.previous_z = ball_simulator.z
+	ball_simulator.z = ball_config.pass_height
+	ball_simulator.vz = 0.0
+	ball_simulator.is_in_flight = false
+	_sync_ball_world_visual(world_position, ball_config.pass_height)
 
 
 func _update_hud() -> void:
@@ -694,11 +815,33 @@ func get_debug_snapshot() -> Dictionary:
 	var catch_rings: Array[PackedVector2Array] = []
 	for player in offense_players:
 		if player != current_ballhandler:
-			catch_rings.append(court_projection.project_circle(player.world_position, pass_config.catch_radius, 0.0, 28))
+			catch_rings.append(court_projection.project_circle(player.world_position, pass_controller.get_offense_claim_radius(player), 0.0, 28))
 	var intercept_corridor: PackedVector2Array = PackedVector2Array()
 	var raw_corridor: PackedVector2Array = pass_controller.get_intercept_corridor()
 	if raw_corridor.size() == 2:
 		intercept_corridor = court_projection.project_polyline([raw_corridor[0], raw_corridor[1]])
+	var pass_snapshot: Dictionary = pass_controller.get_active_pass_snapshot()
+	var pass_target_marker: Vector2 = Vector2.INF
+	var pass_chase_marker: Vector2 = Vector2.INF
+	var pass_resolution_marker: Vector2 = Vector2.INF
+	var pass_receiver_name: String = ""
+	var pass_eligible_interceptor_name: String = last_pass_eligible_interceptor_name
+	var pass_interceptor_name: String = ""
+	var pass_commit_chance: float = last_pass_commit_chance
+	var pass_commit_succeeded: bool = last_pass_commit_succeeded
+	if not pass_snapshot.is_empty():
+		pass_target_marker = court_projection.world_to_screen_ground(pass_snapshot.get("end", Vector2.ZERO))
+		pass_receiver_name = _player_name_or_empty(pass_snapshot.get("intended_receiver", null))
+		pass_eligible_interceptor_name = _player_name_or_empty(pass_snapshot.get("eligible_interceptor", null))
+		pass_interceptor_name = _player_name_or_empty(pass_snapshot.get("active_interceptor", null))
+		pass_commit_chance = float(pass_snapshot.get("commit_chance", 0.0))
+		pass_commit_succeeded = bool(pass_snapshot.get("commit_succeeded", false))
+		var snapshot_interceptor: PlayerController = pass_snapshot.get("active_interceptor", null) as PlayerController
+		if snapshot_interceptor != null:
+			pass_chase_marker = court_projection.world_to_screen_ground(pass_snapshot.get("chase_point", pass_snapshot.get("end", Vector2.ZERO)))
+			catch_rings.append(court_projection.project_circle(snapshot_interceptor.world_position, pass_controller.get_defense_claim_radius(snapshot_interceptor), 0.0, 28))
+	if last_pass_resolution_point != Vector2.INF:
+		pass_resolution_marker = court_projection.world_to_screen_ground(last_pass_resolution_point)
 	var rebound_zone: PackedVector2Array = PackedVector2Array()
 	if context.current_state == GameState.State.REBOUND_LIVE:
 		rebound_zone = court_projection.project_circle(active_rebound_zone, rebound_config.rebound_zone_radius, 0.0, 28)
@@ -713,6 +856,15 @@ func get_debug_snapshot() -> Dictionary:
 		"contest_rings": contest_rings,
 		"catch_rings": catch_rings,
 		"intercept_corridor": intercept_corridor,
+		"pass_target_marker": pass_target_marker,
+		"pass_chase_marker": pass_chase_marker,
+		"pass_resolution_marker": pass_resolution_marker,
+		"pass_receiver_name": pass_receiver_name,
+		"pass_eligible_interceptor_name": pass_eligible_interceptor_name,
+		"pass_interceptor_name": pass_interceptor_name,
+		"pass_commit_chance": pass_commit_chance,
+		"pass_commit_succeeded": pass_commit_succeeded,
+		"pass_outcome": last_pass_resolution_outcome,
 		"rebound_zone": rebound_zone,
 		"shot_preview": current_preview_points,
 	}
@@ -853,9 +1005,17 @@ func test_force_defensive_rebound(role: String = "") -> void:
 
 
 func test_force_pass_interception() -> void:
-	_show_feedback("STEAL!", Color(1.0, 0.45, 0.35))
-	log_writer.log_match("Pass intercepted by scripted defender")
-	_run_opponent_possession()
+	var forced_pass: Dictionary = pass_controller.force_interception(defense_players)
+	if forced_pass.is_empty():
+		return
+	log_writer.log_match("Scripted pass interception armed")
+	log_writer.log_event(
+		"pass_forced_interception",
+		{
+			"interceptor": _player_name_or_empty(forced_pass.get("active_interceptor", null)),
+			"chase_point": _vector2_payload(forced_pass.get("chase_point", Vector2.ZERO)),
+		}
+	)
 
 
 func test_force_pressure_turnover() -> void:
@@ -934,6 +1094,8 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 		player.sync_visual_state(_resolve_player_visual_state(player), _resolve_player_facing(player), delta)
 	if current_ballhandler != null and (context.current_state == GameState.State.LIVE_OFFENSE or context.current_state == GameState.State.SHOT_AIM):
 		_sync_ball_to_handler()
+	elif context.current_state == GameState.State.STEAL_RESOLVE and current_steal_holder != null:
+		_sync_ball_to_player(current_steal_holder)
 	elif ball_node != null:
 		_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 
@@ -959,13 +1121,29 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 			"ground_anchor": ground_anchor,
 			"ball_anchor": ball_anchor,
 			"shadow_anchor": shadow_anchor,
-			"ball_radius": lerpf(15.0, 30.0, pow(z_ratio, 0.82)),
+			"ball_radius": _get_live_ball_render_radius(z_ratio),
 			"shadow_scale": court_projection.shadow_scale(world_position, z_value),
 			"depth_key": court_projection.depth_key(world_position, z_value),
 		},
 		z_override,
 		render_phase
 	)
+
+
+func _get_held_ball_render_radius() -> float:
+	if projection_config == null:
+		return 16.0
+	return maxf(projection_config.held_ball_render_radius, 1.0)
+
+
+func _get_live_ball_render_radius(z_ratio: float) -> float:
+	if projection_config == null:
+		return lerpf(15.0, 30.0, pow(z_ratio, 0.82))
+	var clamped_ratio: float = clampf(z_ratio, 0.0, 1.0)
+	var scaled_ratio: float = pow(clamped_ratio, 0.82)
+	var min_radius: float = maxf(projection_config.live_ball_render_radius_min, 1.0)
+	var max_radius: float = maxf(projection_config.live_ball_render_radius_max, min_radius)
+	return lerpf(min_radius, max_radius, scaled_ratio)
 
 
 func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
@@ -1115,3 +1293,37 @@ func _resolve_player_facing(player: PlayerController) -> Vector2:
 	if player == shot_owner and context.current_state == GameState.State.SHOT_IN_FLIGHT:
 		return (court_config.hoop_position - player.world_position).normalized()
 	return Vector2.ZERO
+
+
+func _begin_steal_resolve(stealer: PlayerController) -> void:
+	_clear_steal_resolve()
+	current_steal_holder = stealer
+	steal_resolve_timer = pass_config.steal_resolve_hold_duration
+	for offense in offense_players:
+		offense.set_has_ball(false)
+	for defender in defense_players:
+		defender.set_has_ball(defender == stealer)
+	stealer.trigger_catch_pose(0.28)
+	stealer.velocity = Vector2.ZERO
+	_change_state(GameState.State.STEAL_RESOLVE)
+	_show_feedback("STEAL!", Color(1.0, 0.45, 0.35))
+	ball_simulator.reset_to_possession(stealer.world_position)
+	_sync_ball_to_player(stealer)
+
+
+func _clear_steal_resolve() -> void:
+	steal_resolve_timer = 0.0
+	if current_steal_holder != null:
+		current_steal_holder.set_has_ball(false)
+	current_steal_holder = null
+
+
+func _vector2_payload(value: Vector2) -> Dictionary:
+	return {"x": value.x, "y": value.y}
+
+
+func _player_name_or_empty(player: Variant) -> String:
+	var resolved_player: PlayerController = player as PlayerController
+	if resolved_player == null:
+		return ""
+	return resolved_player.get_display_name()

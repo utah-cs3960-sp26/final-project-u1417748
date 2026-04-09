@@ -68,31 +68,70 @@ func _run_pass_risk_batch(batch: BalanceBatchDefinition) -> Dictionary:
 	var pass_controller: PassController = PassController.new()
 	pass_controller.pass_config = PassConfig.new()
 	pass_controller.court_config = CourtConfig.new()
+	pass_controller.difficulty_config = DifficultyConfig.new()
+	var passer: PlayerController = PlayerController.new()
+	var passer_data: PlayerData = PlayerData.new()
+	passer_data.pass_accuracy = 78
+	passer.setup(passer_data, true, Color.BLUE)
 	var defender: PlayerController = PlayerController.new()
-	defender.setup(PlayerData.new(), false, Color.RED)
-	defender.world_position = Vector2(540.0, 700.0)
+	var defender_data: PlayerData = PlayerData.new()
+	defender_data.steal = 90
+	defender_data.perimeter_defense = 86
+	defender_data.speed = 82
+	defender.setup(defender_data, false, Color.RED)
 	var target: PlayerController = PlayerController.new()
-	target.setup(PlayerData.new(), true, Color.BLUE)
+	var target_data: PlayerData = PlayerData.new()
+	target_data.catch_rating = 76
+	target_data.speed = 74
+	target.setup(target_data, true, Color.BLUE)
 	var short_intercepts: int = 0
 	var long_intercepts: int = 0
+	var defense_speed_scale: float = DifficultyConfig.new().get_defense_multiplier()
 	for _index in batch.trial_count:
-		target.world_position = Vector2(560.0, 760.0)
-		if pass_controller._find_interceptor(Vector2(520.0, 840.0), target.world_position, [defender], rng).size() > 0:
+		target.world_position = Vector2(560.0 + rng.randf_range(-18.0, 18.0), 760.0 + rng.randf_range(-18.0, 18.0))
+		defender.world_position = Vector2(540.0 + rng.randf_range(-12.0, 12.0), 700.0 + rng.randf_range(-18.0, 18.0))
+		var short_result: Dictionary = _simulate_pass_race(
+			pass_controller,
+			Vector2(520.0, 840.0),
+			target,
+			[defender],
+			Vector2(rng.randf_range(18.0, 42.0), rng.randf_range(20.0, 44.0)),
+			1.0,
+			defense_speed_scale,
+			240,
+			rng,
+			passer
+		)
+		if short_result.get("state", "") == "complete_steal":
 			short_intercepts += 1
-		target.world_position = Vector2(820.0, 420.0)
-		if pass_controller._find_interceptor(Vector2(280.0, 1180.0), target.world_position, [defender], rng).size() > 0:
+		target.world_position = Vector2(820.0 + rng.randf_range(-24.0, 24.0), 420.0 + rng.randf_range(-20.0, 20.0))
+		defender.world_position = Vector2(540.0 + rng.randf_range(-14.0, 14.0), 700.0 + rng.randf_range(-24.0, 24.0))
+		var long_result: Dictionary = _simulate_pass_race(
+			pass_controller,
+			Vector2(280.0, 1180.0),
+			target,
+			[defender],
+			Vector2(rng.randf_range(96.0, 148.0), rng.randf_range(112.0, 180.0)),
+			1.0,
+			defense_speed_scale,
+			240,
+			rng,
+			passer
+		)
+		if long_result.get("state", "") == "complete_steal":
 			long_intercepts += 1
 	var short_rate: float = float(short_intercepts) / batch.trial_count
 	var long_rate: float = float(long_intercepts) / batch.trial_count
 	target.free()
 	defender.free()
+	passer.free()
 	return {
 		"batch_id": batch.batch_id,
 		"display_name": batch.display_name,
 		"seed": batch.seed,
 		"trial_count": batch.trial_count,
 		"metrics": {"short_rate": short_rate, "long_rate": long_rate},
-		"passed": short_rate < 0.18 and long_rate > short_rate + 0.12,
+		"passed": short_rate < 0.12 and long_rate >= 0.22 and long_rate <= 0.45 and long_rate >= short_rate + 0.15,
 		"detail": "short=%0.2f long=%0.2f" % [short_rate, long_rate],
 	}
 
@@ -172,3 +211,33 @@ func _run_rebound_batch(batch: BalanceBatchDefinition) -> Dictionary:
 		"passed": offense_rate > 0.18 and defense_rate > 0.35,
 		"detail": "off=%0.2f def=%0.2f" % [offense_rate, defense_rate],
 	}
+
+
+func _simulate_pass_race(
+	pass_controller: PassController,
+	start_position: Vector2,
+	target: PlayerController,
+	defenders: Array[PlayerController],
+	receiver_release_offset: Vector2,
+	receiver_speed_scale: float,
+	defender_speed_scale: float,
+	max_frames: int = 240,
+	rng: GameRng = null,
+	passer: PlayerController = null
+) -> Dictionary:
+	pass_controller.start_pass(start_position, target, defenders, rng, passer)
+	var release_target: Vector2 = pass_controller.get_active_pass_snapshot().get("end", target.world_position)
+	target.world_position = release_target + receiver_release_offset
+	target.velocity = Vector2.ZERO
+	for _frame in max_frames:
+		var snapshot: Dictionary = pass_controller.get_active_pass_snapshot()
+		if snapshot.is_empty():
+			break
+		target.move_toward_target(release_target, receiver_speed_scale, 1.0 / 60.0)
+		var interceptor: PlayerController = snapshot.get("active_interceptor", null) as PlayerController
+		if interceptor != null:
+			interceptor.move_toward_target(snapshot.get("chase_point", interceptor.world_position), defender_speed_scale, 1.0 / 60.0)
+		var result: Dictionary = pass_controller.step_pass(1.0 / 60.0)
+		if result.get("state", "") != "traveling":
+			return result
+	return {"state": "traveling", "frames": max_frames}

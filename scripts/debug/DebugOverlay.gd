@@ -42,6 +42,20 @@ func _process(_delta: float) -> void:
 		snapshot.get("away_score", 0),
 		snapshot.get("seed", 0),
 	]
+	var pass_receiver_name: String = str(snapshot.get("pass_receiver_name", ""))
+	var pass_eligible_interceptor_name: String = str(snapshot.get("pass_eligible_interceptor_name", ""))
+	var pass_interceptor_name: String = str(snapshot.get("pass_interceptor_name", ""))
+	if pass_receiver_name != "" or pass_interceptor_name != "":
+		_label.text += "\nPass: %s" % pass_receiver_name
+		if pass_eligible_interceptor_name != "":
+			_label.text += "\nEligible: %s" % pass_eligible_interceptor_name
+		if pass_interceptor_name != "":
+			_label.text += "\nLane Cut: %s" % pass_interceptor_name
+		var pass_commit_chance: float = float(snapshot.get("pass_commit_chance", 0.0))
+		_label.text += "\nCommit: %0.2f %s" % [pass_commit_chance, "yes" if bool(snapshot.get("pass_commit_succeeded", false)) else "no"]
+	var pass_outcome: String = str(snapshot.get("pass_outcome", ""))
+	if pass_outcome != "":
+		_label.text += "\nLast Pass: %s" % pass_outcome
 	queue_redraw()
 
 
@@ -67,6 +81,15 @@ func _draw() -> void:
 		var corridor: PackedVector2Array = snapshot.get("intercept_corridor", PackedVector2Array())
 		if corridor.size() == 2:
 			draw_line(corridor[0], corridor[1], Color(1.0, 0.2, 0.8, 0.8), 3.0)
+		var pass_target_marker: Vector2 = snapshot.get("pass_target_marker", Vector2.INF)
+		var pass_chase_marker: Vector2 = snapshot.get("pass_chase_marker", Vector2.INF)
+		var pass_resolution_marker: Vector2 = snapshot.get("pass_resolution_marker", Vector2.INF)
+		if pass_target_marker != Vector2.INF:
+			draw_circle(pass_target_marker, 7.0, Color(0.35, 0.9, 1.0, 0.85))
+		if pass_chase_marker != Vector2.INF:
+			draw_circle(pass_chase_marker, 7.0, Color(1.0, 0.45, 0.3, 0.85))
+		if pass_resolution_marker != Vector2.INF:
+			draw_circle(pass_resolution_marker, 8.0, Color(1.0, 1.0, 1.0, 0.88))
 	if debug_config.show_rebound_zone:
 		var rebound_zone: PackedVector2Array = snapshot.get("rebound_zone", PackedVector2Array())
 		if rebound_zone.size() > 0:

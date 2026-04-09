@@ -95,3 +95,9 @@ The earlier fix still allowed green makes to be “saved” too late by a coordi
 ### The make arc now hands off on the rim plane, not above it
 
 The first guided-make rewrite still let the arc terminate above the rim before the simulator dropped the ball into the net. That still read like a hard downward pop. The handoff point is now on the rim plane inside the legal front-half cylinder, with no authored hover. The next visible motion after the arc finishes is already downward into the net, and the score does not appear until that descent has begun.
+
+## 2026-04-09
+
+### Pass steals now use a commit roll plus a visible live-ball race
+
+The earlier interception rewrite fixed the presentation problem by making the ball flight authoritative and resolving catches or steals on the live ball, but it also made any lane-eligible defender feel too sticky because commitment was automatic. The current contract is hybrid. Each pass still identifies one best eligible defender by lane ETA, but that defender only gets the visible lane-cut override after a seeded commit roll based on pass geometry, defender pressure, passer accuracy, receiver catch security, and the current difficulty defense multiplier. Once a defender commits, the rest of the play stays visually honest: the ball keeps traveling on the same straight segment, the receiver breaks to the release-time catch point, the defender cuts into the lane, and the first player to the live ball wins. Ties still favor the offense on the claim frame, and steals still enter a short `STEAL_RESOLVE` state before the opponent sim jump-cut.

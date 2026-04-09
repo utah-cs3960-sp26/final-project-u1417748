@@ -20,8 +20,13 @@
 ### Passing
 
 - Tapping a teammate starts an immediate straight-line pass.
+- The ball stays visible during `PASS_IN_FLIGHT` and travels on a fixed straight segment toward the receiver's release-time catch point.
+- The intended receiver breaks to that catch point while one eligible defender may commit to the lane based on pass geometry, ratings, and difficulty.
+- Only a committed defender gets the visible lane-cut override. If no defender commits, the pass resolves only as a catch or out-of-bounds turnover.
+- The first player to bring the live ball inside their claim radius wins the pass. If the receiver and defender arrive on the same frame, the offense keeps the ball.
 - A successful catch transfers control to the receiver.
 - Defenders can intercept long or cross-court lanes.
+- A completed steal enters a short `STEAL_RESOLVE` beat so the defender visibly secures the ball before the opponent sim jump-cut.
 - Out-of-bounds passes become turnovers.
 
 ### Shooting
@@ -97,6 +102,7 @@ Global states:
 - `MATCH_SETUP`
 - `LIVE_OFFENSE`
 - `PASS_IN_FLIGHT`
+- `STEAL_RESOLVE`
 - `SHOT_AIM`
 - `SHOT_IN_FLIGHT`
 - `REBOUND_LIVE`

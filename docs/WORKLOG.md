@@ -136,3 +136,29 @@
 - reduced the render-only terminal drop for guided makes from 65px to about 60px so the final approach and descent sit slightly higher while keeping the same terminal path behavior
 - kept the solver, score legality, and hoop geometry unchanged; the drop is purely a presentation offset in the terminal guided-make path
 - applied the same visual-only lowering to the terminal guided-make preview samples so the last green preview segment stays aligned with the live finish without affecting miss paths
+
+## 2026-04-09
+
+### Visible pass flight and steal resolve
+
+- rewrote `PassController` so passes now keep a full active-flight snapshot with a fixed release-time endpoint, an active interceptor, a live chase point, rating-scaled claim radii, and explicit `complete_offense` / `complete_steal` outcomes
+- made pass flight authoritative for the live ball render path so the ball stays visibly in motion through `PASS_IN_FLIGHT` instead of snapping back to the handler at the end of the frame
+- added coordinator-side receiver and defender pass-flight movement overrides plus a short `STEAL_RESOLVE` state that pins the ball to the stealing defender before the opponent sim starts
+- extended pass logging and debug overlay snapshots with pass target, chase, and resolution markers so deterministic runs explain why a pass succeeded, was stolen, or went out of bounds
+- updated deterministic scenarios, bot assertions, and balance probes so the harness now validates real visible catches and steals instead of the old instant-turnover shortcut
+
+### Probabilistic pass steal tuning
+
+- changed pass defense from automatic lane commitment to a hybrid model: one best eligible defender is still selected by ETA, but that defender only cuts the lane after a seeded commit roll using pass geometry, defender pressure, passer accuracy, receiver catch security, and the difficulty defense multiplier
+- kept the visible live-ball race intact after commitment, so the ball path, receiver break, and defender cut all still read honestly on screen
+- extended the debug snapshot and pass-start logs with eligible defender, committed defender, and commit-chance data so tuning is visible during desktop runs
+- retuned the pass-risk batch around the new commit gate; the latest headless run landed at short steals `0.00` and long steals `0.23` on Normal difficulty
+- fixed the scripted cross-court steal scenario so it explicitly uses `force_pass_interception` before asserting the visible `STEAL_RESOLVE` path
+
+### Full-screen court rescale
+
+- retuned `ProjectionConfig` so the projected court now fills the full `1080x1920` viewport behind the HUD, with the top sideline at screen top, the bottom sideline at screen bottom, and both sidelines landing flush on the left and right screen edges
+- increased actor presentation scale by the same court-fill ratio so players stay proportionate to the larger floor without changing `CourtConfig`, route anchors, or other gameplay-world coordinates
+- moved held-ball radius, live-ball min/max radius, and hoop visual scale into `ProjectionConfig` so the court, ball, and hoop all scale from one presentation resource instead of mixed hardcoded render constants
+- retuned the hoop screen offset so the larger backboard and rim art still clear the 128 px HUD banner while the court art continues rendering behind it
+- extended pure-logic and smoke validation with fullscreen court bounds, hoop-over-HUD clearance, larger player presentation, held-ball hand alignment, and in-flight ball/projection alignment coverage

@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Date: 2026-04-08
+- Date: 2026-04-09
 - Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
 - Engine used for validation: Godot 4.6.1 stable
 
@@ -37,16 +37,16 @@ Smoke:
 
 Final headless suite status: pass
 
-- Pure logic: 65 / 65
+- Pure logic: 113 / 113
 - Scenarios: 10 / 10
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.92`, normal `1.05`, hard `1.24`
-- `pass_risk`: short `0.10`, long `0.46`
-- `rebound_distribution`: offense `0.35`, defense `0.65`
+- `difficulty_order`: easy `0.90`, normal `1.06`, hard `1.24`
+- `pass_risk`: short `0.00`, long `0.23`
+- `rebound_distribution`: offense `0.32`, defense `0.68`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180`
 
 ## Scenario Result
@@ -69,6 +69,9 @@ Passed scenarios:
 - default boot scene (`GameRoot.tscn`) booted headless without script/runtime errors
 - `GameRoot.tscn` booted headless without script/runtime errors
 - headless validation kept the gameplay scene stable after the cinematic arc refactor and restored aim-preview path
+- the projected court now fills the full screen behind the HUD, with the floor mapping from `(0, 0)` to `(1080, 1920)` in smoke validation
+- the resized hoop art still clears the 128 px HUD banner, the held ball stays pinned to the handler hand, and pass-flight ball anchors stay aligned with projection
+- the deterministic smoke pass stayed visible for 30 frames and advanced about 418 px on screen before the catch resolved
 
 Additional pure-logic coverage now includes:
 
@@ -91,6 +94,10 @@ Additional pure-logic coverage now includes:
 - preview samples mirroring live simulation deltas
 - above-floor launch height
 - projected ground-depth ordering
+- full-screen court top-edge mapping
+- full-screen court bottom-edge mapping
+- left sideline mapping to the screen edge
+- right sideline mapping to the screen edge
 - flat rectangular court width consistency
 - flat projection linear depth mapping
 - flat projection ground-coordinate round trip
@@ -105,6 +112,11 @@ Additional pure-logic coverage now includes:
 - hoop sprite smoke instantiation
 - ball sprite smoke instantiation
 - player sprite smoke instantiation
+- court filling the screen behind the HUD in a booted `GameRoot`
+- hoop art clearing the HUD banner after the fullscreen rescale
+- enlarged player presentation under the fullscreen framing
+- held-ball hand alignment on the first rendered frame
+- in-flight ball/projection alignment during the smoke pass
 - hoop render-phase z-band ordering
 - coordinator ball render-phase accessors
 - score follow-through remaining active immediately after a made basket
@@ -116,12 +128,64 @@ Additional pure-logic coverage now includes:
 - counted makes proving their score sample is in the legal front-half corridor
 - descending backboard-side crossings no longer scoring even when they fall inside the old widened make radius
 - forced-make regressions rejecting invalid back-half rim-plane crossings
+- eligible short-lane defenders failing the commit roll and leaving the pass untouched
+- risky long/cross-court passes finding a deterministic commit seed and then stealing through the visible live-ball path
+- committed defenders still being able to lose the live race to the intended receiver
+- receiver-first pass claims completing live passes
+- defender-first lane cuts completing live steals
+- late defenders failing to steal safe passes
+- out-of-bounds passes resolving before any later claim
+- multi-frame pass flight staying visible through coordinator projection sync
 
 ## Notes
 
 - Godot emitted the known macOS `get_system_ca_certificates` warning in headless mode. It did not block import, tests, or smoke validation.
-- The initial in-sandbox Godot validation crashed while opening its runtime log path. Rerunning the suite outside the sandbox resolved that environment issue and the suite passed.
+- The current fullscreen-rescale validation completed in-sandbox; `user://logs` writes succeeded during the suite rerun.
 - The current headless test run exits with non-failing Godot leak/resource warnings after the suite summary. Gameplay and assertions still pass; the warning is tracked as a non-blocking issue.
+
+## 2026-04-09 Pass Flight And Steal Resolve Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 95
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - Passes now stay visible as authoritative in-flight ball motion instead of being overwritten by the held-ball sync path at the end of the frame.
+  - The deterministic harness now proves both the clean receiver catch path and the defender lane-cut steal path, including the short `STEAL_RESOLVE` beat before opponent sim.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
+
+## 2026-04-09 Full-Screen Court Rescale Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . res://scenes/GameRoot.tscn --quit-after 3`
+- Result:
+  - Pure logic: 113
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The fullscreen projection retune now proves full-screen court bounds in pure logic and smoke validation without changing `CourtConfig` world dimensions.
+  - Smoke validation confirms the hoop remains below the HUD banner, the enlarged players stay readable, the held ball stays attached to the handler hand, and pass-flight rendering stays aligned with projection.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
+
+## 2026-04-09 Probabilistic Pass Commit Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 104
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - Pass steals now gate the visible lane cut behind a seeded commit roll, but once committed the play still resolves as an honest live-ball race.
+  - The deterministic harness now covers commit-fail, commit-steal, committed-but-late offense catches, and the forced interception hook.
+  - The latest Normal-difficulty pass-risk batch landed at short steals `0.00` and long steals `0.23`, which is safely below the earlier always-commit behavior.
 
 ## 2026-04-08 Three-Piece Hoop Pass-Through Validation
 

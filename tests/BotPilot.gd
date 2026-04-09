@@ -7,6 +7,7 @@ var action_elapsed: float = 0.0
 var coordinator: GameCoordinator
 var input_controller: InputController
 var active_drag_release_position: Vector2 = Vector2.ZERO
+var failures: PackedStringArray = PackedStringArray()
 
 
 func move_joystick(direction: Vector2, duration: float) -> void:
@@ -86,6 +87,11 @@ func reset() -> void:
 	action_index = 0
 	action_elapsed = 0.0
 	active_drag_release_position = Vector2.ZERO
+	failures.clear()
+
+
+func get_failures() -> PackedStringArray:
+	return failures
 
 
 func step(delta: float) -> bool:
@@ -158,6 +164,22 @@ func step(delta: float) -> bool:
 			_advance()
 		"force_offensive_rebound":
 			coordinator.test_force_offensive_rebound(str(action.get("role", "")))
+			_advance()
+		"assert_state":
+			if coordinator.get_state_name() != str(action.get("expected_state", "")):
+				failures.append("state expected %s got %s" % [str(action.get("expected_state", "")), coordinator.get_state_name()])
+			_advance()
+		"assert_score":
+			if coordinator.context.home_score != int(action.get("home", 0)) or coordinator.context.away_score != int(action.get("away", 0)):
+				failures.append("score expected %d-%d got %d-%d" % [int(action.get("home", 0)), int(action.get("away", 0)), coordinator.context.home_score, coordinator.context.away_score])
+			_advance()
+		"assert_controlled_player":
+			if coordinator.get_controlled_role() != str(action.get("player_id", "")):
+				failures.append("controlled role expected %s got %s" % [str(action.get("player_id", "")), coordinator.get_controlled_role()])
+			_advance()
+		"assert_last_log_contains":
+			if not coordinator.match_log_contains(str(action.get("text", ""))):
+				failures.append("match log missing %s" % str(action.get("text", "")))
 			_advance()
 		_:
 			_advance()

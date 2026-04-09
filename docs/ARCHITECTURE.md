@@ -29,6 +29,7 @@
 - owns state transitions
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
+- owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim takes over
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
@@ -45,7 +46,7 @@
 - `ShotController`
   - hold meter timing, green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`
-  - straight-line pass travel and interception corridor checks
+  - straight-line pass travel, fixed release-time catch points, eligible interceptor selection, a ratings-and-risk commit roll, rating-scaled claim radii, and live catch-vs-steal resolution after commitment
 - `BallSimulator`
   - pure `RefCounted` 2D + z-height motion with explicit above-floor shot release height
   - guided makes switch from free flight to a rim-plane handoff and then into `guided_descent -> net_exit`, so the live simulator, not the coordinator, owns the downward swish path
@@ -98,6 +99,7 @@ Logs are written to `user://logs/` by `LogWriter`:
 - projected contest radii
 - projected catch radii
 - projected intercept corridor
+- projected pass target, active chase point, pass commit chance/outcome, and last pass-resolution marker
 - projected rebound zone
 - projected shot preview samples
 

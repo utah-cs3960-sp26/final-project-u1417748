@@ -12,7 +12,17 @@ target_id = "RC"
 [sub_resource type="Resource" id="ScenarioAction_wait_catch"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.9
+seconds = 0.95
+
+[sub_resource type="Resource" id="ScenarioAction_assert_control"]
+script = ExtResource("2")
+kind = "assert_controlled_player"
+target_id = "RC"
+
+[sub_resource type="Resource" id="ScenarioAction_assert_log"]
+script = ExtResource("2")
+kind = "assert_last_log_contains"
+value = "Pass caught by"
 
 [sub_resource type="Resource" id="ScenarioAction_force_score"]
 script = ExtResource("2")
@@ -53,20 +63,20 @@ seed = 101
 setup = {
 "ballhandler_role": "PG",
 "defense_positions": {
-"LC": Vector2(320, 540),
-"LW": Vector2(360, 980),
-"PG": Vector2(500, 1320),
-"RC": Vector2(760, 540),
-"RW": Vector2(720, 980)
+"LC": Vector2(300, 620),
+"LW": Vector2(300, 1060),
+"PG": Vector2(320, 1460),
+"RC": Vector2(830, 640),
+"RW": Vector2(800, 1060)
 },
 "offense_positions": {
 "LC": Vector2(260, 640),
 "LW": Vector2(360, 1040),
 "PG": Vector2(520, 1360),
-"RC": Vector2(600, 860),
+"RC": Vector2(620, 900),
 "RW": Vector2(740, 1100)
 }
 }
-actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait_catch"), SubResource("ScenarioAction_force_score"), SubResource("ScenarioAction_wait_resolve")])
+actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait_catch"), SubResource("ScenarioAction_assert_control"), SubResource("ScenarioAction_assert_log"), SubResource("ScenarioAction_force_score"), SubResource("ScenarioAction_wait_resolve")])
 expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_score"), SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_log"), SubResource("ScenarioExpectation_through_net")])
 tags = PackedStringArray("scenario", "pass", "score")
