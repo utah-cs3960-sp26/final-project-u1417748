@@ -201,13 +201,23 @@
 
 ### One-thumb control and full-height court rework
 
-- added `InputConfig` as a dedicated resource for movement-zone height, invisible-stick radius, dead zone, flick thresholds, pass-preview cone, anchor visuals, and best-effort mobile haptics
+- added `InputConfig` as a dedicated resource for movement-zone height, invisible-stick radius, dead zone, pass-preview cone, tap thresholds, anchor visuals, and best-effort mobile haptics
 - removed the runtime joystick scene and replaced movement with an invisible lower-screen drag zone that spawns a faint temporary thumb anchor
 - changed passing from teammate taps to directional flicks, including live pre-release target preview and deterministic cone-based target selection
 - changed shooting so releasing a non-pass gesture arms shot mode at normal speed, starts the committed shot animation immediately, and waits for a tap-anywhere timing lock instead of using a hold-to-release meter
 - added late-miss timeout handling when the timing bar reaches the end without a tap, while preserving the existing authored release-frame launch gate after the timing decision is locked
 - updated `CourtView` so the rotated court art keeps its source aspect ratio, fills the full screen height, crops excess width with an offensive bias, and renders transient movement-anchor and pass-preview overlays
 - rewired the bot pilot, deterministic scenarios, and pure-logic coverage around `move_thumb`, `flick_pass`, `arm_shot`, and `tap_meter`, and added a dedicated late-miss timeout scenario
+
+### Release-to-pass and tap-to-arm shot follow-up
+
+- removed the release-speed and flick-distance pass dependency from the shipped mobile input path while keeping the existing live pass-preview lock and ring fill
+- changed release arbitration so quick taps arm shot mode, center release after a real drag cancels, off-center release with a lock passes, and off-center release without a lock cancels
+- replaced the swipe thresholds in `InputConfig` with quick-tap duration and excursion limits
+- routed gameplay touch recognition through unhandled input so HUD controls keep precedence over shot-arm taps
+- extended structured release logs with offset, distance, release reason, and tap metrics
+- rewired the deterministic harness around `release_pass`, `tap_shot`, `release_center`, and `tap_meter`
+- added deterministic coverage for upper-screen tap shot arming, lower-zone tap shot arming, center release idle, tap red miss, and pause/resume safety while armed in shot mode
 
 ### Responsive mobile court and HUD layout
 

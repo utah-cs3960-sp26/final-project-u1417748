@@ -664,7 +664,7 @@ func _on_movement_zone_started(anchor_screen: Vector2, anchor_world: Vector2) ->
 	)
 
 
-func _on_movement_zone_ended(release_screen: Vector2, release_world: Vector2, elapsed: float, reason: String) -> void:
+func _on_movement_zone_ended(release_screen: Vector2, release_world: Vector2, elapsed: float, reason: String, details: Dictionary = {}) -> void:
 	log_writer.log_event(
 		"movement_zone_ended",
 		{
@@ -672,6 +672,10 @@ func _on_movement_zone_ended(release_screen: Vector2, release_world: Vector2, el
 			"release_world": _vector2_payload(release_world),
 			"elapsed": elapsed,
 			"reason": reason,
+			"release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
+			"release_distance": float(details.get("release_distance", 0.0)),
+			"tap_duration": float(details.get("tap_duration", 0.0)),
+			"tap_max_distance": float(details.get("tap_max_distance", 0.0)),
 		}
 	)
 
@@ -733,8 +737,9 @@ func _begin_pass_to_target(target: PlayerController, details: Dictionary = {}) -
 			"commit_chance": last_pass_commit_chance,
 			"commit_succeeded": last_pass_commit_succeeded,
 			"chase_point": _vector2_payload(pass_snapshot.get("chase_point", target.world_position)),
-			"gesture_flick_distance": float(details.get("flick_distance", 0.0)),
-			"gesture_release_speed": float(details.get("release_speed", 0.0)),
+			"gesture_release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
+			"gesture_release_distance": float(details.get("release_distance", 0.0)),
+			"gesture_release_reason": str(details.get("release_reason", "")),
 			"gesture_angle_error_rad": float(details.get("pass_angle_error_rad", 0.0)),
 		}
 	)
@@ -758,12 +763,17 @@ func _on_shot_mode_requested(details: Dictionary) -> void:
 	log_writer.log_event(
 		"shot_mode_armed",
 		{
-			"anchor_screen": _vector2_payload(details.get("anchor_screen", Vector2.ZERO)),
-			"release_screen": _vector2_payload(details.get("release_screen", Vector2.ZERO)),
-			"anchor_world": _vector2_payload(details.get("anchor_world", current_ballhandler.world_position)),
-			"release_world": _vector2_payload(details.get("release_world", current_ballhandler.world_position)),
-			"flick_distance": float(details.get("flick_distance", 0.0)),
-			"release_speed": float(details.get("release_speed", 0.0)),
+			"arm_reason": str(details.get("arm_reason", "")),
+			"tap_start_screen": _vector2_payload(details.get("tap_start_screen", details.get("anchor_screen", Vector2.ZERO))),
+			"tap_end_screen": _vector2_payload(details.get("tap_end_screen", details.get("release_screen", Vector2.ZERO))),
+			"tap_start_world": _vector2_payload(details.get("tap_start_world", details.get("anchor_world", current_ballhandler.world_position))),
+			"tap_end_world": _vector2_payload(details.get("tap_end_world", details.get("release_world", current_ballhandler.world_position))),
+			"tap_duration": float(details.get("tap_duration", 0.0)),
+			"tap_max_distance": float(details.get("tap_max_distance", 0.0)),
+			"started_in_movement_zone": bool(details.get("started_in_movement_zone", false)),
+			"release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
+			"release_distance": float(details.get("release_distance", 0.0)),
+			"release_reason": str(details.get("release_reason", "")),
 		}
 	)
 

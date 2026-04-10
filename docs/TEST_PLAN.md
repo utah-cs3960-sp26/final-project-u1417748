@@ -8,9 +8,13 @@ Covered by `tests/TestRunner.gd`:
 
 - invisible movement-zone dead-zone behavior
 - invisible-stick direction and magnitude normalization
-- flick pass gating on both distance and release speed
+- quick-tap shot qualification by duration and movement
+- quick tap shot arming outside the movement zone
+- quick tap shot arming inside the movement zone
+- extra touches ignored while dragging
+- center release cancel behavior
+- off-center release pass vs no-target cancel behavior
 - directional-cone pass-preview selection and deterministic tie-breaking
-- non-qualifying release arming shot mode instead of forcing a pass
 - meter green-window sizing stays fixed under contest and ratings
 - red/yellow/green timing classification on the one-way shot bar
 - `SHOT_AIM` running at normal gameplay speed
@@ -61,12 +65,14 @@ Resource-backed scenarios under `data/scenarios/`:
 - contested green release scores
 - contested miss with defensive rebound
 - bad cross-court pass steal
+- center release idle
 - late miss timeout
 - stationary pressure turnover
 - out-of-bounds turnover
 - offensive rebound continuation
 - buzzer shot completion
 - pause/resume safety
+- tap red miss
 - long-run no-softlock
 
 ### Balance Batches
@@ -135,13 +141,15 @@ Smoke game scene:
 - move the ballhandler by dragging in the lower touch zone and confirm no visible joystick is present
 - confirm a faint thumb anchor appears on touch-down and disappears cleanly on release
 - confirm tiny thumb movements inside the dead zone do not move the ballhandler
-- pass to at least one teammate with a flick and confirm the ball visibly travels between players instead of teleporting
-- confirm the teammate preview ring locks under the intended target before lift-off on a valid flick
+- pass to at least one teammate by releasing off-center with a live preview lock and confirm the ball visibly travels between players instead of teleporting
+- confirm the teammate preview ring locks under the intended target before release
+- confirm releasing back near the anchor center does nothing except stop movement
+- confirm releasing off-center without a preview lock also does nothing except stop movement
 - confirm a clean pass transfers control only after the live ball reaches the receiver
 - confirm a safe short pass usually reaches the target even if a defender was lane-eligible
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the possession jump-cut
-- release a non-pass gesture and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
+- swipe clearly up or down and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
 - confirm the committed shot row starts playing immediately during armed shot mode and the meter advances in one direction only
 - confirm committed shot rows keep a stable 15 FPS cadence instead of visibly speeding up between aim and release
 - confirm the tail-end green window ends exactly on the authored release frame for the selected row

@@ -1,6 +1,6 @@
 # iOS Test Install
 
-This project already has portrait orientation enabled in [`project.godot`](/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748/project.godot#L24) and touch input wired through [`scripts/input/InputController.gd`](/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748/scripts/input/InputController.gd). The shipped mobile flow is now an invisible lower-screen movement zone with flick-to-pass, release-to-arm shot mode, and tap-anywhere shot timing.
+This project already has portrait orientation enabled in [`project.godot`](/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748/project.godot#L24) and touch input wired through [`scripts/input/InputController.gd`](/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748/scripts/input/InputController.gd). The shipped mobile flow is now an invisible lower-screen movement zone with release-to-pass, quick-tap shot arming, and tap-anywhere shot timing.
 
 ## Local preset
 

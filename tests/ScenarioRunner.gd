@@ -71,10 +71,14 @@ func _queue_actions(pilot: BotPilot, actions: Array[ScenarioAction]) -> void:
 		match action.kind:
 			"move_thumb", "move_joystick":
 				pilot.move_thumb(action.vector, action.seconds)
-			"flick_pass", "tap_player":
-				pilot.flick_pass(action.target_id)
-			"arm_shot", "hold_drag":
-				pilot.arm_shot()
+			"release_pass", "flick_pass", "tap_player":
+				pilot.release_pass(action.target_id)
+			"tap_shot":
+				pilot.tap_shot()
+			"swipe_shot", "arm_shot", "hold_drag":
+				pilot.tap_shot()
+			"release_center":
+				pilot.release_center()
 			"set_meter_quality":
 				pilot.set_meter_quality(str(action.value))
 			"hold_until_meter_quality":

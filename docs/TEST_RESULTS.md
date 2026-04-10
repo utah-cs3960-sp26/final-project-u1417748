@@ -37,16 +37,16 @@ Smoke:
 
 Final headless suite status: pass
 
-- Pure logic: 374 / 374
-- Scenarios: 11 / 11
+- Pure logic: 378 / 378
+- Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.97`, normal `1.04`, hard `1.27`
+- `difficulty_order`: easy `1.02`, normal `1.05`, hard `1.26`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.37`, defense `0.63`
+- `rebound_distribution`: offense `0.30`, defense `0.70`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180`
 
 ## Scenario Result
@@ -55,6 +55,7 @@ Passed scenarios:
 
 - Bad Cross Court Pass Steal
 - Buzzer Shot Completion
+- Center Release Idle
 - Clean Pass And Shoot Make
 - Contested Green Release Scores
 - Contested Miss With Defensive Rebound
@@ -64,6 +65,7 @@ Passed scenarios:
 - Out Of Bounds Turnover
 - Pause Resume Safety
 - Stationary Pressure Turnover
+- Tap Red Miss
 
 ## Smoke Result
 
@@ -121,9 +123,14 @@ Additional pure-logic coverage now includes:
 - hidden-held-ball presentation on the first rendered possession frame
 - in-flight ball/projection alignment during the smoke pass
 - invisible lower-zone movement dead zone and full-magnitude thumb radius
-- flick distance and release-speed pass gating
+- quick tap shot qualification by duration and movement
+- quick tap shot arming outside the movement zone
+- quick tap shot arming inside the movement zone
+- extra touches being ignored while dragging
+- center-release idle classification
+- off-center release pass vs no-target cancel classification
 - directional pass-preview cone selection and deterministic tie-breaking
-- non-pass gesture release arming shot mode instead of forcing a pass
+- quick-tap gesture arming shot mode instead of forcing a pass
 - shot timing running at normal speed after arm
 - tap-to-time decision locking and late-miss timeout behavior
 - home player fill textures binding to `Character1_NEW.png`
@@ -182,18 +189,18 @@ Additional pure-logic coverage now includes:
   - Smoke validation now checks the centered play-rect placement, hoop-over-banner clearance, HUD child-rect containment for the home score, timer, pause button, and away score, plus readable player scale under the narrower framed court.
   - Manual on-device screenshot revalidation was not run in this session; the responsive layout change was validated through the passing headless suite and smoke assertions.
 
-## 2026-04-09 One-Thumb Control And Full-Height Court Validation
+## 2026-04-09 Release-To-Pass And Tap-To-Arm Validation
 
 - Commands run:
   - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
 - Result:
-  - Pure logic: 369
-  - Scenarios: 11
+  - Pure logic: 381
+  - Scenarios: 13
   - Balance: 4
   - Failures: 0
 - Notes:
-  - The suite now validates the invisible lower-screen movement zone, pass-preview cone selection, flick distance and release-speed gating, and the tap-to-time shot flow.
-  - Deterministic coverage now includes the full-height court crop behavior, the normal-speed armed `SHOT_AIM` phase, and the new `Late Miss Timeout` scenario.
+  - The suite now validates quick-tap shot qualification, upper-screen and lower-zone tap shot arming, center-release cancel behavior, and release-to-pass locking.
+  - Deterministic coverage now includes `Center Release Idle`, `Tap Red Miss`, and pause/resume safety while already armed in `SHOT_AIM`.
   - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
 
 ## 2026-04-09 Release-Synced Shot Validation

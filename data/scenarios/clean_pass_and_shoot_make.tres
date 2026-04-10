@@ -6,8 +6,8 @@
 
 [sub_resource type="Resource" id="ScenarioAction_pass"]
 script = ExtResource("2")
-kind = "flick_pass"
-target_id = "RC"
+kind = "release_pass"
+target_id = "RW"
 
 [sub_resource type="Resource" id="ScenarioAction_wait_catch"]
 script = ExtResource("2")
@@ -17,7 +17,7 @@ seconds = 0.95
 [sub_resource type="Resource" id="ScenarioAction_assert_control"]
 script = ExtResource("2")
 kind = "assert_controlled_player"
-target_id = "RC"
+target_id = "RW"
 
 [sub_resource type="Resource" id="ScenarioAction_assert_log"]
 script = ExtResource("2")
@@ -27,7 +27,7 @@ value = "Pass caught by"
 [sub_resource type="Resource" id="ScenarioAction_force_score"]
 script = ExtResource("2")
 kind = "force_scoring_shot"
-target_id = "RC"
+target_id = "RW"
 value = 2
 
 [sub_resource type="Resource" id="ScenarioAction_wait_resolve"]

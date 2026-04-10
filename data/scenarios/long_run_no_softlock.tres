@@ -12,7 +12,7 @@ vector = Vector2(1, 0)
 
 [sub_resource type="Resource" id="Action_pass_rw"]
 script = ExtResource("2")
-kind = "flick_pass"
+kind = "release_pass"
 target_id = "RW"
 
 [sub_resource type="Resource" id="Action_wait_pass"]

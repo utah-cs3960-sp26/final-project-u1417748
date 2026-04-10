@@ -4,7 +4,7 @@
 
 1. Boot directly into a 3:00 offense-only match.
 2. Control the offensive ballhandler.
-3. Use one-thumb movement, flick passing, and armed shot timing to create a shot.
+3. Use one-thumb movement, release-to-pass control, and tap-to-arm shot timing to create a shot.
 4. Resolve score, miss, steal, out-of-bounds, or rebound.
 5. If defense gains possession, run the opponent sim and reset to a new offensive possession.
 6. Finish the current live shot or rebound at the buzzer, then end the game.
@@ -24,7 +24,9 @@
 
 - While the thumb is moving, the game previews the best eligible teammate inside a directional cone around the current gesture vector.
 - The preview fills the ring under the locked teammate before lift-off.
-- Releasing only becomes a pass when the gesture exceeds both the minimum flick distance and the minimum release speed.
+- Releasing becomes a pass only when the release is outside the movement dead zone and a teammate is currently preview-locked.
+- Releasing back near the anchor center does nothing except stop movement.
+- Releasing off-center without a locked target also does nothing except stop movement.
 - A pass starts as an immediate straight-line live-ball pass to the locked teammate.
 - The ball stays visible during `PASS_IN_FLIGHT` and travels on a fixed straight segment toward the receiver's release-time catch point.
 - The intended receiver breaks to that catch point while one eligible defender may commit to the lane based on pass geometry, ratings, and difficulty.
@@ -37,7 +39,8 @@
 
 ### Shooting
 
-- Releasing a non-pass live-offense gesture enters `SHOT_AIM`.
+- A quick tap-release on the gameplay surface enters `SHOT_AIM`.
+- Lower-zone taps only arm a shot if they never become a real drag and stay inside the tap time and excursion limits.
 - `SHOT_AIM` is an armed timing phase, not a hold-and-drag phase.
 - Gameplay stays at normal speed while the shot is armed.
 - The ballhandler stops moving once shot mode is armed.
@@ -46,6 +49,7 @@
 - Trajectory dots appear during shot mode and preview the current release path.
 - A rectangular indicator sweeps across the bar once from left to right.
 - The first tap anywhere on screen samples the current timing result.
+- Releasing an actual drag back near the anchor center does not arm a shot.
 - Tapping inside the green window guarantees a made shot, even if the shooter is contested, and the release cannot be downgraded into a block.
 - Tapping in the red causes a miss or a contest-driven block.
 - If the player never taps before the bar ends, the shot counts as a late miss.

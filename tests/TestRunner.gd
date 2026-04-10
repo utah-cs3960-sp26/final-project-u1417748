@@ -464,13 +464,36 @@ func _run_pure_logic() -> void:
 	input_controller.setup(input_config, projection)
 	input_controller.set_ballhandler(short_target)
 	input_controller.set_offense_players([short_target, long_target, out_target])
+	input_controller.set_interaction_mode(InputController.InteractionMode.LIVE_OFFENSE)
 	short_target.apply_projection(projection.world_to_screen_ground(short_target.world_position), projection.actor_scale(short_target.world_position), projection.shadow_anchor(short_target.world_position) - projection.world_to_screen_ground(short_target.world_position), projection.shadow_scale(short_target.world_position), projection.depth_key(short_target.world_position))
 	long_target.apply_projection(projection.world_to_screen_ground(long_target.world_position), projection.actor_scale(long_target.world_position), projection.shadow_anchor(long_target.world_position) - projection.world_to_screen_ground(long_target.world_position), projection.shadow_scale(long_target.world_position), projection.depth_key(long_target.world_position))
 	var movement_snapshot: Dictionary = input_controller.compute_movement_snapshot(Vector2.ZERO, Vector2(input_config.invisible_stick_max_radius, 0.0))
 	_assert_true(movement_snapshot["direction"].is_equal_approx(Vector2.RIGHT), "invisible stick direction follows thumb vector", str(movement_snapshot))
 	_assert_true(float(movement_snapshot["magnitude"]) > 0.99, "invisible stick reaches full magnitude at max radius", str(movement_snapshot["magnitude"]))
-	_assert_true(not input_controller.qualifies_as_pass_flick(input_config.flick_min_distance - 1.0, input_config.flick_min_release_speed), "flick distance gate blocks short release", "")
-	_assert_true(not input_controller.qualifies_as_pass_flick(input_config.flick_min_distance, input_config.flick_min_release_speed - 1.0), "flick speed gate blocks slow release", "")
+	var quick_tap: Dictionary = input_controller.classify_shot_tap(0.12, 10.0)
+	_assert_true(bool(quick_tap.get("qualifies", false)), "quick tap qualifies for shot mode", JSON.stringify(quick_tap))
+	var long_tap: Dictionary = input_controller.classify_shot_tap(input_config.shot_tap_max_duration_seconds + 0.05, 10.0)
+	_assert_true(not bool(long_tap.get("qualifies", true)), "long hold does not qualify for shot mode", JSON.stringify(long_tap))
+	var drag_tap: Dictionary = input_controller.classify_shot_tap(0.1, input_config.shot_tap_max_movement_pixels + 8.0)
+	_assert_true(not bool(drag_tap.get("qualifies", true)), "dragged touch does not qualify for shot mode", JSON.stringify(drag_tap))
+	var shot_mode_requests: Array[Dictionary] = []
+	input_controller.shot_mode_requested.connect(func(details: Dictionary) -> void:
+		shot_mode_requests.append(details.duplicate(true))
+	)
+	input_controller.tap_test_shot_arm(Vector2(540.0, 640.0), 0.05)
+	_assert_true(shot_mode_requests.size() == 1 and not bool(shot_mode_requests[0].get("started_in_movement_zone", true)), "quick tap outside the movement zone arms shot mode", JSON.stringify(shot_mode_requests))
+	input_controller.tap_test_shot_arm(Vector2(540.0, 1800.0), 0.05)
+	_assert_true(shot_mode_requests.size() == 2 and bool(shot_mode_requests[1].get("started_in_movement_zone", false)), "quick tap inside the movement zone arms shot mode", JSON.stringify(shot_mode_requests))
+	input_controller.begin_test_live_gesture(Vector2(540.0, 1800.0))
+	input_controller.tap_test_shot_arm(Vector2(540.0, 640.0), 0.05)
+	_assert_true(shot_mode_requests.size() == 2, "additional touches are ignored while dragging", JSON.stringify(shot_mode_requests))
+	input_controller.end_test_live_gesture(Vector2(540.0, 1800.0))
+	var center_release: Dictionary = input_controller.classify_live_release(Vector2.ZERO, Vector2(input_config.deadzone - 1.0, 0.0), true)
+	_assert_true(center_release.get("release_reason", "") == "center_cancel", "center release cancels to idle", JSON.stringify(center_release))
+	var release_pass: Dictionary = input_controller.classify_live_release(Vector2.ZERO, Vector2(input_config.pass_preview_min_vector_length + 32.0, -32.0), true)
+	_assert_true(release_pass.get("release_reason", "") == "pass", "off-center release with lock triggers pass", JSON.stringify(release_pass))
+	var no_target_cancel: Dictionary = input_controller.classify_live_release(Vector2.ZERO, Vector2(input_config.pass_preview_min_vector_length + 32.0, -32.0), false)
+	_assert_true(no_target_cancel.get("release_reason", "") == "no_target_cancel", "off-center release without lock cancels", JSON.stringify(no_target_cancel))
 	var preview_candidate: Dictionary = input_controller.select_pass_preview_candidate(
 		[
 			{"player": short_target, "distance": 160.0, "direction_vector": Vector2(40.0, -200.0)},
@@ -1044,9 +1067,8 @@ func _arm_test_shot(coordinator: GameCoordinator) -> void:
 	if coordinator.input_controller == null:
 		return
 	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
-	var anchor: Vector2 = Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
-	coordinator.input_controller.begin_test_live_gesture(anchor)
-	coordinator.input_controller.end_test_live_gesture(anchor)
+	var tap_screen: Vector2 = Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
+	coordinator.input_controller.tap_test_shot_arm(tap_screen, 0.05)
 
 
 func _tap_test_meter(coordinator: GameCoordinator) -> void:

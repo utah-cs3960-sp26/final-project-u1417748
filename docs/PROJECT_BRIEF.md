@@ -7,8 +7,8 @@ Pocket Hoops is a portrait, half-court, arcade basketball game built for a class
 Deliver a fast, readable offense-only basketball loop where the player:
 
 - drags inside a lower-screen invisible touch zone to move the current ballhandler
-- flicks toward teammates to pass, with a live pre-release pass-target preview
-- releases a non-pass gesture to arm a timing meter and live arc preview at normal speed
+- releases off-center to pass when a teammate is currently preview-locked
+- swipes clearly up or down to arm a timing meter and live arc preview at normal speed
 - taps anywhere inside the green meter window to score no matter what, or outside it to miss / risk a block
 - resolves makes, misses, steals, rebounds, and jump-cut opponent possessions quickly
 

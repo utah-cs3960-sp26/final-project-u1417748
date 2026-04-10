@@ -28,14 +28,14 @@ The smartest thing its done is get the arch for a more arcadic style shot right 
 ## Status
 
 - The project now boots directly into a playable match for faster gameplay and layout validation.
-- Live offense, flick passing, armed shot timing, scoring, rebounds, pause, game over, and opponent sim are implemented.
-- Mobile controls now use a one-thumb lower-zone gesture model: drag to move, flick to pass, release to arm the shot meter, then tap anywhere to lock timing.
+- Live offense, release-to-pass input, tap-to-arm shot timing, scoring, rebounds, pause, game over, and opponent sim are implemented.
+- Mobile controls now use a one-thumb lower-zone gesture model: drag to move, release off-center to pass if a teammate is locked, quick tap to arm shot mode, then tap anywhere to lock timing.
 - Human shots now use an apex-driven launch solver with above-floor release height, longer airtime, and more dramatic on-screen arc lift.
 - Green makes now use a staged guided-make profile: the ballistic arc ends on the rim plane inside the legal front-half mouth, then the live simulator immediately drives the downward descent through the cylinder and net before the score resolves.
 - The terminal green-make path now applies a visual-only screen drop of about 60px so the final approach and descent read lower on screen without changing solver output, score legality, or hoop geometry.
 - Made baskets now use a three-piece hoop stack so the handoff can read at the rim, slip behind the hanging net during the swish, and only render behind the board when the path actually goes over it.
 - Rendering now uses a flat top-down rectangular projection: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry stay screen-faithful without the stretched trapezoid look.
-- Action input is projection-aware, so the invisible movement zone, flick-pass preview, and tap-to-time shot flow all line up with the projected screen positions the player actually sees.
+- Action input is projection-aware, so the invisible movement zone, release-to-pass preview, and tap-to-arm shot flow all line up with the projected screen positions the player actually sees.
 - The floor now renders from the blue second-court atlas variant as a rotated full-height crop that preserves the source art ratio, fills the screen vertically, and reveals part of the opposite side without stretching.
 - Player presentation is intentionally oversized for mobile readability, with a slightly closer default framing than the earlier build.
 - Gameplay tuning is resource-backed under `data/config/`.
@@ -58,8 +58,8 @@ Headless automated tests:
 ## Controls
 
 - Move: drag anywhere in the lower `35%` of the screen; a faint temporary anchor appears under the thumb. `WASD` / arrow keys still work in debug.
-- Pass: flick and lift. Before release, the best teammate inside the directional cone gets a filled preview ring under their feet.
-- Shoot: release a non-pass gesture to arm shot mode. The shot row starts immediately, the timing bar sweeps left to right once, and a tap anywhere on screen locks the result.
+- Pass: while moving, the best teammate inside the directional cone gets a filled preview ring. Releasing off-center passes only if that preview is locked.
+- Shoot: quick-tap the gameplay surface to arm shot mode. Lower-zone taps only arm a shot if they stay short and still; releasing near center after a real drag does nothing, and off-center release with no preview lock also does nothing.
 - Shot feel: the meter is mostly red with a smaller green chunk; tapping on green always scores through a planned downward swish path and cannot be blocked, tapping on red causes a miss or a block if the contest wins, and failing to tap before the bar ends counts as a late miss.
 - Shot preview: armed shot mode shows preview dots for the release path. Green preview dots show the guaranteed-make arc, and red preview dots show the deterministic miss path that would be launched if tapped immediately.
 - Made shots now hold on-screen briefly after the simulator-owned descent so the ball can fully clear the net before the possession resets.

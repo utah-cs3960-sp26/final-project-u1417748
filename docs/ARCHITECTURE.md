@@ -41,7 +41,7 @@
 ## Core Systems
 
 - `InputController`
-  - lower-zone invisible-stick movement, directional pass-preview selection, flick-pass commit gating, shot-mode arm requests, tap-to-time input, and debug mouse/keyboard support
+  - lower-zone invisible-stick movement, directional pass-preview selection, release-to-pass arbitration, quick-tap shot classification, shot-mode arm requests, tap-to-time input, UI-safe unhandled touch routing, and debug mouse/keyboard support
 - `CourtProjection`
   - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and amplified z-lift projection for a flat rectangular court view
   - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
@@ -122,5 +122,5 @@ The harness lives under `tests/` and is wrapped by thin files in `scripts/debug/
 - `RunTests.gd`: headless entrypoint
 - `TestRunner.gd`: suite coordinator and summary writer
 - `ScenarioRunner.gd`: deterministic scenario executor
-- `BotPilot.gd`: scripted zone-drag, flick-pass, arm-shot, and tap-meter action driver
+- `BotPilot.gd`: scripted zone-drag, release-pass, swipe-shot, center-release, and tap-meter action driver
 - `BalanceRunner.gd`: repeated seeded tuning probes

@@ -2,7 +2,7 @@ class_name InputController
 extends Node
 
 signal movement_zone_started(anchor_screen: Vector2, anchor_world: Vector2)
-signal movement_zone_ended(release_screen: Vector2, release_world: Vector2, elapsed: float, reason: String)
+signal movement_zone_ended(release_screen: Vector2, release_world: Vector2, elapsed: float, reason: String, details: Dictionary)
 signal movement_updated(direction: Vector2, magnitude: float)
 signal pass_preview_changed(target: PlayerController, details: Dictionary)
 signal pass_requested(target: PlayerController, details: Dictionary)
@@ -30,15 +30,23 @@ var gesture_current_screen: Vector2 = Vector2.ZERO
 var gesture_anchor_world: Vector2 = Vector2.ZERO
 var gesture_current_world: Vector2 = Vector2.ZERO
 var gesture_start_time: float = 0.0
-var gesture_last_sample_time: float = 0.0
-var gesture_release_speed: float = 0.0
+var gesture_max_excursion: float = 0.0
 var gesture_preview_target: PlayerController
 var gesture_preview_details: Dictionary = {}
+var tap_candidate_touch_index: int = -1
+var tap_candidate_start_screen: Vector2 = Vector2.ZERO
+var tap_candidate_current_screen: Vector2 = Vector2.ZERO
+var tap_candidate_start_world: Vector2 = Vector2.ZERO
+var tap_candidate_current_world: Vector2 = Vector2.ZERO
+var tap_candidate_start_time: float = 0.0
+var tap_candidate_max_distance: float = 0.0
+var tap_candidate_started_in_movement_zone: bool = false
 var timing_tap_consumed: bool = false
 
 
 func _ready() -> void:
 	set_process_input(true)
+	set_process_unhandled_input(true)
 	set_process(true)
 
 
@@ -73,6 +81,7 @@ func set_interaction_mode(mode_value: int) -> void:
 		return
 	if interaction_mode == InteractionMode.LIVE_OFFENSE and mode_value != InteractionMode.LIVE_OFFENSE:
 		_cancel_live_gesture("mode_change")
+		_clear_shot_tap_candidate_state()
 	interaction_mode = mode_value
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		movement_updated.emit(Vector2.ZERO, 0.0)
@@ -83,7 +92,7 @@ func set_interaction_mode(mode_value: int) -> void:
 func _process(_delta: float) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
-	if gameplay_touch_index != -1:
+	if _has_active_pointer():
 		return
 	if not allow_keyboard_debug:
 		return
@@ -99,6 +108,9 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_game"):
 		pause_requested.emit()
 		return
+
+
+func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		_handle_screen_touch(event as InputEventScreenTouch)
 	elif event is InputEventScreenDrag:
@@ -118,19 +130,26 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
 	if event.pressed:
-		if gameplay_touch_index != -1 or not _is_in_movement_zone(event.position):
+		if _has_active_pointer():
 			return
-		_begin_live_gesture(event.index, event.position)
+		if _is_in_movement_zone(event.position):
+			_begin_live_gesture(event.index, event.position)
+		else:
+			_begin_shot_tap_candidate(event.index, event.position, false)
 		return
-	if event.index != gameplay_touch_index:
-		return
-	_finish_live_gesture(event.position)
+	if event.index == gameplay_touch_index:
+		_finish_live_gesture(event.position)
+	elif event.index == tap_candidate_touch_index:
+		_finish_shot_tap_candidate(event.position)
 
 
 func _handle_screen_drag(event: InputEventScreenDrag) -> void:
-	if interaction_mode != InteractionMode.LIVE_OFFENSE or event.index != gameplay_touch_index:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
-	_update_live_gesture(event.position)
+	if event.index == gameplay_touch_index:
+		_update_live_gesture(event.position)
+	elif event.index == tap_candidate_touch_index:
+		_update_shot_tap_candidate(event.position)
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
@@ -144,18 +163,26 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
 	if event.pressed:
-		if gameplay_touch_index != -1 or not _is_in_movement_zone(event.position):
+		if _has_active_pointer():
 			return
-		_begin_live_gesture(-2, event.position)
+		if _is_in_movement_zone(event.position):
+			_begin_live_gesture(-2, event.position)
+		else:
+			_begin_shot_tap_candidate(-2, event.position, false)
 		return
 	if gameplay_touch_index == -2:
 		_finish_live_gesture(event.position)
+	elif tap_candidate_touch_index == -2:
+		_finish_shot_tap_candidate(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
-	if interaction_mode != InteractionMode.LIVE_OFFENSE or gameplay_touch_index != -2 or not allow_mouse_emulation:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE or not allow_mouse_emulation:
 		return
-	_update_live_gesture(event.position)
+	if gameplay_touch_index == -2:
+		_update_live_gesture(event.position)
+	elif tap_candidate_touch_index == -2:
+		_update_shot_tap_candidate(event.position)
 
 
 func _begin_live_gesture(pointer_index: int, screen_position: Vector2) -> void:
@@ -165,22 +192,16 @@ func _begin_live_gesture(pointer_index: int, screen_position: Vector2) -> void:
 	gesture_anchor_world = _screen_to_world_ground(screen_position)
 	gesture_current_world = gesture_anchor_world
 	gesture_start_time = _now_seconds()
-	gesture_last_sample_time = gesture_start_time
-	gesture_release_speed = 0.0
+	gesture_max_excursion = 0.0
 	_clear_pass_preview()
 	movement_updated.emit(Vector2.ZERO, 0.0)
 	movement_zone_started.emit(gesture_anchor_screen, gesture_anchor_world)
 
 
 func _update_live_gesture(screen_position: Vector2) -> void:
-	var previous_screen: Vector2 = gesture_current_screen
-	var now_seconds: float = _now_seconds()
-	var dt: float = maxf(now_seconds - gesture_last_sample_time, 0.0001)
-	var segment_speed: float = screen_position.distance_to(previous_screen) / dt
 	gesture_current_screen = screen_position
 	gesture_current_world = _screen_to_world_ground(screen_position)
-	gesture_last_sample_time = now_seconds
-	gesture_release_speed = segment_speed
+	gesture_max_excursion = maxf(gesture_max_excursion, screen_position.distance_to(gesture_anchor_screen))
 	var movement_snapshot: Dictionary = compute_movement_snapshot(gesture_anchor_screen, screen_position)
 	movement_updated.emit(movement_snapshot["direction"], movement_snapshot["magnitude"])
 	_refresh_pass_preview()
@@ -194,29 +215,49 @@ func _finish_live_gesture(release_screen: Vector2) -> void:
 	var elapsed: float = maxf(_now_seconds() - gesture_start_time, 0.0)
 	var release_world: Vector2 = gesture_current_world
 	var movement_snapshot: Dictionary = compute_movement_snapshot(gesture_anchor_screen, release_screen)
-	var flick_distance: float = float(movement_snapshot["distance"])
+	var max_touch_distance: float = maxf(gesture_max_excursion, release_screen.distance_to(gesture_anchor_screen))
+	var tap_classification: Dictionary = classify_shot_tap(elapsed, max_touch_distance)
+	if bool(tap_classification.get("qualifies", false)):
+		var tap_details: Dictionary = _build_shot_tap_details(
+			gesture_anchor_screen,
+			release_screen,
+			gesture_anchor_world,
+			release_world,
+			elapsed,
+			max_touch_distance,
+			true
+		)
+		movement_updated.emit(Vector2.ZERO, 0.0)
+		movement_zone_ended.emit(release_screen, release_world, elapsed, "tap_shot", tap_details)
+		_clear_live_gesture_state()
+		shot_mode_requested.emit(tap_details)
+		return
+	var release_classification: Dictionary = classify_live_release(gesture_anchor_screen, release_screen, gesture_preview_target != null)
+	var release_reason: String = str(release_classification.get("release_reason", "center_cancel"))
+	var pass_target: PlayerController = gesture_preview_target
 	var release_details: Dictionary = {
 		"anchor_screen": gesture_anchor_screen,
 		"release_screen": release_screen,
 		"anchor_world": gesture_anchor_world,
 		"release_world": release_world,
 		"elapsed": elapsed,
-		"flick_distance": flick_distance,
-		"release_speed": gesture_release_speed,
+		"release_offset_screen": release_classification.get("release_offset_screen", release_screen - gesture_anchor_screen),
+		"release_distance": float(release_classification.get("release_distance", movement_snapshot["distance"])),
+		"release_reason": release_reason,
 		"direction": movement_snapshot["direction"],
 		"pass_target": gesture_preview_target,
 		"pass_target_role": gesture_preview_target.get_position_role() if gesture_preview_target != null else "",
 		"pass_angle_error_rad": float(gesture_preview_details.get("angle_error_rad", 0.0)),
 		"pass_distance": float(gesture_preview_details.get("distance", 0.0)),
+		"tap_duration": elapsed,
+		"tap_max_distance": max_touch_distance,
+		"started_in_movement_zone": true,
 	}
 	movement_updated.emit(Vector2.ZERO, 0.0)
-	if gesture_preview_target != null and qualifies_as_pass_flick(flick_distance, gesture_release_speed):
-		movement_zone_ended.emit(release_screen, release_world, elapsed, "pass")
-		pass_requested.emit(gesture_preview_target, release_details)
-	else:
-		movement_zone_ended.emit(release_screen, release_world, elapsed, "shot_arm")
-		shot_mode_requested.emit(release_details)
+	movement_zone_ended.emit(release_screen, release_world, elapsed, release_reason, release_details)
 	_clear_live_gesture_state()
+	if release_reason == "pass" and pass_target != null:
+		pass_requested.emit(pass_target, release_details)
 
 
 func _cancel_live_gesture(reason: String) -> void:
@@ -225,8 +266,23 @@ func _cancel_live_gesture(reason: String) -> void:
 	var release_screen: Vector2 = gesture_current_screen
 	var release_world: Vector2 = gesture_current_world
 	var elapsed: float = maxf(_now_seconds() - gesture_start_time, 0.0)
+	var max_touch_distance: float = maxf(gesture_max_excursion, release_screen.distance_to(gesture_anchor_screen))
+	var release_classification: Dictionary = classify_live_release(gesture_anchor_screen, release_screen, gesture_preview_target != null)
+	var release_details: Dictionary = {
+		"anchor_screen": gesture_anchor_screen,
+		"release_screen": release_screen,
+		"anchor_world": gesture_anchor_world,
+		"release_world": release_world,
+		"elapsed": elapsed,
+		"release_offset_screen": release_classification.get("release_offset_screen", release_screen - gesture_anchor_screen),
+		"release_distance": float(release_classification.get("release_distance", (release_screen - gesture_anchor_screen).length())),
+		"release_reason": reason,
+		"tap_duration": elapsed,
+		"tap_max_distance": max_touch_distance,
+		"started_in_movement_zone": true,
+	}
 	movement_updated.emit(Vector2.ZERO, 0.0)
-	movement_zone_ended.emit(release_screen, release_world, elapsed, reason)
+	movement_zone_ended.emit(release_screen, release_world, elapsed, reason, release_details)
 	_clear_live_gesture_state()
 
 
@@ -237,9 +293,86 @@ func _clear_live_gesture_state() -> void:
 	gesture_anchor_world = Vector2.ZERO
 	gesture_current_world = Vector2.ZERO
 	gesture_start_time = 0.0
-	gesture_last_sample_time = 0.0
-	gesture_release_speed = 0.0
+	gesture_max_excursion = 0.0
 	_clear_pass_preview()
+
+
+func _begin_shot_tap_candidate(pointer_index: int, screen_position: Vector2, started_in_movement_zone: bool) -> void:
+	tap_candidate_touch_index = pointer_index
+	tap_candidate_start_screen = screen_position
+	tap_candidate_current_screen = screen_position
+	tap_candidate_start_world = _screen_to_world_ground(screen_position)
+	tap_candidate_current_world = tap_candidate_start_world
+	tap_candidate_start_time = _now_seconds()
+	tap_candidate_max_distance = 0.0
+	tap_candidate_started_in_movement_zone = started_in_movement_zone
+
+
+func _update_shot_tap_candidate(screen_position: Vector2) -> void:
+	if tap_candidate_touch_index == -1:
+		return
+	tap_candidate_current_screen = screen_position
+	tap_candidate_current_world = _screen_to_world_ground(screen_position)
+	tap_candidate_max_distance = maxf(tap_candidate_max_distance, screen_position.distance_to(tap_candidate_start_screen))
+
+
+func _finish_shot_tap_candidate(release_screen: Vector2) -> void:
+	if tap_candidate_touch_index == -1:
+		return
+	tap_candidate_current_screen = release_screen
+	tap_candidate_current_world = _screen_to_world_ground(release_screen)
+	var elapsed: float = maxf(_now_seconds() - tap_candidate_start_time, 0.0)
+	var max_touch_distance: float = maxf(tap_candidate_max_distance, release_screen.distance_to(tap_candidate_start_screen))
+	var tap_classification: Dictionary = classify_shot_tap(elapsed, max_touch_distance)
+	if bool(tap_classification.get("qualifies", false)):
+		var tap_details: Dictionary = _build_shot_tap_details(
+			tap_candidate_start_screen,
+			release_screen,
+			tap_candidate_start_world,
+			tap_candidate_current_world,
+			elapsed,
+			max_touch_distance,
+			tap_candidate_started_in_movement_zone
+		)
+		_clear_shot_tap_candidate_state()
+		shot_mode_requested.emit(tap_details)
+		return
+	_clear_shot_tap_candidate_state()
+
+
+func _clear_shot_tap_candidate_state() -> void:
+	tap_candidate_touch_index = -1
+	tap_candidate_start_screen = Vector2.ZERO
+	tap_candidate_current_screen = Vector2.ZERO
+	tap_candidate_start_world = Vector2.ZERO
+	tap_candidate_current_world = Vector2.ZERO
+	tap_candidate_start_time = 0.0
+	tap_candidate_max_distance = 0.0
+	tap_candidate_started_in_movement_zone = false
+
+
+func _build_shot_tap_details(
+	tap_start_screen: Vector2,
+	tap_end_screen: Vector2,
+	tap_start_world: Vector2,
+	tap_end_world: Vector2,
+	tap_duration: float,
+	tap_max_distance: float,
+	started_in_movement_zone: bool
+) -> Dictionary:
+	return {
+		"arm_reason": "tap",
+		"release_reason": "tap_shot",
+		"tap_start_screen": tap_start_screen,
+		"tap_end_screen": tap_end_screen,
+		"tap_start_world": tap_start_world,
+		"tap_end_world": tap_end_world,
+		"tap_duration": tap_duration,
+		"tap_max_distance": tap_max_distance,
+		"started_in_movement_zone": started_in_movement_zone,
+		"release_offset_screen": tap_end_screen - tap_start_screen,
+		"release_distance": tap_end_screen.distance_to(tap_start_screen),
+	}
 
 
 func _refresh_pass_preview() -> void:
@@ -278,7 +411,7 @@ func get_touch_feedback_snapshot() -> Dictionary:
 
 
 func begin_test_live_gesture(screen_position: Vector2, pointer_index: int = -99) -> void:
-	if interaction_mode != InteractionMode.LIVE_OFFENSE or gameplay_touch_index != -1:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE or _has_active_pointer():
 		return
 	_begin_live_gesture(pointer_index, screen_position)
 
@@ -302,6 +435,20 @@ func tap_test_shot_timing(screen_position: Vector2 = Vector2.ZERO) -> void:
 	shot_timing_tapped.emit(screen_position)
 
 
+func tap_test_shot_arm(screen_position: Vector2 = Vector2.ZERO, duration: float = 0.05) -> void:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE or _has_active_pointer():
+		return
+	var touch_duration: float = maxf(duration, 0.0)
+	if _is_in_movement_zone(screen_position):
+		_begin_live_gesture(-97, screen_position)
+		gesture_start_time = _now_seconds() - touch_duration
+		_finish_live_gesture(screen_position)
+		return
+	_begin_shot_tap_candidate(-98, screen_position, false)
+	tap_candidate_start_time = _now_seconds() - touch_duration
+	_finish_shot_tap_candidate(screen_position)
+
+
 func compute_movement_snapshot(anchor_screen: Vector2, current_screen: Vector2) -> Dictionary:
 	var offset: Vector2 = current_screen - anchor_screen
 	var distance_value: float = offset.length()
@@ -321,10 +468,43 @@ func compute_movement_snapshot(anchor_screen: Vector2, current_screen: Vector2) 
 	}
 
 
-func qualifies_as_pass_flick(flick_distance: float, release_speed: float) -> bool:
-	if input_config == null:
-		return flick_distance >= 92.0 and release_speed >= 920.0
-	return flick_distance >= input_config.flick_min_distance and release_speed >= input_config.flick_min_release_speed
+func classify_shot_tap(touch_duration: float, max_touch_excursion: float) -> Dictionary:
+	var max_duration: float = input_config.shot_tap_max_duration_seconds if input_config != null else 0.18
+	var max_movement: float = input_config.shot_tap_max_movement_pixels if input_config != null else 20.0
+	return {
+		"qualifies": touch_duration <= max_duration and max_touch_excursion <= max_movement,
+		"tap_duration": touch_duration,
+		"tap_max_distance": max_touch_excursion,
+	}
+
+
+func classify_live_release(anchor_screen: Vector2, release_screen: Vector2, has_pass_target: bool) -> Dictionary:
+	var release_offset_screen: Vector2 = release_screen - anchor_screen
+	var release_distance: float = release_offset_screen.length()
+	var deadzone_value: float = input_config.deadzone if input_config != null else 22.0
+	if release_distance <= deadzone_value:
+		return {
+			"release_offset_screen": release_offset_screen,
+			"release_distance": release_distance,
+			"release_reason": "center_cancel",
+			"should_pass": false,
+			"should_arm_shot": false,
+		}
+	if has_pass_target:
+		return {
+			"release_offset_screen": release_offset_screen,
+			"release_distance": release_distance,
+			"release_reason": "pass",
+			"should_pass": true,
+			"should_arm_shot": false,
+		}
+	return {
+		"release_offset_screen": release_offset_screen,
+		"release_distance": release_distance,
+		"release_reason": "no_target_cancel",
+		"should_pass": false,
+		"should_arm_shot": false,
+	}
 
 
 func select_pass_preview_candidate(candidates: Array[Dictionary], gesture_vector: Vector2) -> Dictionary:
@@ -377,7 +557,8 @@ func _build_pass_preview_candidates() -> Array[Dictionary]:
 
 
 func _is_in_movement_zone(screen_position: Vector2) -> bool:
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var viewport: Viewport = get_viewport()
+	var viewport_size: Vector2 = viewport.get_visible_rect().size if viewport != null else Vector2(1080.0, 1920.0)
 	var movement_ratio: float = input_config.movement_zone_height_ratio if input_config != null else 0.35
 	return screen_position.y >= viewport_size.y * (1.0 - movement_ratio)
 
@@ -386,6 +567,10 @@ func _screen_to_world_ground(screen_position: Vector2) -> Vector2:
 	if projection == null:
 		return screen_position
 	return projection.screen_to_world_ground(screen_position)
+
+
+func _has_active_pointer() -> bool:
+	return gameplay_touch_index != -1 or tap_candidate_touch_index != -1
 
 
 func _now_seconds() -> float:
