@@ -69,16 +69,18 @@ func get_summary() -> String:
 func _queue_actions(pilot: BotPilot, actions: Array[ScenarioAction]) -> void:
 	for action in actions:
 		match action.kind:
-			"move_joystick":
-				pilot.move_joystick(action.vector, action.seconds)
-			"tap_player":
-				pilot.tap_player(action.target_id)
-			"hold_drag":
-				pilot.hold_drag_from_ballhandler(action.vector, action.seconds)
+			"move_thumb", "move_joystick":
+				pilot.move_thumb(action.vector, action.seconds)
+			"flick_pass", "tap_player":
+				pilot.flick_pass(action.target_id)
+			"arm_shot", "hold_drag":
+				pilot.arm_shot()
+			"set_meter_quality":
+				pilot.set_meter_quality(str(action.value))
 			"hold_until_meter_quality":
 				pilot.hold_until_meter_quality(str(action.value), action.seconds)
-			"release":
-				pilot.release_action()
+			"tap_meter", "release":
+				pilot.tap_meter()
 			"wait":
 				pilot.wait(action.seconds)
 			"pause_toggle":

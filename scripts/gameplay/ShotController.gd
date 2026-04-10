@@ -57,6 +57,10 @@ func get_release_time_seconds() -> float:
 	return maxf(float(shot_config.meter_cycle_duration) * clampf(float(shot_config.meter_green_center), 0.0, 1.0), 0.0)
 
 
+func get_decision_duration_seconds() -> float:
+	return maxf(get_release_time_seconds(), 0.0)
+
+
 func get_full_animation_duration_seconds() -> float:
 	if not aim_timing_profile.is_empty():
 		return maxf(float(aim_timing_profile.get("full_animation_duration_seconds", 0.0)), 0.0)
@@ -100,7 +104,7 @@ func build_action_for_quality(
 
 
 func get_meter_progress() -> float:
-	var duration: float = get_full_animation_duration_seconds()
+	var duration: float = get_decision_duration_seconds()
 	if shot_config == null or duration <= 0.0:
 		return 0.0
 	return clampf(aim_elapsed / duration, 0.0, 1.0)
@@ -163,10 +167,9 @@ func build_current_launch_profile(ballhandler_position: Vector2, shooter: Player
 
 
 func _get_release_progress() -> float:
-	var full_duration: float = get_full_animation_duration_seconds()
-	if full_duration <= 0.0:
+	if get_decision_duration_seconds() <= 0.0:
 		return clampf(float(shot_config.meter_green_center), 0.0, 1.0)
-	return clampf(get_release_time_seconds() / full_duration, 0.0, 1.0)
+	return 1.0
 
 
 func _compose_release_action(params: Dictionary, quality: String, timing_result: String) -> Dictionary:

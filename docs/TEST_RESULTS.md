@@ -37,16 +37,16 @@ Smoke:
 
 Final headless suite status: pass
 
-- Pure logic: 113 / 113
-- Scenarios: 10 / 10
+- Pure logic: 374 / 374
+- Scenarios: 11 / 11
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.90`, normal `1.06`, hard `1.24`
+- `difficulty_order`: easy `0.97`, normal `1.04`, hard `1.27`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.32`, defense `0.68`
+- `rebound_distribution`: offense `0.37`, defense `0.63`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180`
 
 ## Scenario Result
@@ -58,6 +58,7 @@ Passed scenarios:
 - Clean Pass And Shoot Make
 - Contested Green Release Scores
 - Contested Miss With Defensive Rebound
+- Late Miss Timeout
 - Long Run No Softlock
 - Offensive Rebound Continuation
 - Out Of Bounds Turnover
@@ -69,9 +70,9 @@ Passed scenarios:
 - default boot scene (`GameRoot.tscn`) booted headless without script/runtime errors
 - `GameRoot.tscn` booted headless without script/runtime errors
 - headless validation kept the gameplay scene stable after the cinematic arc refactor and restored aim-preview path
-- the projected court now fills the full screen behind the HUD, with the floor mapping from `(0, 0)` to `(1080, 1920)` in smoke validation
-- the resized hoop art still clears the 128 px HUD banner, the world ball now stays hidden while a player-held sprite owns possession, and pass-flight ball anchors stay aligned with projection
-- the deterministic smoke pass stayed visible for 30 frames and advanced about 514 px on screen before the catch resolved
+- the projected court now maps into a centered responsive play rect below the banner instead of assuming the full viewport is playable court space
+- the hoop still clears the responsive HUD banner, all HUD child rects stayed fully inside the banner, the world ball stays hidden while a player-held sprite owns possession, and pass-flight ball anchors stay aligned with projection
+- the deterministic smoke pass stayed visible for 30 frames and advanced about 473 px on screen before the catch resolved
 
 Additional pure-logic coverage now includes:
 
@@ -94,29 +95,37 @@ Additional pure-logic coverage now includes:
 - preview samples mirroring live simulation deltas
 - above-floor launch height
 - projected ground-depth ordering
-- full-screen court top-edge mapping
-- full-screen court bottom-edge mapping
-- left sideline mapping to the screen edge
-- right sideline mapping to the screen edge
+- responsive court top-edge mapping
+- responsive court bottom-edge mapping
+- left sideline mapping to the active play-rect edge
+- right sideline mapping to the active play-rect edge
 - flat rectangular court width consistency
-- flat projection linear depth mapping
+- flat projection linear depth mapping inside the centered play rect
 - flat projection ground-coordinate round trip
 - projected z-lift from a stable ground anchor
 - cinematic-strength projected z-lift
 - preview lift exceeding live-ball lift
 - actor scale and draw-order depth behavior
-- projected teammate tap hit testing
-- projection-aware shot-hold targeting
+- projected lower-zone gesture mapping
+- projection-aware shot-mode arming input
 - gameplay boot scene selection
 - textured court smoke instantiation
 - hoop sprite smoke instantiation
 - ball sprite smoke instantiation
 - player sprite smoke instantiation
-- court filling the screen behind the HUD in a booted `GameRoot`
-- hoop art clearing the HUD banner after the fullscreen rescale
-- enlarged player presentation under the fullscreen framing
+- court mapping to the centered responsive play rect in a booted `GameRoot`
+- ratio-preserving full-height court crop with offensive-side bias
+- hoop art clearing the responsive HUD banner after the centered-court relayout
+- responsive HUD child-rect containment for score, timer, and pause controls
+- readable player presentation under the centered court framing
 - hidden-held-ball presentation on the first rendered possession frame
 - in-flight ball/projection alignment during the smoke pass
+- invisible lower-zone movement dead zone and full-magnitude thumb radius
+- flick distance and release-speed pass gating
+- directional pass-preview cone selection and deterministic tie-breaking
+- non-pass gesture release arming shot mode instead of forcing a pass
+- shot timing running at normal speed after arm
+- tap-to-time decision locking and late-miss timeout behavior
 - home player fill textures binding to `Character1_NEW.png`
 - away player fill textures binding to `Character2_NEW.png`
 - controlled-player-only outline rendering plus outline transfer when control changes
@@ -124,11 +133,13 @@ Additional pure-logic coverage now includes:
 - westward mirroring assertions for run dribbles and close-finish dunks
 - staged `SHOT_RELEASE` entry before the world ball becomes visible
 - row-4 set-shot selection when the defender-space gate is satisfied
+- committed shot timing profiles resolving to 15 FPS for rows 4, 8, 10, 13, 14, 15, 16, and 17
 - deterministic jumper-release variant locking across repeated syncs
 - deterministic row-8-vs-10 jumper selection by seed once the set-shot gate is denied
 - straight-vs-side layup row selection inside the close-finish radius
 - straight-dunk row selection inside the stricter dunk gate
 - side-dunk row selection when the approach stays close and lateral
+- committed shot continuation keeping the same 15 FPS cadence instead of accelerating between aim and release
 - delayed blocker jump-contest activation on the actual release frame of a blocked shot
 - ball hiding again on catches, offensive rebounds, and steal resolves
 - hoop render-phase z-band ordering
@@ -154,8 +165,36 @@ Additional pure-logic coverage now includes:
 ## Notes
 
 - Godot emitted the known macOS `get_system_ca_certificates` warning in headless mode. It did not block import, tests, or smoke validation.
-- The current fullscreen-rescale validation completed in-sandbox; `user://logs` writes succeeded during the suite rerun.
+- The final rerun used the approved headless Godot command and still wrote fresh `user://logs` output successfully.
 - The current headless test run exits with non-failing Godot leak/resource warnings after the suite summary. Gameplay and assertions still pass; the warning is tracked as a non-blocking issue.
+
+## 2026-04-09 Responsive Mobile Court And HUD Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 374
+  - Scenarios: 11
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The responsive layout pass now proves that `CourtProjection` can remap the fixed gameplay court into a centered `court_screen_rect` below the live HUD banner without changing `CourtConfig` world coordinates.
+  - Smoke validation now checks the centered play-rect placement, hoop-over-banner clearance, HUD child-rect containment for the home score, timer, pause button, and away score, plus readable player scale under the narrower framed court.
+  - Manual on-device screenshot revalidation was not run in this session; the responsive layout change was validated through the passing headless suite and smoke assertions.
+
+## 2026-04-09 One-Thumb Control And Full-Height Court Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 369
+  - Scenarios: 11
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now validates the invisible lower-screen movement zone, pass-preview cone selection, flick distance and release-speed gating, and the tap-to-time shot flow.
+  - Deterministic coverage now includes the full-height court crop behavior, the normal-speed armed `SHOT_AIM` phase, and the new `Late Miss Timeout` scenario.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
 
 ## 2026-04-09 Release-Synced Shot Validation
 
@@ -182,8 +221,22 @@ Additional pure-logic coverage now includes:
   - Failures: 0
 - Notes:
   - The suite now validates the one-way shot bar, the synced committed windup row, the tail-end green window, and the authored release-frame launch gate.
-  - Early releases lock the current quality and still play through followthrough, while overholds auto-fire on the release frame and are forced to miss.
+  - Early timing taps lock the current quality and still play through followthrough, while letting the decision bar expire forces the late-miss path.
   - Row 5 remains a fallback hold pose, not the main live shot-aim row.
+
+## 2026-04-09 Unified 15 FPS Shot Cadence Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 411
+  - Scenarios: 10
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now proves rows 4, 8, 10, 13, 14, 15, 16, and 17 all derive `fps`, `release_time_seconds`, and `full_animation_duration_seconds` from the same 15 FPS source of truth.
+  - The smoke pass now also checks that a committed shot row continues through the staged release path without picking up a faster cadence, and that blocked-shot waits track the real row release timing instead of an old fixed faster assumption.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
 
 ## 2026-04-09 Full-Sheet Animation Validation
 

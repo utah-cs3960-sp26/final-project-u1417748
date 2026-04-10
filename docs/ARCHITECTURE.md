@@ -7,7 +7,6 @@
   - `Entities`
   - `Systems/InputController`
   - `UIRoot/HUD`
-  - `UIRoot/Joystick`
   - `UIRoot/PauseOverlay`
   - `UIRoot/GameOverOverlay`
   - `UIRoot/FeedbackText`
@@ -30,6 +29,7 @@
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
 - owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim takes over
+- owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
@@ -41,13 +41,17 @@
 ## Core Systems
 
 - `InputController`
-  - joystick movement, projection-aware tap-pass, projection-aware hold-to-shoot meter input, debug mouse/keyboard support
+  - lower-zone invisible-stick movement, directional pass-preview selection, flick-pass commit gating, shot-mode arm requests, tap-to-time input, and debug mouse/keyboard support
 - `CourtProjection`
   - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and amplified z-lift projection for a flat rectangular court view
+  - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
 - `CourtView`
-  - draws the rotated blue second-court atlas slice as a textured projected floor surface, using an explicit left-half crop so the active offensive hoop lines up with the live rim anchor
+  - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
+  - also renders transient touch feedback like the movement anchor, pass-preview ring, shot meter, and trajectory dots
+- `HUD`
+  - builds the top banner from responsive containers instead of fixed coordinates, applies safe-area-aware sizing through `apply_layout()`, and exposes a layout snapshot used by smoke tests to verify score, timer, and pause controls stay inside the banner
 - `ShotController`
-  - one-way hold meter timing, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
+  - one-way shot-mode timing, decision-duration-vs-full-animation timing separation, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`
   - straight-line pass travel, fixed release-time catch points, eligible interceptor selection, a ratings-and-risk commit roll, rating-scaled claim radii, and live catch-vs-steal resolution after commitment
 - `BallSimulator`
@@ -65,6 +69,7 @@
   - treat the sprite sheet as east-facing art by default and mirror westward motion in presentation only
   - keep outline rendering separate from fill playback so only the currently controlled player shows the matching outline sheet
   - expose lightweight debug/runtime frame accessors so the coordinator can sync the held bar, gate launch on row-specific thresholds, and keep the committed row playing through followthrough without moving shot logic into the art layer
+  - drive every committed shot family from the same 15 FPS playback table so aim, staged release, and followthrough keep one authored cadence while release timing still comes from per-row frame metadata
 - `ReboundController`
   - rebound candidate scoring and winner selection
 - `RouteController` + `SpacingSolver`
@@ -117,5 +122,5 @@ The harness lives under `tests/` and is wrapped by thin files in `scripts/debug/
 - `RunTests.gd`: headless entrypoint
 - `TestRunner.gd`: suite coordinator and summary writer
 - `ScenarioRunner.gd`: deterministic scenario executor
-- `BotPilot.gd`: scripted action driver
+- `BotPilot.gd`: scripted zone-drag, flick-pass, arm-shot, and tap-meter action driver
 - `BalanceRunner.gd`: repeated seeded tuning probes

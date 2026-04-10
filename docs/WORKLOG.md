@@ -186,3 +186,33 @@
 - kept early releases locked to the current quality while the animation continues through followthrough before launch
 - added overhold auto-release at the authored release frame, with forced-miss behavior when the player keeps holding too long
 - retained row 5 only as a fallback hold pose for non-committed or canceled cases, not as the main live shot-aim animation
+
+### Unified 15 FPS shot cadence
+
+- changed every committed shot family in `PlayerVisual` to a shared 15 FPS playback rate so set shots, jumpers, layups, and dunks no longer jump between mixed row speeds
+- updated the coordinator fallback timing helpers so release-pose duration, release seconds, and full animation duration all derive from the same 15 FPS shot profile instead of old 16 FPS defaults
+- extended the deterministic suite with exact 15 FPS timing-profile checks for rows 4, 8, 10, 13, 14, 15, 16, and 17 plus a no-restart continuation cadence check
+
+### iOS test export setup
+
+- added a local `export_presets.cfg` iOS preset for device testing with the existing Apple developer team configuration and an ignored `.godot/ios_export` Xcode-project target
+- documented the Godot-to-Xcode install flow in `docs/IOS_TESTING.md` so local device testing does not depend on App Store publishing steps
+- restored the missing `scripts/game/MainMenu.gd` stub referenced by `scenes/MainMenu.tscn` so export packing no longer trips over a stale scene script
+
+### One-thumb control and full-height court rework
+
+- added `InputConfig` as a dedicated resource for movement-zone height, invisible-stick radius, dead zone, flick thresholds, pass-preview cone, anchor visuals, and best-effort mobile haptics
+- removed the runtime joystick scene and replaced movement with an invisible lower-screen drag zone that spawns a faint temporary thumb anchor
+- changed passing from teammate taps to directional flicks, including live pre-release target preview and deterministic cone-based target selection
+- changed shooting so releasing a non-pass gesture arms shot mode at normal speed, starts the committed shot animation immediately, and waits for a tap-anywhere timing lock instead of using a hold-to-release meter
+- added late-miss timeout handling when the timing bar reaches the end without a tap, while preserving the existing authored release-frame launch gate after the timing decision is locked
+- updated `CourtView` so the rotated court art keeps its source aspect ratio, fills the full screen height, crops excess width with an offensive bias, and renders transient movement-anchor and pass-preview overlays
+- rewired the bot pilot, deterministic scenarios, and pure-logic coverage around `move_thumb`, `flick_pass`, `arm_shot`, and `tap_meter`, and added a dedicated late-miss timeout scenario
+
+### Responsive mobile court and HUD layout
+
+- added a `GameCoordinator`-owned responsive layout contract that reads the visible viewport plus `DisplayServer.get_display_safe_area()`, then derives `banner_rect`, `available_play_rect`, `court_screen_rect`, `presentation_scale`, and `ui_scale`
+- changed `CourtProjection` to accept runtime screen-layout overrides so world-space gameplay stays untouched while the rendered court now fits and centers below the live banner instead of assuming a fixed `1080x1920` frame
+- scaled actor presentation, shadow offset, hoop offset/scale, live ball radii, held-ball radius, and guided-make screen-drop presentation from the centered court width so visuals stay proportional on narrower phones
+- rebuilt `HUD` from responsive containers with a centered timer/pause stack and exposed a layout snapshot used by smoke tests to assert all banner controls stay fully inside the top bar
+- updated smoke and pure-logic coverage around responsive court bounds, centered play-area placement, hoop-over-banner clearance, and HUD child-rect containment

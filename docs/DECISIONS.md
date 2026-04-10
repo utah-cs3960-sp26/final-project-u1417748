@@ -44,7 +44,7 @@ Gameplay, AI, ball physics, hoop resolution, and authored scenarios still operat
 
 ### Shot control changed from drag aim to hold-and-release meter
 
-The shot interaction no longer uses opposite-drag aiming or a live trajectory preview. Holding on the current ballhandler now enters slow-motion shot aim and shows a bottom timing meter made of rectangular red and green zones. Releasing in green guarantees a make; releasing in red causes a miss or a contest-driven block. This change was made explicitly at the user's request and is now the control truth for the repo.
+At this stage of development, the shot interaction no longer used opposite-drag aiming or a live trajectory preview. Holding on the current ballhandler entered slow-motion shot aim and showed a bottom timing meter made of rectangular red and green zones. Releasing in green guaranteed a make; releasing in red caused a miss or a contest-driven block. This was the control truth for the repo at that time and was later superseded by the one-thumb armed shot-timing flow documented below.
 
 ## 2026-04-08
 
@@ -74,7 +74,7 @@ The old fixed-time shot solver was replaced with an apex-driven launch builder t
 
 ### The meter keeps control truth, but live preview dots are back
 
-The repo still uses the hold-to-release meter as the only shot input. A live trajectory preview was restored as presentation, not aiming control: green preview dots show the guaranteed make path, while red preview dots show the deterministic miss path that would be launched if the player released on that frame. A stable aim-time miss variant is held from aim start through release so preview and live flight stay aligned.
+At this stage of development, the repo still used the hold-to-release meter as the only shot input. A live trajectory preview was restored as presentation, not aiming control: green preview dots showed the guaranteed make path, while red preview dots showed the deterministic miss path that would be launched if the player released on that frame. A stable aim-time miss variant was held from aim start through release so preview and live flight stayed aligned.
 
 ### Hoop occlusion is render-only and follows explicit phases
 
@@ -106,6 +106,22 @@ The old visual contract still rendered the standalone `BallController` on the ha
 
 The live shot meter is no longer a separate ping-pong widget that runs independently of the sprite. `SHOT_AIM` now starts the real committed shot row immediately, the bar advances in one direction only, and the tail-end green window is aligned so its end lands on the row's authored release frame. If the player releases early, the shot quality locks at that moment and the animation keeps playing to the release frame before launch. If the player keeps holding through the release frame, the game auto-fires there and forces a miss as an overhold. Row 5 remains only a fallback hold pose for non-committed cases, not the main live shot-aim animation.
 
+### Committed shot rows now all play at 15 FPS
+
+The synced-windup rewrite still left shot presentation with mixed authored playback rates, which made some rows visibly spurt faster when the sequence moved from windup into release/followthrough. The committed shot families now all use a single 15 FPS cadence for aim, staged release, and followthrough. Release timing still comes from the same row-specific frame thresholds; only the seconds-to-release and full animation duration are recomputed from the unified 15 FPS source of truth.
+
 ### Pass steals now use a commit roll plus a visible live-ball race
 
 The earlier interception rewrite fixed the presentation problem by making the ball flight authoritative and resolving catches or steals on the live ball, but it also made any lane-eligible defender feel too sticky because commitment was automatic. The current contract is hybrid. Each pass still identifies one best eligible defender by lane ETA, but that defender only gets the visible lane-cut override after a seeded commit roll based on pass geometry, defender pressure, passer accuracy, receiver catch security, and the current difficulty defense multiplier. Once a defender commits, the rest of the play stays visually honest: the ball keeps traveling on the same straight segment, the receiver breaks to the release-time catch point, the defender cuts into the lane, and the first player to the live ball wins. Ties still favor the offense on the claim frame, and steals still enter a short `STEAL_RESOLVE` state before the opponent sim jump-cut.
+
+### Court framing now preserves full-height art instead of stretching or hard-half cropping
+
+The court no longer relies on a fixed half-court crop that happens to fit the current portrait viewport. `CourtView` now treats the full rotated blue second-court region as the source, scales it to fill screen height without stretching, and crops only the extra width with a consistent offensive-side bias. This keeps the live hoop aligned to the existing world anchor while using the unused opposite-side art to fill vertical phone screens naturally.
+
+### One-thumb lower-zone gestures replace the visible joystick and teammate tap-pass flow
+
+The shipped mobile control truth is now a lower-screen invisible movement zone with a temporary thumb anchor, dead-zone filtering, flick-to-pass, and pre-release pass-target preview. The old visible joystick and tap-teammate pass path are retired from the runtime mobile flow. Only one live gameplay touch is honored during offense, with extra touches reserved for HUD interaction and the shot-timing tap.
+
+### `SHOT_AIM` now means armed tap timing at normal speed
+
+The earlier hold-to-release meter was replaced again so the user can play with one thumb more cleanly. Releasing a live-offense gesture now arms `SHOT_AIM`, starts the committed shot animation immediately, keeps gameplay at `1.0x`, and shows a one-way timing bar. The player then taps anywhere to lock the result. If the tap lands in green the shot is guaranteed, if it lands in red the shot misses or can be blocked, and if no tap arrives before the bar ends the result is a forced late miss. The existing authored release-frame gate remains in place after timing lock so the world ball still launches off the animation, not off the screen tap itself.

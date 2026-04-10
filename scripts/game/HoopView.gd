@@ -281,9 +281,9 @@ func _apply_front_net_transform() -> void:
 
 
 func _get_visual_scale_multiplier() -> float:
-	if projection == null or projection.projection_config == null:
+	if projection == null:
 		return 1.0
-	return maxf(projection.projection_config.hoop_visual_scale_multiplier, 0.01)
+	return projection.get_hoop_visual_scale_multiplier()
 
 
 func _get_texture(path: String) -> Texture2D:

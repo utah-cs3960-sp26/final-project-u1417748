@@ -6,11 +6,20 @@
 
 Covered by `tests/TestRunner.gd`:
 
-- joystick normalization
+- invisible movement-zone dead-zone behavior
+- invisible-stick direction and magnitude normalization
+- flick pass gating on both distance and release speed
+- directional-cone pass-preview selection and deterministic tie-breaking
+- non-qualifying release arming shot mode instead of forcing a pass
 - meter green-window sizing stays fixed under contest and ratings
 - red/yellow/green timing classification on the one-way shot bar
-- synced windup timing against the committed shot row
+- `SHOT_AIM` running at normal gameplay speed
+- decision-window meter timing against the committed shot row
+- late-miss timeout when the bar ends without a tap
+- committed shot timing profiles deriving from a unified 15 FPS cadence across rows 4, 8, 10, 13, 14, 15, 16, and 17
 - flat rectangular court width consistency
+- full-height court crop preserving art ratio without stretch
+- offensive-biased court crop revealing partial opposite-side floor coverage
 - flat projection linear depth mapping
 - flat projection ground-coordinate round trip
 - cinematic near/far shot airtime thresholds
@@ -52,6 +61,7 @@ Resource-backed scenarios under `data/scenarios/`:
 - contested green release scores
 - contested miss with defensive rebound
 - bad cross-court pass steal
+- late miss timeout
 - stationary pressure turnover
 - out-of-bounds turnover
 - offensive rebound continuation
@@ -86,7 +96,8 @@ Resource-backed batches under `data/balance/`:
 - staged shot-release gating from `SHOT_RELEASE` into `SHOT_IN_FLIGHT`
 - jumper-release variant locking
 - early release locking while the committed row continues to the authored release frame
-- overhold auto-release on the authored release frame with a forced miss
+- late-miss timeout forcing a miss once the decision window ends without a timing tap
+- committed shot rows keeping the same 15 FPS cadence through aim-to-release continuation instead of accelerating between phases
 - deterministic row-8-vs-10 jumper selection by seed once the set-shot gate is denied
 - straight-vs-side layup selection inside the close-finish radius
 - straight-dunk random row selection plus side-dunk row selection inside the closer finish radius
@@ -121,22 +132,26 @@ Smoke game scene:
 ## Manual Smoke Checklist
 
 - run the project and confirm live gameplay appears immediately
-- move the ballhandler
-- pass to at least one teammate and confirm the ball visibly travels between players instead of teleporting
+- move the ballhandler by dragging in the lower touch zone and confirm no visible joystick is present
+- confirm a faint thumb anchor appears on touch-down and disappears cleanly on release
+- confirm tiny thumb movements inside the dead zone do not move the ballhandler
+- pass to at least one teammate with a flick and confirm the ball visibly travels between players instead of teleporting
+- confirm the teammate preview ring locks under the intended target before lift-off on a valid flick
 - confirm a clean pass transfers control only after the live ball reaches the receiver
 - confirm a safe short pass usually reaches the target even if a defender was lane-eligible
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the possession jump-cut
-- enter shot aim and confirm slow-motion + bottom red/green meter + visible preview dots
-- confirm the committed shot row starts playing immediately during aim and the meter advances in one direction only
+- release a non-pass gesture and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
+- confirm the committed shot row starts playing immediately during armed shot mode and the meter advances in one direction only
+- confirm committed shot rows keep a stable 15 FPS cadence instead of visibly speeding up between aim and release
 - confirm the tail-end green window ends exactly on the authored release frame for the selected row
-- confirm an early release locks shot quality immediately while the animation continues to the release frame before launch
-- confirm holding past the release frame auto-fires there and counts as a miss
+- confirm tapping anywhere locks shot quality immediately while the animation continues to the release frame before launch
+- confirm failing to tap before the bar ends produces a late miss
 - confirm the standalone ball is hidden while a player sprite owns possession and only appears on pass start or once a shot animation reaches its authored release frame
-- release once in green and confirm the ball visibly climbs into a dramatic arc and finishes through the hoop
-- release once in red and confirm a miss or block
+- tap once in green and confirm the ball visibly climbs into a dramatic arc and finishes through the hoop
+- tap once in red and confirm a miss or block
 - score at least one basket
-- confirm the blue second-court half is visible and vertically oriented
+- confirm the blue second-court art is visible, vertically oriented, full-height, and not stretched
 - confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
 - confirm the hoop body plus rear/full hoop, front rim lip, and front net body all stay aligned on the painted top-rim area
 - confirm normal makes render in front of the backboard, meet the rim plane, immediately turn downward into the hanging net during the guided descent, and only go behind the board when thrown over it
@@ -148,6 +163,7 @@ Smoke game scene:
 - confirm close shots near the rim can show straight layups, side layups, straight dunks, or side dunks depending on approach and momentum
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases
+- on a physical mobile device, confirm pass-lock and green-timing haptics fire when supported
 - force a miss and observe rebound resolution
 - pause and resume
 - reach game over and restart

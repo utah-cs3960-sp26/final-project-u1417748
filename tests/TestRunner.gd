@@ -45,8 +45,6 @@ func _write_summary() -> void:
 
 
 func _run_pure_logic() -> void:
-	_assert_true(Vector2(3.0, 4.0).normalized().length() > 0.99, "joystick normalization", "")
-
 	var shot_controller: ShotController = ShotController.new()
 	shot_controller.shot_config = ShotTimingConfig.new()
 	shot_controller.ball_config = BallPhysicsConfig.new()
@@ -63,14 +61,15 @@ func _run_pure_logic() -> void:
 	var green_window: Vector2 = shot_controller.get_green_window(false, shooter.release_consistency)
 	var contested_green_window: Vector2 = shot_controller.get_green_window(true, shooter.release_consistency)
 	var low_consistency_green_window: Vector2 = shot_controller.get_green_window(false, 12)
+	var green_center: float = (green_window.x + green_window.y) * 0.5
 	_assert_true(absf((contested_green_window.y - contested_green_window.x) - (green_window.y - green_window.x)) < 0.0001, "contest does not change meter green", "")
 	_assert_true(absf((low_consistency_green_window.y - low_consistency_green_window.x) - (green_window.y - green_window.x)) < 0.0001, "ratings do not change meter green", "")
-	_assert_true(shot_controller.classify_meter_progress(shot_controller.shot_config.meter_green_center, false, shooter.release_consistency) == "green", "meter green center", "")
-	_assert_true(shot_controller.classify_meter_progress(shot_controller.shot_config.meter_green_center, true, 10) == "green", "meter green center holds under contest", "")
+	_assert_true(shot_controller.classify_meter_progress(green_center, false, shooter.release_consistency) == "green", "meter green midpoint", "")
+	_assert_true(shot_controller.classify_meter_progress(green_center, true, 10) == "green", "meter green midpoint holds under contest", "")
 	_assert_true(shot_controller.classify_meter_progress(0.08, false, shooter.release_consistency) == "red", "meter red edge", "")
 
 	shot_controller.begin_aim(Vector2.ZERO)
-	shot_controller.update_aim(shot_controller.shot_config.meter_cycle_duration * shot_controller.shot_config.meter_green_center, Vector2.ZERO)
+	shot_controller.update_aim(shot_controller.get_decision_duration_seconds() * green_center, Vector2.ZERO)
 	var meter_snapshot: Dictionary = shot_controller.get_meter_snapshot(false, shooter.release_consistency)
 	_assert_true(meter_snapshot["visible"] and meter_snapshot["quality"] == "green", "meter snapshot visible and green", "")
 	var contested_snapshot: Dictionary = shot_controller.get_meter_snapshot(true, 10)
@@ -80,15 +79,44 @@ func _run_pure_logic() -> void:
 	synced_probe.ball_config = shot_controller.ball_config
 	synced_probe.court_config = shot_controller.court_config
 	synced_probe.begin_aim(Vector2.ZERO)
-	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 0.25, Vector2.ZERO)
+	synced_probe.update_aim(synced_probe.get_decision_duration_seconds() * 0.25, Vector2.ZERO)
 	var synced_progress_1: float = synced_probe.get_meter_progress()
-	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 0.25, Vector2.ZERO)
+	synced_probe.update_aim(synced_probe.get_decision_duration_seconds() * 0.25, Vector2.ZERO)
 	var synced_progress_2: float = synced_probe.get_meter_progress()
-	synced_probe.update_aim(synced_probe.shot_config.meter_cycle_duration * 1.0, Vector2.ZERO)
+	synced_probe.update_aim(synced_probe.get_decision_duration_seconds() * 1.0, Vector2.ZERO)
 	var synced_progress_3: float = synced_probe.get_meter_progress()
 	_assert_true(synced_progress_1 > 0.0 and synced_progress_2 > synced_progress_1, "meter advances forward during one-way windup", "%0.3f %0.3f" % [synced_progress_1, synced_progress_2])
 	_assert_true(synced_progress_3 >= synced_progress_2 and synced_progress_3 <= 1.0, "meter clamps instead of ping-ponging", "%0.3f" % synced_progress_3)
+	var shot_timing_rows: Array[Dictionary] = [
+		{"row": 4, "family": "set_shot_release", "release_after": 5},
+		{"row": 8, "family": "jumper_release", "release_after": 11},
+		{"row": 10, "family": "jumper_release", "release_after": 23},
+		{"row": 13, "family": "close_finish_dunk", "release_after": 9},
+		{"row": 14, "family": "close_finish_layup", "release_after": 9},
+		{"row": 15, "family": "close_finish_dunk", "release_after": 10},
+		{"row": 16, "family": "close_finish_side_dunk", "release_after": 10},
+		{"row": 17, "family": "close_finish_layup", "release_after": 11},
+	]
+	for shot_timing_entry in shot_timing_rows:
+		var shot_timing_profile: Dictionary = PlayerVisual.build_timing_profile_for_row(int(shot_timing_entry["row"]), str(shot_timing_entry["family"]))
+		var shot_release_after: int = int(shot_timing_entry["release_after"])
+		var shot_fps: float = float(shot_timing_profile.get("fps", 0.0))
+		_assert_true(absf(shot_fps - 15.0) < 0.001, "row %d shot timing uses 15 fps" % int(shot_timing_entry["row"]), str(shot_fps))
+		_assert_true(int(shot_timing_profile.get("release_after_frame", -1)) == shot_release_after, "row %d keeps authored release frame" % int(shot_timing_entry["row"]), str(shot_timing_profile.get("release_after_frame", -1)))
+		_assert_true(absf(float(shot_timing_profile.get("release_time_seconds", 0.0)) - float(shot_release_after) / 15.0) < 0.001, "row %d release seconds derive from 15 fps" % int(shot_timing_entry["row"]), str(shot_timing_profile.get("release_time_seconds", 0.0)))
+		var shot_total_frames: int = int(shot_timing_profile.get("total_frames", 0))
+		_assert_true(absf(float(shot_timing_profile.get("full_animation_duration_seconds", 0.0)) - float(shot_total_frames) / 15.0) < 0.001, "row %d full duration derives from 15 fps" % int(shot_timing_entry["row"]), str(shot_timing_profile.get("full_animation_duration_seconds", 0.0)))
+	var cadence_visual: PlayerVisual = PlayerVisual.new()
+	var cadence_request: PlayerVisualRequest = PlayerVisualRequest.new("set_shot_release", 0, false, true, true)
+	cadence_visual.apply_state(cadence_request, 1.0 / 15.0)
+	var cadence_frame_before_commit: int = cadence_visual.get_debug_frame_number()
+	cadence_visual.apply_state(PlayerVisualRequest.new("set_shot_release", 0, false, true, false), 1.0 / 15.0)
+	var cadence_frame_after_commit: int = cadence_visual.get_debug_frame_number()
+	_assert_true(cadence_frame_before_commit == 2 and cadence_frame_after_commit == 3, "shot continuation keeps the same 15 fps cadence", "%d %d" % [cadence_frame_before_commit, cadence_frame_after_commit])
+	cadence_visual.free()
 
+	var projection_screen_rect: Rect2 = Rect2(90.0, 208.0, 900.0, 1600.0)
+	projection.apply_screen_layout(projection_screen_rect, projection_screen_rect.size.x / 1080.0)
 	var far_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 320.0))
 	var near_ground: Vector2 = projection.world_to_screen_ground(Vector2(540.0, 1500.0))
 	_assert_true(far_ground.y < near_ground.y, "projection orders up-court depth", "")
@@ -97,14 +125,14 @@ func _run_pure_logic() -> void:
 	var top_right: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.end.x, court_rect.position.y))
 	var bottom_left: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.position.x, court_rect.end.y))
 	var bottom_right: Vector2 = projection.world_to_screen_ground(court_rect.end)
-	_assert_true(absf(top_left.y) < 0.001 and absf(top_right.y) < 0.001, "projection maps court top to screen top", "")
-	_assert_true(absf(bottom_left.y - 1920.0) < 0.001 and absf(bottom_right.y - 1920.0) < 0.001, "projection maps court bottom to screen bottom", "")
-	_assert_true(absf(top_left.x) < 0.001 and absf(bottom_left.x) < 0.001, "projection maps left sideline to screen edge", "")
-	_assert_true(absf(top_right.x - 1080.0) < 0.001 and absf(bottom_right.x - 1080.0) < 0.001, "projection maps right sideline to screen edge", "")
+	_assert_true(absf(top_left.y - projection_screen_rect.position.y) < 0.001 and absf(top_right.y - projection_screen_rect.position.y) < 0.001, "projection maps court top to layout top", "")
+	_assert_true(absf(bottom_left.y - projection_screen_rect.end.y) < 0.001 and absf(bottom_right.y - projection_screen_rect.end.y) < 0.001, "projection maps court bottom to layout bottom", "")
+	_assert_true(absf(top_left.x - projection_screen_rect.position.x) < 0.001 and absf(bottom_left.x - projection_screen_rect.position.x) < 0.001, "projection maps left sideline to layout edge", "")
+	_assert_true(absf(top_right.x - projection_screen_rect.end.x) < 0.001 and absf(bottom_right.x - projection_screen_rect.end.x) < 0.001, "projection maps right sideline to layout edge", "")
 	_assert_true(absf((top_right.x - top_left.x) - (bottom_right.x - bottom_left.x)) < 0.001, "projection keeps court width constant", "")
 	var mid_world_y: float = court_rect.position.y + court_rect.size.y * 0.5
 	var mid_ground: Vector2 = projection.world_to_screen_ground(Vector2(court_rect.get_center().x, mid_world_y))
-	var expected_mid_y: float = lerpf(projection_config.screen_horizon_y, projection_config.screen_floor_y, 0.5)
+	var expected_mid_y: float = lerpf(projection_screen_rect.position.y, projection_screen_rect.end.y, 0.5)
 	_assert_true(absf(mid_ground.y - expected_mid_y) < 0.001, "projection maps court depth linearly", "")
 	var round_trip_world: Vector2 = Vector2(740.0, 1110.0)
 	var round_trip_screen: Vector2 = projection.world_to_screen_ground(round_trip_world)
@@ -115,7 +143,7 @@ func _run_pure_logic() -> void:
 	_assert_true(absf(lifted.x - ground.x) < 0.001 and lifted.y < ground.y, "projection lifts from ground anchor", "")
 	_assert_true(ground.y - lifted.y > 60.0, "projection gives cinematic z lift", "")
 	_assert_true(preview_lifted.y < lifted.y, "preview lift exceeds live ball lift", "")
-	_assert_true(absf(projection.guided_make_terminal_screen_drop(1.0) - projection_config.guided_make_terminal_screen_drop_px) < 0.001, "projection exposes guided make terminal screen drop", "")
+	_assert_true(absf(projection.guided_make_terminal_screen_drop(1.0) - projection_config.guided_make_terminal_screen_drop_px * (projection_screen_rect.size.x / 1080.0)) < 0.001, "projection exposes guided make terminal screen drop", "")
 	_assert_true(projection.actor_scale(Vector2(540.0, 1500.0)) > projection.actor_scale(Vector2(540.0, 420.0)), "near actors render larger", "")
 	_assert_true(projection.depth_key(Vector2(540.0, 1500.0)) > projection.depth_key(Vector2(540.0, 420.0)), "near actors sort in front", "")
 	var near_origin: Vector2 = Vector2(560.0, 760.0)
@@ -196,7 +224,7 @@ func _run_pure_logic() -> void:
 	_assert_true(scored, "green launch scores through hoop", "")
 	if scored:
 		_assert_true(first_guided_descent_z <= shot_controller.court_config.rim_height + 0.01 and first_guided_descent_vz < 0.0, "first visible guided descent sample is already dropping from rim", "%0.2f %0.2f" % [first_guided_descent_z, first_guided_descent_vz])
-		_assert_true(absf(projection.guided_make_terminal_screen_drop(first_guided_drop_weight) - projection_config.guided_make_terminal_screen_drop_px) < 0.001, "guided descent renders at full terminal drop", str(first_guided_drop_weight))
+		_assert_true(absf(projection.guided_make_terminal_screen_drop(first_guided_drop_weight) - projection_config.guided_make_terminal_screen_drop_px * (projection_screen_rect.size.x / 1080.0)) < 0.001, "guided descent renders at full terminal drop", str(first_guided_drop_weight))
 		_assert_true(score_phase == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green score happens during guided descent", score_phase)
 		_assert_true(_is_legal_score_sample(first_score_interaction["score_sample_xy"], shot_controller.court_config), "green score enters legal front-half corridor", str(first_score_interaction["score_sample_xy"]))
 	shot_controller.begin_aim(Vector2(540.0, 1100.0), {}, rng)
@@ -229,7 +257,7 @@ func _run_pure_logic() -> void:
 	_assert_true(not miss_entered_guided_phase, "miss does not enter guided make phases", "")
 	_assert_true(not miss_scored, "red launch misses rim center", "")
 
-	var green_hold: float = shot_controller.shot_config.meter_cycle_duration * shot_controller.shot_config.meter_green_center
+	var green_hold: float = shot_controller.get_decision_duration_seconds() * green_center
 	shot_controller.begin_aim(Vector2(540.0, 1100.0), {}, rng)
 	shot_controller.update_aim(green_hold, Vector2.ZERO)
 	var green_preview_profile: Dictionary = shot_controller.get_preview_profile(Vector2(540.0, 1100.0), shooter, false)
@@ -432,13 +460,33 @@ func _run_pure_logic() -> void:
 	)
 	_assert_true(out_result["state"] == "out_of_bounds", "out-of-bounds resolves before catch", JSON.stringify(out_result))
 	var input_controller: InputController = InputController.new()
-	input_controller.set_projection(projection)
+	var input_config = preload("res://scripts/config/InputConfig.gd").new()
+	input_controller.setup(input_config, projection)
 	input_controller.set_ballhandler(short_target)
 	input_controller.set_offense_players([short_target, long_target, out_target])
-	input_controller.shot_hold_delay = shot_controller.shot_config.hold_start_delay
 	short_target.apply_projection(projection.world_to_screen_ground(short_target.world_position), projection.actor_scale(short_target.world_position), projection.shadow_anchor(short_target.world_position) - projection.world_to_screen_ground(short_target.world_position), projection.shadow_scale(short_target.world_position), projection.depth_key(short_target.world_position))
 	long_target.apply_projection(projection.world_to_screen_ground(long_target.world_position), projection.actor_scale(long_target.world_position), projection.shadow_anchor(long_target.world_position) - projection.world_to_screen_ground(long_target.world_position), projection.shadow_scale(long_target.world_position), projection.depth_key(long_target.world_position))
-	_assert_true(input_controller.find_teammate_at_screen(long_target.get_screen_anchor()) == long_target, "projected tap selects intended teammate", "")
+	var movement_snapshot: Dictionary = input_controller.compute_movement_snapshot(Vector2.ZERO, Vector2(input_config.invisible_stick_max_radius, 0.0))
+	_assert_true(movement_snapshot["direction"].is_equal_approx(Vector2.RIGHT), "invisible stick direction follows thumb vector", str(movement_snapshot))
+	_assert_true(float(movement_snapshot["magnitude"]) > 0.99, "invisible stick reaches full magnitude at max radius", str(movement_snapshot["magnitude"]))
+	_assert_true(not input_controller.qualifies_as_pass_flick(input_config.flick_min_distance - 1.0, input_config.flick_min_release_speed), "flick distance gate blocks short release", "")
+	_assert_true(not input_controller.qualifies_as_pass_flick(input_config.flick_min_distance, input_config.flick_min_release_speed - 1.0), "flick speed gate blocks slow release", "")
+	var preview_candidate: Dictionary = input_controller.select_pass_preview_candidate(
+		[
+			{"player": short_target, "distance": 160.0, "direction_vector": Vector2(40.0, -200.0)},
+			{"player": long_target, "distance": 210.0, "direction_vector": Vector2(20.0, -220.0)},
+			{"player": out_target, "distance": 300.0, "direction_vector": Vector2(-180.0, 20.0)},
+		],
+		Vector2(0.0, -240.0)
+	)
+	_assert_true(preview_candidate.get("player", null) == long_target, "pass preview picks the smallest angle error inside the cone", JSON.stringify({"angle": preview_candidate.get("angle_error_rad", -1.0), "distance": preview_candidate.get("distance", -1.0)}))
+	var no_preview_candidate: Dictionary = input_controller.select_pass_preview_candidate(
+		[
+			{"player": short_target, "distance": 160.0, "direction_vector": Vector2(40.0, -200.0)},
+		],
+		Vector2(8.0, -24.0)
+	)
+	_assert_true(no_preview_candidate.is_empty(), "pass preview ignores tiny thumb shifts", "")
 
 	var route_controller: RouteController = RouteController.new()
 	route_controller.route_config = RouteConfig.new()
@@ -494,15 +542,24 @@ func _run_pure_logic() -> void:
 				break
 	_assert_true(home_visual_ok, "player art smoke", "")
 	if smoke_coordinator != null and smoke_coordinator.court_projection != null and smoke_coordinator.court_config != null:
+		var smoke_layout: Dictionary = smoke_coordinator.get_layout_metrics_snapshot()
+		var smoke_court_rect: Rect2 = smoke_layout.get("court_screen_rect", Rect2())
+		var smoke_available_rect: Rect2 = smoke_layout.get("available_play_rect", Rect2())
 		var smoke_rect: Rect2 = smoke_coordinator.court_config.court_rect
 		var smoke_top_left: Vector2 = smoke_coordinator.court_projection.world_to_screen_ground(smoke_rect.position)
 		var smoke_bottom_right: Vector2 = smoke_coordinator.court_projection.world_to_screen_ground(smoke_rect.end)
-		_assert_true(absf(smoke_top_left.x) < 0.01 and absf(smoke_top_left.y) < 0.01 and absf(smoke_bottom_right.x - 1080.0) < 0.01 and absf(smoke_bottom_right.y - 1920.0) < 0.01, "court fills screen behind HUD", "%s %s" % [smoke_top_left, smoke_bottom_right])
+		_assert_true(smoke_top_left.distance_to(smoke_court_rect.position) < 0.01 and smoke_bottom_right.distance_to(smoke_court_rect.end) < 0.01, "court maps to responsive screen rect", "%s %s %s" % [smoke_top_left, smoke_bottom_right, smoke_court_rect])
+		_assert_true(absf(smoke_court_rect.get_center().x - smoke_available_rect.get_center().x) < 0.01 and absf(smoke_court_rect.get_center().y - smoke_available_rect.get_center().y) < 0.01, "court stays centered below banner", "%s %s" % [smoke_court_rect, smoke_available_rect])
 	if smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_visual_top_screen_y"):
+		var smoke_banner_rect: Rect2 = smoke_coordinator.get_layout_metrics_snapshot().get("banner_rect", Rect2())
 		var hoop_top_y: float = float(smoke_coordinator.hoop_node.call("get_visual_top_screen_y"))
-		_assert_true(hoop_top_y >= 128.0, "hoop clears hud banner", str(hoop_top_y))
+		_assert_true(hoop_top_y >= smoke_banner_rect.end.y, "hoop clears responsive hud banner", "%0.2f %s" % [hoop_top_y, smoke_banner_rect])
+	if smoke_coordinator != null and smoke_coordinator.hud != null:
+		var hud_snapshot: Dictionary = smoke_coordinator.hud.get_layout_snapshot()
+		for snapshot_key in ["home_rect", "timer_rect", "pause_rect", "away_rect"]:
+			_assert_true(_rect_contains_rect(hud_snapshot.get("banner_rect", Rect2()), hud_snapshot.get(snapshot_key, Rect2())), "%s fits inside hud banner" % snapshot_key, str(hud_snapshot.get(snapshot_key, Rect2())))
 	if smoke_coordinator != null and smoke_coordinator.current_ballhandler != null:
-		_assert_true(smoke_coordinator.current_ballhandler.projected_scale > 1.35, "players render larger in fullscreen framing", str(smoke_coordinator.current_ballhandler.projected_scale))
+		_assert_true(smoke_coordinator.current_ballhandler.projected_scale > 1.0, "players keep readable responsive scale", str(smoke_coordinator.current_ballhandler.projected_scale))
 		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "held ball hidden while possessed", str(smoke_coordinator.ball_node.is_ball_visible()))
 	smoke_coordinator.begin_test_mode(2409)
 	smoke_coordinator.apply_scenario_setup(
@@ -657,7 +714,7 @@ func _run_pure_logic() -> void:
 			smoke_coordinator.player_visual_memory.erase(visual_pg)
 			smoke_coordinator.current_move_direction = Vector2.ZERO
 			smoke_coordinator.current_move_magnitude = 0.0
-			smoke_coordinator.input_controller.shot_aim_started.emit(visual_pg.world_position)
+			_arm_test_shot(smoke_coordinator)
 			for _aim_frame in 4:
 				await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shot stays in aim while windup plays", smoke_coordinator.get_state_name())
@@ -666,27 +723,26 @@ func _run_pure_logic() -> void:
 			_assert_player_visual(visual_pg, "set_shot_release", 4, false, true, "set shot windup starts early")
 			var windup_frame_before_release: int = visual_pg.get_debug_frame_number()
 			var windup_meter_before_release: Dictionary = smoke_court_view.shot_meter.duplicate(true)
-			smoke_coordinator.input_controller.shot_aim_released.emit(Vector2.ZERO, visual_pg.world_position, Vector2.ZERO)
+			_tap_test_meter(smoke_coordinator)
 			await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "manual early release enters shot release", smoke_coordinator.get_state_name())
 			_assert_true(visual_pg.get_debug_frame_number() >= windup_frame_before_release, "shot release continues without restarting animation", "%d %d" % [visual_pg.get_debug_frame_number(), windup_frame_before_release])
 			_assert_release_profile(visual_pg, 5, "set shot")
 			_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball remains hidden before authored release frame", str(smoke_coordinator.ball_node.is_ball_visible()))
-			_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail remains visible before authored release frame", JSON.stringify(smoke_court_view.shot_meter))
+			_assert_true(not bool(smoke_court_view.shot_meter.get("visible", false)), "meter hides after timing tap", JSON.stringify(smoke_court_view.shot_meter))
 			var early_release_seen: bool = false
 			for _release_frame in 90:
 				await get_tree().process_frame
 				if smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
 					_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball stays hidden while the windup finishes", str(smoke_coordinator.ball_node.is_ball_visible()))
-					_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail stays visible through followthrough", JSON.stringify(smoke_court_view.shot_meter))
-					_assert_true(float(smoke_court_view.shot_meter.get("progress", 0.0)) >= float(windup_meter_before_release.get("progress", 0.0)), "meter progress keeps advancing through followthrough", "%0.3f %0.3f" % [float(smoke_court_view.shot_meter.get("progress", 0.0)), float(windup_meter_before_release.get("progress", 0.0))])
+					_assert_true(not bool(smoke_court_view.shot_meter.get("visible", false)), "meter stays hidden through release followthrough", JSON.stringify(smoke_court_view.shot_meter))
 				elif smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT:
 					early_release_seen = true
 					break
 			_assert_true(early_release_seen, "shot launches only after the authored release frame", smoke_coordinator.get_state_name())
 			_assert_true(smoke_coordinator.ball_node.is_ball_visible(), "ball becomes visible at release", str(smoke_coordinator.ball_node.is_ball_visible()))
-			_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "meter tail remains visible after launch", JSON.stringify(smoke_court_view.shot_meter))
-			_assert_true(float(smoke_court_view.shot_meter.get("progress", 0.0)) >= float(windup_meter_before_release.get("progress", 0.0)), "meter tail survives into followthrough", "%0.3f %0.3f" % [float(smoke_court_view.shot_meter.get("progress", 0.0)), float(windup_meter_before_release.get("progress", 0.0))])
+			_assert_true(not bool(smoke_court_view.shot_meter.get("visible", false)), "meter stays hidden after launch", JSON.stringify(smoke_court_view.shot_meter))
+			_assert_true(float(smoke_court_view.shot_meter.get("progress", 0.0)) <= 0.001, "meter progress resets once timing closes", "%0.3f" % float(smoke_court_view.shot_meter.get("progress", 0.0)))
 		_reset_visual_test_state(smoke_coordinator)
 		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
 		if visual_pg_defender != null:
@@ -807,7 +863,7 @@ func _run_pure_logic() -> void:
 			visual_pg.world_position = Vector2(760.0, 1360.0)
 			visual_pg.velocity = Vector2.ZERO
 			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-220.0, -16.0)
-			smoke_coordinator.input_controller.shot_aim_started.emit(visual_pg.world_position)
+			_arm_test_shot(smoke_coordinator)
 			var overhold_auto_release_seen: bool = false
 			var overhold_release_frame_seen: int = -1
 			var overhold_resolved: bool = false
@@ -857,7 +913,8 @@ func _run_pure_logic() -> void:
 			visual_pg_defender.world_position = visual_pg.world_position + Vector2(-16.0, 8.0)
 			await _begin_release_test_shot(smoke_coordinator, visual_pg, 1)
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "blocked shot also stages release", smoke_coordinator.get_state_name())
-			for _blocked_frame in 120:
+			var blocked_wait_frames: int = int(ceili(maxf(float(visual_pg.get_current_shot_timing_profile().get("release_time_seconds", 0.0)), 0.5) * 60.0)) + 30
+			for _blocked_frame in blocked_wait_frames:
 				await get_tree().process_frame
 				if smoke_coordinator.context.current_state != GameState.State.SHOT_RELEASE:
 					break
@@ -965,16 +1022,38 @@ func _assert_player_visual(
 	_assert_true(player.is_outline_visible() == expected_outline, "%s outline" % name_prefix, str(player.is_outline_visible()))
 
 
-func _assert_release_profile(player: PlayerController, expected_release_after_frame: int, name_prefix: String) -> void:
+func _assert_release_profile(player: PlayerController, expected_release_after_frame: int, name_prefix: String, expected_fps: float = 15.0) -> void:
 	_assert_true(player.get_debug_release_after_frame() == expected_release_after_frame, "%s release frame" % name_prefix, str(player.get_debug_release_after_frame()))
+	var timing_profile: Dictionary = player.get_current_shot_timing_profile()
+	var resolved_fps: float = float(timing_profile.get("fps", 0.0))
+	_assert_true(absf(resolved_fps - expected_fps) < 0.001, "%s timing fps" % name_prefix, str(resolved_fps))
+	_assert_true(absf(float(timing_profile.get("release_time_seconds", 0.0)) - float(expected_release_after_frame) / expected_fps) < 0.001, "%s release seconds" % name_prefix, str(timing_profile.get("release_time_seconds", 0.0)))
+	var total_frames: int = int(timing_profile.get("total_frames", 0))
+	_assert_true(absf(float(timing_profile.get("full_animation_duration_seconds", 0.0)) - float(total_frames) / expected_fps) < 0.001, "%s full duration seconds" % name_prefix, str(timing_profile.get("full_animation_duration_seconds", 0.0)))
 
 
-func _begin_release_test_shot(coordinator: GameCoordinator, shooter: PlayerController, aim_frames: int = 12) -> void:
-	coordinator.input_controller.shot_aim_started.emit(shooter.world_position)
+func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerController, aim_frames: int = 12) -> void:
+	_arm_test_shot(coordinator)
 	for _aim_frame in aim_frames:
 		await get_tree().process_frame
-	coordinator.input_controller.shot_aim_released.emit(Vector2.ZERO, shooter.world_position, Vector2.ZERO)
+	_tap_test_meter(coordinator)
 	await get_tree().process_frame
+
+
+func _arm_test_shot(coordinator: GameCoordinator) -> void:
+	if coordinator.input_controller == null:
+		return
+	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
+	var anchor: Vector2 = Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
+	coordinator.input_controller.begin_test_live_gesture(anchor)
+	coordinator.input_controller.end_test_live_gesture(anchor)
+
+
+func _tap_test_meter(coordinator: GameCoordinator) -> void:
+	if coordinator.input_controller == null:
+		return
+	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
+	coordinator.input_controller.tap_test_shot_timing(Vector2(viewport_size.x * 0.5, viewport_size.y * 0.6))
 
 
 func _run_hoop_render_phase_smoke() -> void:
@@ -1082,6 +1161,15 @@ func _launch_profiles_match(a: Dictionary, b: Dictionary, tolerance: float = 0.0
 		and absf(float(a["entry_z"]) - float(b["entry_z"])) <= tolerance \
 		and absf(float(a["entry_time"]) - float(b["entry_time"])) <= tolerance \
 		and absf(float(a["descent_duration"]) - float(b["descent_duration"])) <= tolerance
+
+
+func _rect_contains_rect(outer: Rect2, inner: Rect2, tolerance: float = 0.01) -> bool:
+	if outer.size.x <= 0.0 or outer.size.y <= 0.0 or inner.size.x <= 0.0 or inner.size.y <= 0.0:
+		return false
+	return inner.position.x >= outer.position.x - tolerance \
+		and inner.position.y >= outer.position.y - tolerance \
+		and inner.end.x <= outer.end.x + tolerance \
+		and inner.end.y <= outer.end.y + tolerance
 
 
 func _is_legal_score_sample(sample_pos: Vector2, court: CourtConfig) -> bool:

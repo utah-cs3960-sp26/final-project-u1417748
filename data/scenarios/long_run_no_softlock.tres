@@ -6,13 +6,13 @@
 
 [sub_resource type="Resource" id="Action_move_right"]
 script = ExtResource("2")
-kind = "move_joystick"
+kind = "move_thumb"
 seconds = 0.4
 vector = Vector2(1, 0)
 
 [sub_resource type="Resource" id="Action_pass_rw"]
 script = ExtResource("2")
-kind = "tap_player"
+kind = "flick_pass"
 target_id = "RW"
 
 [sub_resource type="Resource" id="Action_wait_pass"]
@@ -46,7 +46,7 @@ kind = "pause_toggle"
 
 [sub_resource type="Resource" id="Action_move_left"]
 script = ExtResource("2")
-kind = "move_joystick"
+kind = "move_thumb"
 seconds = 0.5
 vector = Vector2(-1, 0)
 

@@ -45,12 +45,12 @@ const FAMILY_FPS: Dictionary = {
 	"ball_idle_pressured": 7.0,
 	"ball_move_small": 8.0,
 	"ball_move_run": 10.0,
-	"shot_aim": 8.0,
-	"set_shot_release": 16.0,
-	"jumper_release": 16.0,
-	"close_finish_layup": 16.0,
-	"close_finish_dunk": 16.0,
-	"close_finish_side_dunk": 16.0,
+	"shot_aim": 15.0,
+	"set_shot_release": 15.0,
+	"jumper_release": 15.0,
+	"close_finish_layup": 15.0,
+	"close_finish_dunk": 15.0,
+	"close_finish_side_dunk": 15.0,
 	"guard_idle": 5.0,
 	"guard_shuffle": 8.0,
 	"guard_run": 10.0,
@@ -301,7 +301,7 @@ static func build_timing_profile_for_family_variant(animation_family: String, va
 static func build_timing_profile_for_row(row_index: int, animation_family: String = "") -> Dictionary:
 	var resolved_row_index: int = clampi(row_index, 1, ROW_FRAME_COUNTS.size())
 	var total_frames: int = ROW_FRAME_COUNTS[resolved_row_index - 1]
-	var fps: float = float(FAMILY_FPS.get(animation_family, 16.0))
+	var fps: float = float(FAMILY_FPS.get(animation_family, 15.0))
 	var release_after_frame: int = int(RELEASE_AFTER_FRAME_BY_ROW.get(resolved_row_index, -1))
 	var release_time_seconds: float = 0.0
 	if release_after_frame > 0 and fps > 0.0:

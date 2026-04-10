@@ -5,14 +5,15 @@ const COURT_TEXTURE: Texture2D = preload("res://assets/Court/Court.png")
 const BACKDROP_COLOR: Color = Color("7f708a")
 
 @export var court_variant_source_region: Rect2 = Rect2(16.0, 256.0, 484.0, 229.0)
-@export var active_half_crop: Rect2 = Rect2(0.0, 0.0, 0.5, 1.0)
 @export var court_strip_count: int = 28
 
 var court_config: CourtConfig
 var projection: CourtProjection
+var court_screen_rect: Rect2 = Rect2(0.0, 0.0, 1080.0, 1920.0)
 var trajectory_points: Array[Dictionary] = []
 var trajectory_color: Color = Color(0.3, 0.95, 0.4, 0.95)
 var shot_meter: Dictionary = {}
+var input_feedback: Dictionary = {}
 
 
 func _ready() -> void:
@@ -27,6 +28,11 @@ func setup(config_value: CourtConfig, projection_value: CourtProjection = null) 
 
 func set_projection(projection_value: CourtProjection) -> void:
 	projection = projection_value
+	queue_redraw()
+
+
+func apply_layout(layout_metrics: Dictionary) -> void:
+	court_screen_rect = layout_metrics.get("court_screen_rect", court_screen_rect)
 	queue_redraw()
 
 
@@ -46,6 +52,16 @@ func clear_shot_meter() -> void:
 	queue_redraw()
 
 
+func set_input_feedback(feedback_value: Dictionary) -> void:
+	input_feedback = feedback_value.duplicate(true)
+	queue_redraw()
+
+
+func clear_input_feedback() -> void:
+	input_feedback.clear()
+	queue_redraw()
+
+
 func clear_preview() -> void:
 	trajectory_points.clear()
 	queue_redraw()
@@ -57,6 +73,7 @@ func _draw() -> void:
 	var rect: Rect2 = court_config.court_rect
 	_draw_background()
 	_draw_textured_court(rect)
+	_draw_input_feedback()
 	for point in trajectory_points:
 		var screen_position: Vector2 = point.get("screen_position", point["position"] + Vector2(0.0, -point["z"] * 0.14))
 		var radius: float = point.get("radius", clampf(6.0 + point["z"] * 0.01, 4.0, 11.0))
@@ -87,7 +104,7 @@ func _project_arc(center: Vector2, radius: float, start_angle: float, end_angle:
 
 
 func _draw_background() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(1080.0, 1920.0)), BACKDROP_COLOR)
+	draw_rect(Rect2(Vector2.ZERO, _get_viewport_size()), BACKDROP_COLOR)
 
 
 func _draw_textured_court(rect: Rect2) -> void:
@@ -114,21 +131,23 @@ func _draw_textured_court(rect: Rect2) -> void:
 		var uvs: PackedVector2Array = PackedVector2Array()
 		var source_left_x: float = top_ratio
 		var source_right_x: float = bottom_ratio
-		var source_top_y: float = 0.0
-		var source_bottom_y: float = 1.0
 		uvs.append_array([
-			Vector2(source_left_x, source_bottom_y),
-			Vector2(source_left_x, source_top_y),
-			Vector2(source_right_x, source_top_y),
-			Vector2(source_right_x, source_bottom_y),
+			Vector2(source_left_x, 1.0),
+			Vector2(source_left_x, 0.0),
+			Vector2(source_right_x, 0.0),
+			Vector2(source_right_x, 1.0),
 		])
 		draw_polygon(quad, colors, uvs, court_texture)
 
 
 func _get_active_court_source_region() -> Rect2:
-	var crop_position: Vector2 = court_variant_source_region.position + court_variant_source_region.size * active_half_crop.position
-	var crop_size: Vector2 = court_variant_source_region.size * active_half_crop.size
-	return Rect2(crop_position, crop_size)
+	var display_size: Vector2 = court_screen_rect.size if court_screen_rect.size.x > 0.0 and court_screen_rect.size.y > 0.0 else _get_viewport_size()
+	if display_size.x <= 0.0 or display_size.y <= 0.0:
+		return court_variant_source_region
+	var full_region: Rect2 = court_variant_source_region
+	var visible_source_depth: float = minf(full_region.size.x, full_region.size.y * display_size.y / maxf(display_size.x, 1.0))
+	visible_source_depth = clampf(visible_source_depth, 1.0, full_region.size.x)
+	return Rect2(full_region.position, Vector2(visible_source_depth, full_region.size.y))
 
 
 func _project_ground(world_position: Vector2) -> Vector2:
@@ -137,13 +156,37 @@ func _project_ground(world_position: Vector2) -> Vector2:
 	return projection.world_to_screen_ground(world_position)
 
 
+func _draw_input_feedback() -> void:
+	var pass_target_screen: Vector2 = input_feedback.get("pass_target_screen", Vector2.INF)
+	if pass_target_screen != Vector2.INF:
+		var pass_radius: float = float(input_feedback.get("pass_target_radius", 28.0))
+		draw_circle(pass_target_screen, pass_radius, Color(0.98, 0.88, 0.32, 0.22))
+		draw_circle(pass_target_screen, pass_radius * 0.72, Color(0.98, 0.88, 0.32, 0.58))
+		draw_arc(pass_target_screen, pass_radius, 0.0, TAU, 28, Color(1.0, 0.97, 0.8, 0.92), 3.0)
+	if not bool(input_feedback.get("anchor_visible", false)):
+		return
+	var anchor_screen: Vector2 = input_feedback.get("anchor_screen", Vector2.ZERO)
+	var current_screen: Vector2 = input_feedback.get("current_screen", anchor_screen)
+	var anchor_radius: float = float(input_feedback.get("anchor_radius", 54.0))
+	var knob_radius: float = float(input_feedback.get("knob_radius", 28.0))
+	var anchor_alpha: float = float(input_feedback.get("anchor_alpha", 0.2))
+	draw_circle(anchor_screen, anchor_radius, Color(0.0, 0.0, 0.0, anchor_alpha))
+	draw_circle(anchor_screen, anchor_radius - 8.0, Color(0.16, 0.18, 0.24, anchor_alpha * 2.3))
+	draw_arc(anchor_screen, anchor_radius, 0.0, TAU, 28, Color(0.96, 0.95, 0.86, clampf(anchor_alpha * 3.4, 0.0, 0.76)), 2.0)
+	var knob_position: Vector2 = current_screen
+	if current_screen.distance_to(anchor_screen) > anchor_radius:
+		knob_position = anchor_screen + (current_screen - anchor_screen).limit_length(anchor_radius)
+	draw_circle(knob_position, knob_radius, Color(0.93, 0.74, 0.28, clampf(anchor_alpha * 4.0, 0.0, 0.95)))
+
+
 func _draw_shot_meter() -> void:
+	var viewport_size: Vector2 = _get_viewport_size()
 	var meter_width: float = float(shot_meter.get("width", 560.0))
 	var meter_height: float = float(shot_meter.get("height", 42.0))
 	var bottom_margin: float = float(shot_meter.get("bottom_margin", 164.0))
 	var marker_width: float = float(shot_meter.get("marker_width", 20.0))
 	var bar_rect: Rect2 = Rect2(
-		Vector2((1080.0 - meter_width) * 0.5, 1920.0 - bottom_margin - meter_height),
+		Vector2((viewport_size.x - meter_width) * 0.5, viewport_size.y - bottom_margin - meter_height),
 		Vector2(meter_width, meter_height)
 	)
 	var green_start: float = float(shot_meter.get("green_start", 0.6))
@@ -170,3 +213,7 @@ func _draw_shot_meter() -> void:
 	var marker_rect: Rect2 = Rect2(Vector2(marker_x, bar_rect.position.y - 8.0), Vector2(marker_width, bar_rect.size.y + 16.0))
 	draw_rect(marker_rect, Color(0.98, 0.96, 0.9))
 	draw_rect(marker_rect.grow(-4.0), Color(0.08, 0.09, 0.1, 0.92))
+
+
+func _get_viewport_size() -> Vector2:
+	return get_viewport().get_visible_rect().size
