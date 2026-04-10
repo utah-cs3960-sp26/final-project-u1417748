@@ -4,5 +4,6 @@
 
 [resource]
 script = ExtResource("1")
+debug_overlay_enabled = false
 show_contest_radii = true
-show_catch_radii = true
+show_catch_radii = false

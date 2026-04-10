@@ -30,10 +30,32 @@ func update_defense(
 	var defense_scale: float = difficulty_config.get_defense_multiplier()
 	for defender in defense_players:
 		var assignment: PlayerController = assignments.get(defender, ballhandler)
+		if assignment == null:
+			defender.velocity = Vector2.ZERO
+			continue
 		var to_hoop: Vector2 = (court_config.hoop_position - assignment.world_position).normalized()
 		var desired: Vector2 = assignment.world_position + to_hoop * defense_config.guard_distance
 		var move_speed: float = (150.0 + float(defender.get_player_data().speed) * 1.8) * defense_scale
-		defender.move_toward_target(desired, move_speed / 320.0, delta)
+		if defender.world_position.distance_to(desired) <= defense_config.guard_deadband_radius:
+			defender.move_toward_target_smooth(
+				defender.world_position,
+				move_speed / 320.0,
+				delta,
+				defense_config.guard_arrival_radius,
+				defense_config.guard_stop_radius,
+				defense_config.guard_acceleration,
+				defense_config.guard_deceleration
+			)
+			continue
+		defender.move_toward_target_smooth(
+			desired,
+			move_speed / 320.0,
+			delta,
+			defense_config.guard_arrival_radius,
+			defense_config.guard_stop_radius,
+			defense_config.guard_acceleration,
+			defense_config.guard_deceleration
+		)
 
 
 func get_contest_level(shooter: PlayerController) -> float:

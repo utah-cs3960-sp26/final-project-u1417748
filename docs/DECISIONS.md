@@ -129,3 +129,11 @@ The earlier hold-to-release meter was replaced again so the user can play with o
 ### Release-to-pass now pairs with quick tap shot entry
 
 The flick-distance and release-speed pass gate was too aggressive and made passing and shooting blur together in an unhelpful way. The current control truth keeps the same lower-zone anchor and live pass-preview lock, but release arbitration is now simpler: a quick tap arms `SHOT_AIM`, center release after a real drag cancels to idle, off-center release with a locked teammate passes immediately, and off-center release with no lock does nothing. Lower-zone taps only arm a shot if the touch never becomes a real drag, and gameplay taps are routed through unhandled input so HUD controls like pause keep precedence over shot arming.
+
+### AI movement now eases into short corrections instead of snapping
+
+The earlier off-ball offense and defense logic updated their targets every frame but still moved with direct velocity snaps, which made tiny guard recoveries and route-spacing corrections read as jitter rather than intent. The current contract keeps the same long-run pace, but AI-only movement now uses arrival steering with explicit arrival/stop radii, centerline hysteresis for strong-side and weak-side route selection, and a small defensive deadband around the guard spot. This was chosen to clean up motion readability without softening the player-controlled ballhandler.
+
+### The light-blue teammate ring is now reserved for the active pass preview
+
+The earlier desktop defaults booted with the debug overlay visible and teammate catch rings rendered in light blue, while the actual gameplay pass preview used a separate yellow marker. That made normal play look noisy and made the real pass lock harder to read. The current contract flips that: normal boot hides the debug overlay, teammate catch rings stay behind the debug toggle, and the only gameplay ring shown by default is the light-blue pass-preview ring on the currently locked target.

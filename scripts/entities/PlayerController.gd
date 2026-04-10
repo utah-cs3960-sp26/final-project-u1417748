@@ -107,6 +107,51 @@ func move_toward_target(target: Vector2, speed_scale: float, delta: float) -> vo
 	move_in_direction(to_target.normalized(), speed_scale, delta)
 
 
+func move_toward_target_smooth(
+	target: Vector2,
+	speed_scale: float,
+	delta: float,
+	arrival_radius: float,
+	stop_radius: float,
+	acceleration: float,
+	deceleration: float
+) -> void:
+	if player_data == null:
+		return
+	var to_target: Vector2 = target - world_position
+	var distance_value: float = to_target.length()
+	var resolved_stop_radius: float = maxf(stop_radius, 0.0)
+	var resolved_arrival_radius: float = maxf(arrival_radius, resolved_stop_radius + 0.001)
+	if distance_value <= resolved_stop_radius:
+		velocity = velocity.move_toward(Vector2.ZERO, maxf(deceleration, 0.0) * delta)
+		if velocity.length() <= 1.0:
+			velocity = Vector2.ZERO
+		world_position += velocity * delta
+		return
+	var max_speed: float = (180.0 + float(player_data.speed) * 2.2) * speed_scale
+	var desired_direction: Vector2 = to_target / maxf(distance_value, 0.001)
+	var desired_speed: float = max_speed
+	if distance_value < resolved_arrival_radius:
+		var arrival_alpha: float = clampf(
+			(distance_value - resolved_stop_radius) / maxf(resolved_arrival_radius - resolved_stop_radius, 0.001),
+			0.0,
+			1.0
+		)
+		desired_speed *= arrival_alpha * arrival_alpha * (3.0 - 2.0 * arrival_alpha)
+	var desired_velocity: Vector2 = desired_direction * desired_speed
+	var steering_step: float = maxf(acceleration, 0.0)
+	if desired_velocity.length_squared() < velocity.length_squared():
+		steering_step = maxf(deceleration, 0.0)
+	velocity = velocity.move_toward(desired_velocity, steering_step * delta)
+	if distance_value <= resolved_stop_radius * 1.12 and desired_speed <= 4.5:
+		world_position = target - desired_direction * minf(distance_value, resolved_stop_radius)
+		velocity = Vector2.ZERO
+		return
+	if distance_value <= resolved_stop_radius * 1.35 and velocity.length() <= 4.0:
+		velocity = Vector2.ZERO
+	world_position += velocity * delta
+
+
 func apply_projection(
 	screen_ground_position: Vector2,
 	scale_value: float,

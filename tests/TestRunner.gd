@@ -524,6 +524,85 @@ func _run_pure_logic() -> void:
 		players.append(player)
 	var targets: Dictionary = route_controller.get_route_targets(players, players[0], 0, 1.2)
 	_assert_true(targets.size() == 4, "route targets generated", "")
+	route_controller.reset_runtime_state()
+	players[0].world_position = Vector2(court.hoop_position.x - 16.0, court.get_anchor_map()["PG"].y)
+	var strong_left_targets: Dictionary = route_controller.get_route_targets(players, players[0], 1, 0.8)
+	players[0].world_position = Vector2(court.hoop_position.x + route_controller.route_config.side_switch_deadband * 0.5, court.get_anchor_map()["PG"].y)
+	var strong_hold_targets: Dictionary = route_controller.get_route_targets(players, players[0], 1, 0.8)
+	_assert_true(
+		strong_left_targets.get(players[1], Vector2.ZERO).distance_to(strong_hold_targets.get(players[1], Vector2.ZERO)) < 0.01
+			and strong_left_targets.get(players[4], Vector2.ZERO).distance_to(strong_hold_targets.get(players[4], Vector2.ZERO)) < 0.01,
+		"route side holds inside hysteresis deadband",
+		"%s %s" % [strong_left_targets.get(players[1], Vector2.ZERO), strong_hold_targets.get(players[1], Vector2.ZERO)]
+	)
+	players[0].world_position = Vector2(court.hoop_position.x + route_controller.route_config.side_switch_deadband + 18.0, court.get_anchor_map()["PG"].y)
+	var strong_switched_targets: Dictionary = route_controller.get_route_targets(players, players[0], 1, 0.8)
+	_assert_true(
+		strong_left_targets.get(players[1], Vector2.ZERO).distance_to(strong_switched_targets.get(players[1], Vector2.ZERO)) > 20.0,
+		"route side flips after hysteresis deadband",
+		"%s %s" % [strong_left_targets.get(players[1], Vector2.ZERO), strong_switched_targets.get(players[1], Vector2.ZERO)]
+	)
+	route_controller.reset_runtime_state()
+	players[0].world_position = Vector2(court.hoop_position.x - 16.0, court.get_anchor_map()["PG"].y)
+	var weak_left_targets: Dictionary = route_controller.get_route_targets(players, players[0], 2, 0.8)
+	players[0].world_position = Vector2(court.hoop_position.x + route_controller.route_config.side_switch_deadband * 0.5, court.get_anchor_map()["PG"].y)
+	var weak_hold_targets: Dictionary = route_controller.get_route_targets(players, players[0], 2, 0.8)
+	_assert_true(
+		weak_left_targets.get(players[3], Vector2.ZERO).distance_to(weak_hold_targets.get(players[3], Vector2.ZERO)) < 0.01,
+		"weak-side fill holds inside hysteresis deadband",
+		"%s %s" % [weak_left_targets.get(players[3], Vector2.ZERO), weak_hold_targets.get(players[3], Vector2.ZERO)]
+	)
+
+	var smooth_player: PlayerController = PlayerController.new()
+	var smooth_player_data: PlayerData = PlayerData.new()
+	smooth_player_data.speed = 80
+	smooth_player.setup(smooth_player_data, true, Color.BLUE)
+	smooth_player.world_position = Vector2.ZERO
+	smooth_player.velocity = Vector2.ZERO
+	var near_target: Vector2 = Vector2(18.0, 0.0)
+	var near_sign_changes: int = 0
+	var previous_sign: float = signf(near_target.x - smooth_player.world_position.x)
+	for _near_frame in 180:
+		smooth_player.move_toward_target_smooth(
+			near_target,
+			route_controller.route_config.route_move_speed_multiplier,
+			1.0 / 60.0,
+			route_controller.route_config.steering_arrival_radius,
+			route_controller.route_config.steering_stop_radius,
+			route_controller.route_config.steering_acceleration,
+			route_controller.route_config.steering_deceleration
+		)
+		var current_sign: float = signf(near_target.x - smooth_player.world_position.x)
+		if current_sign != 0.0 and previous_sign != 0.0 and current_sign != previous_sign:
+			near_sign_changes += 1
+		if current_sign != 0.0:
+			previous_sign = current_sign
+	_assert_true(near_sign_changes == 0, "smooth steering does not oscillate near target", str(near_sign_changes))
+	_assert_true(
+		smooth_player.world_position.distance_to(near_target) <= route_controller.route_config.steering_stop_radius + 0.5 and smooth_player.velocity.length() <= 1.0,
+		"smooth steering settles near target",
+		"%0.2f %0.2f" % [smooth_player.world_position.distance_to(near_target), smooth_player.velocity.length()]
+	)
+	smooth_player.world_position = Vector2.ZERO
+	smooth_player.velocity = Vector2.ZERO
+	var far_target: Vector2 = Vector2(520.0, 0.0)
+	var peak_smooth_speed: float = 0.0
+	for _far_frame in 240:
+		smooth_player.move_toward_target_smooth(
+			far_target,
+			route_controller.route_config.route_move_speed_multiplier,
+			1.0 / 60.0,
+			route_controller.route_config.steering_arrival_radius,
+			route_controller.route_config.steering_stop_radius,
+			route_controller.route_config.steering_acceleration,
+			route_controller.route_config.steering_deceleration
+		)
+		peak_smooth_speed = maxf(peak_smooth_speed, smooth_player.velocity.length())
+		if smooth_player.world_position.distance_to(far_target) <= route_controller.route_config.steering_stop_radius and smooth_player.velocity.length() <= 1.0:
+			break
+	var expected_peak_speed: float = (180.0 + float(smooth_player_data.speed) * 2.2) * route_controller.route_config.route_move_speed_multiplier
+	_assert_true(smooth_player.world_position.distance_to(far_target) <= route_controller.route_config.steering_stop_radius + 1.0, "smooth steering reaches distant target", str(smooth_player.world_position.distance_to(far_target)))
+	_assert_true(peak_smooth_speed >= expected_peak_speed * 0.82, "smooth steering preserves long-run pace", "%0.2f %0.2f" % [peak_smooth_speed, expected_peak_speed])
 
 	var rebound_controller: ReboundController = ReboundController.new()
 	rebound_controller.rebound_config = ReboundConfig.new()
@@ -564,6 +643,9 @@ func _run_pure_logic() -> void:
 				home_visual_ok = false
 				break
 	_assert_true(home_visual_ok, "player art smoke", "")
+	if smoke_coordinator != null and smoke_coordinator.debug_overlay != null and smoke_coordinator.debug_config != null:
+		_assert_true(not smoke_coordinator.debug_overlay.visible, "debug overlay defaults off in normal play", str(smoke_coordinator.debug_overlay.visible))
+		_assert_true(not smoke_coordinator.debug_config.show_catch_radii, "default teammate catch rings stay hidden", str(smoke_coordinator.debug_config.show_catch_radii))
 	if smoke_coordinator != null and smoke_coordinator.court_projection != null and smoke_coordinator.court_config != null:
 		var smoke_layout: Dictionary = smoke_coordinator.get_layout_metrics_snapshot()
 		var smoke_court_rect: Rect2 = smoke_layout.get("court_screen_rect", Rect2())
@@ -608,6 +690,26 @@ func _run_pure_logic() -> void:
 	var pass_positions: Array[Vector2] = []
 	var pass_alignment_error: float = 0.0
 	if smoke_pass_target != null:
+		var idle_feedback: Dictionary = smoke_coordinator._build_court_input_feedback()
+		_assert_true(idle_feedback.get("pass_target_screen", Vector2.INF) == Vector2.INF, "no pass preview ring without lock", str(idle_feedback.get("pass_target_screen", Vector2.INF)))
+		var preview_anchor: Vector2 = Vector2(540.0, 1800.0)
+		var preview_direction: Vector2 = smoke_pass_target.get_screen_anchor() - smoke_coordinator.current_ballhandler.get_screen_anchor()
+		smoke_coordinator.input_controller.begin_test_live_gesture(preview_anchor)
+		smoke_coordinator.input_controller.update_test_live_gesture(
+			preview_anchor + preview_direction.normalized() * (float(smoke_coordinator.input_config.pass_preview_min_vector_length) + 96.0)
+		)
+		var preview_feedback: Dictionary = smoke_coordinator._build_court_input_feedback()
+		var expected_preview_screen: Vector2 = smoke_coordinator.court_projection.world_to_screen_ground(smoke_pass_target.world_position)
+		_assert_true(preview_feedback.get("pass_target_style", "") == "blue_ring", "pass preview uses blue ring style", JSON.stringify(preview_feedback))
+		_assert_true(
+			preview_feedback.get("pass_target_screen", Vector2.INF) != Vector2.INF
+				and preview_feedback.get("pass_target_screen", Vector2.ZERO).distance_to(expected_preview_screen) < 0.01,
+			"only locked preview target gets gameplay ring",
+			str(preview_feedback.get("pass_target_screen", Vector2.INF))
+		)
+		smoke_coordinator.input_controller.end_test_live_gesture(preview_anchor)
+		var cleared_feedback: Dictionary = smoke_coordinator._build_court_input_feedback()
+		_assert_true(cleared_feedback.get("pass_target_screen", Vector2.INF) == Vector2.INF, "pass preview ring clears after gesture ends", str(cleared_feedback.get("pass_target_screen", Vector2.INF)))
 		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hidden before pass", str(smoke_coordinator.ball_node.is_ball_visible()))
 		smoke_coordinator.input_controller.pass_requested.emit(smoke_pass_target)
 		_assert_true(smoke_coordinator.ball_node.is_ball_visible(), "ball visible when pass starts", str(smoke_coordinator.ball_node.is_ball_visible()))
@@ -676,19 +778,59 @@ func _run_pure_logic() -> void:
 			visual_rc.velocity = Vector2.RIGHT * 140.0
 			smoke_coordinator._sync_projection_visuals(0.0)
 			_assert_player_visual(visual_rc, "off_ball_run", 20, false, false, "off-ball run")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "no_ball_idle", "variant_index": 0, "mirror_west": false}
+			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_threshold - 2.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball idle holds below move enter")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": false}
+			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_release_threshold + 2.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "off_ball_run", 20, false, false, "off-ball run holds above move exit")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": false}
+			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_release_threshold - 1.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball run releases to idle")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": false}
+			visual_rc.velocity = Vector2(-12.0, -140.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "off_ball_run", 20, false, false, "facing holds east through tiny west correction")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": true}
+			visual_rc.velocity = Vector2(12.0, -140.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "off_ball_run", 20, true, false, "facing holds west through tiny east correction")
+			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": false}
+			visual_rc.velocity = Vector2(-92.0, -140.0)
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "off_ball_run", 20, true, false, "facing flips only on strong west intent")
 		var guard_target: Vector2 = smoke_coordinator._get_defender_guard_target(visual_pg_defender)
 		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_idle", "variant_index": 1, "mirror_west": false}
 		visual_pg_defender.world_position = guard_target
 		visual_pg_defender.velocity = Vector2.ZERO
 		smoke_coordinator._sync_projection_visuals(0.0)
 		_assert_player_visual(visual_pg_defender, "guard_idle", 21, false, false, "guard idle")
+		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_idle", "variant_index": 1, "mirror_west": false}
+		visual_pg_defender.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_threshold - 2.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_idle", 21, false, false, "guard idle holds below shuffle enter")
 		visual_pg_defender.velocity = Vector2.RIGHT * 44.0
 		smoke_coordinator._sync_projection_visuals(0.0)
 		_assert_player_visual(visual_pg_defender, "guard_shuffle", 19, false, false, "guard shuffle")
+		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_shuffle", "variant_index": 0, "mirror_west": false}
+		visual_pg_defender.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_release_threshold + 2.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_shuffle", 19, false, false, "guard shuffle holds above idle exit")
 		visual_pg_defender.world_position -= Vector2(120.0, 0.0)
 		visual_pg_defender.velocity = Vector2.RIGHT * 180.0
 		smoke_coordinator._sync_projection_visuals(0.0)
 		_assert_player_visual(visual_pg_defender, "guard_run", 20, false, false, "guard run")
+		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_run", "variant_index": 0, "mirror_west": false}
+		visual_pg_defender.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.small_move_speed_release_threshold + 4.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_run", 20, false, false, "guard run holds above run exit")
+		smoke_coordinator.player_visual_memory[visual_pg_defender] = {"family": "guard_shuffle", "variant_index": 0, "mirror_west": false}
+		visual_pg_defender.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.small_move_speed_threshold - 4.0)
+		smoke_coordinator._sync_projection_visuals(0.0)
+		_assert_player_visual(visual_pg_defender, "guard_shuffle", 19, false, false, "guard shuffle holds below run enter")
 		visual_pg.trigger_shot_pose(0.28)
 		visual_pg.world_position = Vector2(520.0, 1360.0)
 		visual_pg.velocity = Vector2.RIGHT * 120.0
@@ -947,6 +1089,7 @@ func _run_pure_logic() -> void:
 			_assert_true(visual_pg_defender.get_debug_animation_family() == "jump_contest", "blocker uses jump contest family", visual_pg_defender.get_debug_animation_family())
 			_assert_true(visual_pg_defender.get_debug_row_index() == 22, "blocker uses jump contest row", str(visual_pg_defender.get_debug_row_index()))
 	game_root.queue_free()
+	smooth_player.free()
 	for player in players:
 		player.free()
 	defender.free()

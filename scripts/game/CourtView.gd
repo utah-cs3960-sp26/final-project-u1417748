@@ -3,6 +3,8 @@ extends Node2D
 
 const COURT_TEXTURE: Texture2D = preload("res://assets/Court/Court.png")
 const BACKDROP_COLOR: Color = Color("7f708a")
+const PASS_PREVIEW_RING_COLOR: Color = Color(0.35, 0.85, 1.0, 0.82)
+const PASS_PREVIEW_FILL_COLOR: Color = Color(0.35, 0.85, 1.0, 0.16)
 
 @export var court_variant_source_region: Rect2 = Rect2(16.0, 256.0, 484.0, 229.0)
 @export var court_strip_count: int = 28
@@ -160,9 +162,8 @@ func _draw_input_feedback() -> void:
 	var pass_target_screen: Vector2 = input_feedback.get("pass_target_screen", Vector2.INF)
 	if pass_target_screen != Vector2.INF:
 		var pass_radius: float = float(input_feedback.get("pass_target_radius", 28.0))
-		draw_circle(pass_target_screen, pass_radius, Color(0.98, 0.88, 0.32, 0.22))
-		draw_circle(pass_target_screen, pass_radius * 0.72, Color(0.98, 0.88, 0.32, 0.58))
-		draw_arc(pass_target_screen, pass_radius, 0.0, TAU, 28, Color(1.0, 0.97, 0.8, 0.92), 3.0)
+		draw_circle(pass_target_screen, pass_radius, PASS_PREVIEW_FILL_COLOR)
+		draw_arc(pass_target_screen, pass_radius, 0.0, TAU, 28, PASS_PREVIEW_RING_COLOR, 3.0)
 	if not bool(input_feedback.get("anchor_visible", false)):
 		return
 	var anchor_screen: Vector2 = input_feedback.get("anchor_screen", Vector2.ZERO)

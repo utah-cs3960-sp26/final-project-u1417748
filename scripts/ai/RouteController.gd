@@ -4,6 +4,13 @@ extends RefCounted
 var route_config: RouteConfig
 var court_config: CourtConfig
 var spacing_solver: SpacingSolver = SpacingSolver.new()
+var _last_side_sign: float = 1.0
+var _side_sign_initialized: bool = false
+
+
+func reset_runtime_state() -> void:
+	_last_side_sign = 1.0
+	_side_sign_initialized = false
 
 
 func get_route_targets(
@@ -18,7 +25,7 @@ func get_route_targets(
 	var ballhandler_position: Vector2 = anchors.get("PG", court_config.hoop_position + Vector2(0.0, 320.0))
 	if ballhandler != null:
 		ballhandler_position = ballhandler.world_position
-	var side_sign: float = -1.0 if ballhandler_position.x < court_config.hoop_position.x else 1.0
+	var side_sign: float = _resolve_side_sign(ballhandler_position)
 
 	for player in offense_players:
 		if player == ballhandler:
@@ -103,3 +110,17 @@ func _ping_pong(start_value: Vector2, middle_value: Vector2, end_value: Vector2,
 	if phase < 0.5:
 		return start_value.lerp(middle_value, phase / 0.5)
 	return middle_value.lerp(end_value, (phase - 0.5) / 0.5)
+
+
+func _resolve_side_sign(ballhandler_position: Vector2) -> float:
+	var center_x: float = court_config.hoop_position.x
+	var switch_deadband: float = maxf(route_config.side_switch_deadband, 0.0)
+	if not _side_sign_initialized:
+		_last_side_sign = -1.0 if ballhandler_position.x < center_x else 1.0
+		_side_sign_initialized = true
+		return _last_side_sign
+	if _last_side_sign < 0.0 and ballhandler_position.x > center_x + switch_deadband:
+		_last_side_sign = 1.0
+	elif _last_side_sign > 0.0 and ballhandler_position.x < center_x - switch_deadband:
+		_last_side_sign = -1.0
+	return _last_side_sign

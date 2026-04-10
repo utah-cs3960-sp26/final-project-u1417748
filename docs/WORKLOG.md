@@ -226,3 +226,11 @@
 - scaled actor presentation, shadow offset, hoop offset/scale, live ball radii, held-ball radius, and guided-make screen-drop presentation from the centered court width so visuals stay proportional on narrower phones
 - rebuilt `HUD` from responsive containers with a centered timer/pause stack and exposed a layout snapshot used by smoke tests to assert all banner controls stay fully inside the top bar
 - updated smoke and pure-logic coverage around responsive court bounds, centered play-area placement, hoop-over-banner clearance, and HUD child-rect containment
+
+### Smooth AI steering and blue pass preview cleanup
+
+- replaced the AI’s snap-to-target corrections with eased arrival steering for off-ball offense, on-ball defense, rebound pursuit, pass receivers, and committed lane-cut defenders while leaving user-controlled movement unchanged
+- added route side-switch hysteresis around the hoop centerline so strong-side and weak-side packages do not thrash when the ballhandler hovers near the middle of the floor
+- added animation-family and facing hysteresis so off-ball runners and defenders stop chattering between idle, shuffle, run, and left/right mirror states during tiny corrective moves
+- changed the shipped default presentation so the debug overlay no longer boots visible, teammate catch rings stay hidden in normal play, and the active pass-preview target now uses the light-blue ring style instead of the older yellow marker
+- extended the deterministic suite with route hysteresis, smooth-settle steering, animation/facing hysteresis, and gameplay pass-preview feedback assertions; the latest headless run landed at Pure logic `434`, Scenarios `13`, Balance `4`, Failures `0`

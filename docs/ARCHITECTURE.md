@@ -47,7 +47,7 @@
   - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
-  - also renders transient touch feedback like the movement anchor, pass-preview ring, shot meter, and trajectory dots
+  - also renders transient touch feedback like the movement anchor, the gameplay-only light-blue pass-preview ring, the shot meter, and trajectory dots
 - `HUD`
   - builds the top banner from responsive containers instead of fixed coordinates, applies safe-area-aware sizing through `apply_layout()`, and exposes a layout snapshot used by smoke tests to verify score, timer, and pause controls stay inside the banner
 - `ShotController`
@@ -65,17 +65,20 @@
   - exposes render-phase z-order helpers so the ball can be layered in front of the backboard, inside the rim mouth, behind the hanging net, or behind the board only for true over-the-top paths
 - `PlayerController` + `PlayerVisual`
   - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, row playback, deterministic variant resolution, and the intentionally oversized mobile-readable sprite presentation
+  - keep direct player input movement separate from AI steering so user-controlled motion can stay sharp while AI route, defense, rebound, and catch/intercept movement eases into short corrections
   - use a `PlayerVisualRequest` contract carrying animation family, variant index, westward mirroring, controlled-player outline visibility, and restart intent instead of the old plain string state
   - treat the sprite sheet as east-facing art by default and mirror westward motion in presentation only
   - keep outline rendering separate from fill playback so only the currently controlled player shows the matching outline sheet
   - expose lightweight debug/runtime frame accessors so the coordinator can sync the held bar, gate launch on row-specific thresholds, and keep the committed row playing through followthrough without moving shot logic into the art layer
+  - use movement-family and facing hysteresis in `GameCoordinator` so AI actors do not chatter between idle, shuffle, run, or east/west mirror states on tiny corrective vectors
   - drive every committed shot family from the same 15 FPS playback table so aim, staged release, and followthrough keep one authored cadence while release timing still comes from per-row frame metadata
 - `ReboundController`
   - rebound candidate scoring and winner selection
 - `RouteController` + `SpacingSolver`
   - three offensive route packages plus spacing cleanup
+  - keep strong-side and weak-side route selection stable through a configurable centerline deadband instead of flipping on every tiny ballhandler x change
 - `DefenseController`
-  - man assignments, contests, blocks, stationary pressure turnovers
+  - man assignments, arrival-steered guard recovery, contests, blocks, and stationary pressure turnovers
 - `OpponentSimController`
   - ratings-driven off-screen possession resolution
 

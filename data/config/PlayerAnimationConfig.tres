@@ -5,7 +5,11 @@
 [resource]
 script = ExtResource("1")
 stationary_speed_threshold = 18.0
+stationary_speed_release_threshold = 12.0
 small_move_speed_threshold = 110.0
+small_move_speed_release_threshold = 88.0
+facing_switch_min_vector_length = 24.0
+facing_switch_normalized_x_threshold = 0.22
 close_finish_radius = 200.0
 dunk_finish_radius = 135.0
 side_finish_lateral_threshold = 70.0

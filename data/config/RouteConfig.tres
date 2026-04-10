@@ -4,3 +4,8 @@
 
 [resource]
 script = ExtResource("1")
+steering_arrival_radius = 34.0
+steering_stop_radius = 12.0
+steering_acceleration = 760.0
+steering_deceleration = 940.0
+side_switch_deadband = 48.0

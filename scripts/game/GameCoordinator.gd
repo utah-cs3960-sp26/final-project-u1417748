@@ -303,6 +303,7 @@ func _start_new_match() -> void:
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
 	active_shot_sequence.clear()
+	route_controller.reset_runtime_state()
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
 	made_shot_animation_timer = 0.0
@@ -334,6 +335,7 @@ func _reset_possession() -> void:
 	context.active_route_package = (context.possession_count - 1) % 3
 	current_move_direction = Vector2.ZERO
 	current_move_magnitude = 0.0
+	route_controller.reset_runtime_state()
 	shot_owner = null
 	context.gameplay_time_scale = 1.0
 	_clear_pending_shot_release()
@@ -474,11 +476,11 @@ func _update_pass_in_flight(delta: float) -> void:
 	var active_interceptor: PlayerController = pass_snapshot.get("active_interceptor", null) as PlayerController
 	_update_off_ball_offense(delta, [intended_receiver])
 	if intended_receiver != null:
-		intended_receiver.move_toward_target(pass_snapshot.get("end", intended_receiver.world_position), 1.0, delta)
+		_move_offense_ai_toward_target(intended_receiver, pass_snapshot.get("end", intended_receiver.world_position), 1.0, delta)
 		_clamp_to_court(intended_receiver)
 	_update_defense(delta, [active_interceptor])
 	if active_interceptor != null:
-		active_interceptor.move_toward_target(pass_snapshot.get("chase_point", active_interceptor.world_position), difficulty_config.get_defense_multiplier(), delta)
+		_move_defense_ai_toward_target(active_interceptor, pass_snapshot.get("chase_point", active_interceptor.world_position), difficulty_config.get_defense_multiplier(), delta)
 		_clamp_to_court(active_interceptor)
 	var result: Dictionary = pass_controller.step_pass(delta)
 	if result.get("state", "") == "traveling":
@@ -598,10 +600,10 @@ func _update_shot_in_flight(delta: float) -> void:
 func _update_rebound_live(delta: float) -> void:
 	rebound_delay_timer += delta
 	for player in offense_players:
-		player.move_toward_target(active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
+		_move_offense_ai_toward_target(player, active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
 		_clamp_to_court(player)
 	for defender in defense_players:
-		defender.move_toward_target(active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
+		_move_defense_ai_toward_target(defender, active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
 		_clamp_to_court(defender)
 	if rebound_delay_timer < rebound_config.rebound_reaction_delay:
 		return
@@ -632,7 +634,7 @@ func _update_off_ball_offense(delta: float, excluded_players: Array = []) -> voi
 	for player in offense_players:
 		if player == current_ballhandler or excluded_players.has(player):
 			continue
-		player.move_toward_target(targets.get(player, player.world_position), route_config.route_move_speed_multiplier, delta)
+		_move_offense_ai_toward_target(player, targets.get(player, player.world_position), route_config.route_move_speed_multiplier, delta)
 		_clamp_to_court(player)
 
 
@@ -959,6 +961,34 @@ func _clamp_to_court(player: PlayerController) -> void:
 	player.world_position.y = clampf(player.world_position.y, court_config.court_rect.position.y, court_config.court_rect.end.y)
 
 
+func _move_offense_ai_toward_target(player: PlayerController, target: Vector2, speed_scale: float, delta: float) -> void:
+	if player == null:
+		return
+	player.move_toward_target_smooth(
+		target,
+		speed_scale,
+		delta,
+		route_config.steering_arrival_radius,
+		route_config.steering_stop_radius,
+		route_config.steering_acceleration,
+		route_config.steering_deceleration
+	)
+
+
+func _move_defense_ai_toward_target(player: PlayerController, target: Vector2, speed_scale: float, delta: float) -> void:
+	if player == null:
+		return
+	player.move_toward_target_smooth(
+		target,
+		speed_scale,
+		delta,
+		defense_config.guard_arrival_radius,
+		defense_config.guard_stop_radius,
+		defense_config.guard_acceleration,
+		defense_config.guard_deceleration
+	)
+
+
 func _change_state(new_state: int) -> void:
 	change_state(new_state)
 
@@ -1143,6 +1173,7 @@ func apply_test_setup(home_score: int, away_score: int, time_remaining: float) -
 func apply_scenario_setup(setup: Dictionary) -> void:
 	if setup.is_empty():
 		return
+	route_controller.reset_runtime_state()
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
 	_clear_pending_shot_release()
@@ -1554,8 +1585,10 @@ func _build_court_input_feedback() -> Dictionary:
 	if current_pass_preview_target != null:
 		feedback["pass_target_screen"] = court_projection.world_to_screen_ground(current_pass_preview_target.world_position)
 		feedback["pass_target_radius"] = maxf(22.0 * current_pass_preview_target.projected_scale, 16.0)
+		feedback["pass_target_style"] = "blue_ring"
 	else:
 		feedback["pass_target_screen"] = Vector2.INF
+		feedback.erase("pass_target_style")
 	return feedback
 
 
@@ -1578,8 +1611,7 @@ func _build_player_visual_request(player: PlayerController):
 	else:
 		variant_index = _resolve_variant_index_for_family(player, family, memory)
 		var action_vector: Vector2 = _resolve_player_action_vector(player, family)
-		if action_vector.length_squared() > 0.001:
-			mirror_west = action_vector.normalized().x < -0.12
+		mirror_west = _resolve_family_mirror_west(family, action_vector, mirror_west)
 	var force_restart: bool = str(memory.get("family", "")) != family or int(memory.get("variant_index", -1)) != variant_index
 	player_visual_memory[player] = {
 		"family": family,
@@ -1590,6 +1622,8 @@ func _build_player_visual_request(player: PlayerController):
 
 
 func _resolve_player_animation_family(player: PlayerController) -> String:
+	var memory: Dictionary = player_visual_memory.get(player, {})
+	var previous_family: String = str(memory.get("family", ""))
 	var speed: float = _get_player_visual_speed(player)
 	if player.jump_pose_timer > 0.0:
 		return "jump_contest"
@@ -1603,16 +1637,16 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 	if player == current_ballhandler and context.current_state == GameState.State.SHOT_AIM:
 		return "shot_aim"
 	if player.has_ball:
-		if speed > player_animation_config.small_move_speed_threshold:
+		if _should_use_run_family(previous_family, speed):
 			return "ball_move_run"
-		if speed > player_animation_config.stationary_speed_threshold:
+		if _should_use_move_family(previous_family, speed):
 			return "ball_move_small"
 		if _is_player_pressured(player):
 			return "ball_idle_pressured"
 		return "ball_idle_open"
 	if not player.is_offense:
-		return _resolve_defender_animation_family(player, speed)
-	if speed > player_animation_config.stationary_speed_threshold:
+		return _resolve_defender_animation_family(previous_family, speed)
+	if _should_use_move_family(previous_family, speed):
 		return "off_ball_run"
 	return "no_ball_idle"
 
@@ -1621,12 +1655,10 @@ func _resolve_shot_release_family(player: PlayerController) -> String:
 	return str(_resolve_shot_release_visual(player).get("family", "jumper_release"))
 
 
-func _resolve_defender_animation_family(player: PlayerController, speed: float) -> String:
-	var guard_target: Vector2 = _get_defender_guard_target(player)
-	var recover_distance: float = player.world_position.distance_to(guard_target)
-	if speed > player_animation_config.small_move_speed_threshold or recover_distance > 28.0:
+func _resolve_defender_animation_family(previous_family: String, speed: float) -> String:
+	if _should_use_run_family(previous_family, speed):
 		return "guard_run"
-	if speed > player_animation_config.stationary_speed_threshold:
+	if _should_use_move_family(previous_family, speed):
 		return "guard_shuffle"
 	return "guard_idle"
 
@@ -1679,6 +1711,32 @@ func _get_locked_shot_visual(player: PlayerController) -> Dictionary:
 	return shot_visual_locks.get(player, {})
 
 
+func _should_use_move_family(previous_family: String, speed: float) -> bool:
+	var move_enter_threshold: float = player_animation_config.stationary_speed_threshold
+	var move_exit_threshold: float = minf(move_enter_threshold, player_animation_config.stationary_speed_release_threshold)
+	if _is_run_family(previous_family):
+		return speed > move_exit_threshold
+	if _is_move_family(previous_family):
+		return speed > move_exit_threshold
+	return speed > move_enter_threshold
+
+
+func _should_use_run_family(previous_family: String, speed: float) -> bool:
+	var run_enter_threshold: float = player_animation_config.small_move_speed_threshold
+	var run_exit_threshold: float = minf(run_enter_threshold, player_animation_config.small_move_speed_release_threshold)
+	if _is_run_family(previous_family):
+		return speed > run_exit_threshold
+	return speed > run_enter_threshold
+
+
+func _is_move_family(family: String) -> bool:
+	return family == "ball_move_small" or family == "guard_shuffle" or family == "off_ball_run"
+
+
+func _is_run_family(family: String) -> bool:
+	return family == "ball_move_run" or family == "guard_run"
+
+
 func _resolve_variant_index_for_family(player: PlayerController, family: String, memory: Dictionary) -> int:
 	var variant_count: int = _get_variant_count_for_family(family)
 	if variant_count <= 1:
@@ -1693,7 +1751,33 @@ func _resolve_variant_index_for_family(player: PlayerController, family: String,
 		_:
 			if visual_rng != null:
 				return visual_rng.randi_range(0, variant_count - 1)
-	return 0
+			return 0
+
+
+func _resolve_mirror_west(action_vector: Vector2, current_mirror_west: bool) -> bool:
+	if action_vector.length() < player_animation_config.facing_switch_min_vector_length:
+		return current_mirror_west
+	var normalized_x: float = action_vector.normalized().x
+	if absf(normalized_x) < player_animation_config.facing_switch_normalized_x_threshold:
+		return current_mirror_west
+	return normalized_x < 0.0
+
+
+func _resolve_family_mirror_west(family: String, action_vector: Vector2, current_mirror_west: bool) -> bool:
+	if _should_apply_facing_hysteresis(family):
+		return _resolve_mirror_west(action_vector, current_mirror_west)
+	if action_vector.length_squared() <= 0.001:
+		return current_mirror_west
+	return action_vector.normalized().x < -0.12
+
+
+func _should_apply_facing_hysteresis(family: String) -> bool:
+	return family == "ball_move_small" \
+		or family == "ball_move_run" \
+		or family == "off_ball_run" \
+		or family == "guard_run" \
+		or family == "guard_shuffle" \
+		or family == "guard_idle"
 
 
 func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
@@ -1790,7 +1874,7 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 	var shot_family: String = str(shot_visual.get("family", "jumper_release"))
 	var variant_index: int = int(shot_visual.get("variant_index", 0))
 	var action_vector: Vector2 = _resolve_shot_release_action_vector(shooter, motion_vector)
-	var mirror_west: bool = action_vector.length_squared() > 0.001 and action_vector.normalized().x < -0.12
+	var mirror_west: bool = _resolve_family_mirror_west(shot_family, action_vector, false)
 	var timing_profile: Dictionary = PlayerVisual.build_timing_profile_for_family_variant(shot_family, variant_index)
 	active_shot_sequence = {
 		"player": shooter,

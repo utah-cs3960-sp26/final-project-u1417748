@@ -366,3 +366,18 @@ Additional pure-logic coverage now includes:
   - Green preview sampling now applies the same terminal drop so the last preview segment stays aligned with the live finish.
   - Solver output, score legality, and hoop geometry remain unchanged.
   - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
+
+## 2026-04-09 Smooth AI Steering And Pass Preview Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 434
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The suite now proves AI-only arrival steering settles inside the configured stop band without oscillating while still preserving long-run travel pace.
+  - Route-package coverage now locks strong-side and weak-side targets through centerline deadband moves before allowing a side flip once the ballhandler meaningfully crosses the switch threshold.
+  - Smoke validation now confirms normal boot hides teammate catch rings, and gameplay reuses the light-blue ring only for the currently locked pass-preview target.
+  - Godot still emits the existing non-blocking object/resource warnings on exit after the passing summary.
