@@ -6,11 +6,15 @@ const LABEL_SIZE: Vector2 = Vector2(96.0, 24.0)
 const BASE_INPUT_HIT_RADIUS: float = 84.0
 const SCREEN_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -44.0)
 const BALL_ANCHOR_OFFSET: Vector2 = Vector2(24.0, -82.0)
+const CONTROL_MARKER_CENTER: Vector2 = Vector2(0.0, 12.0)
+const CONTROL_MARKER_RADII: Vector2 = Vector2(30.0, 14.0)
+const CONTROL_MARKER_WIDTH: float = 3.0
+const CONTROL_MARKER_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
+const CONTROL_MARKER_SAMPLE_COUNT: int = 28
 
 var player_data: PlayerData
 var is_offense: bool = true
 var team_color: Color = Color.WHITE
-var shadow_color: Color = Color(0.0, 0.0, 0.0, 0.28)
 var is_controlled: bool = false
 var has_ball: bool = false
 var world_position: Vector2 = Vector2.ZERO
@@ -25,6 +29,7 @@ var jump_pose_timer: float = 0.0
 
 var _label: Label
 var _visual: PlayerVisual
+var _animation_config: PlayerAnimationConfig
 
 
 func _ready() -> void:
@@ -41,10 +46,11 @@ func _ready() -> void:
 	_update_label()
 
 
-func setup(data: PlayerData, offense_flag: bool, color_value: Color) -> void:
+func setup(data: PlayerData, offense_flag: bool, color_value: Color, animation_config: PlayerAnimationConfig = null) -> void:
 	player_data = data
 	is_offense = offense_flag
 	team_color = color_value
+	_animation_config = animation_config
 	if is_node_ready():
 		_ensure_visual()
 		_update_label()
@@ -60,9 +66,8 @@ func _update_label() -> void:
 
 
 func _draw() -> void:
-	draw_ellipse(projected_shadow_offset, 23.0 * projected_shadow_scale, 12.0 * projected_shadow_scale, shadow_color)
 	if is_controlled:
-		draw_arc(Vector2(0.0, 2.0), 22.0, 0.0, TAU, 24, Color(1.0, 1.0, 1.0, 0.95), 3.0)
+		draw_polyline(_build_control_marker_points(), CONTROL_MARKER_COLOR, CONTROL_MARKER_WIDTH, true)
 
 
 func set_controlled(value: bool) -> void:
@@ -231,6 +236,22 @@ func is_ball_release_ready() -> bool:
 	return _visual.is_ball_release_ready() if _visual != null else false
 
 
+func is_world_ball_release_ready() -> bool:
+	return _visual.is_world_ball_release_ready() if _visual != null else false
+
+
+func get_debug_dunk_contact_frame() -> int:
+	return _visual.get_debug_dunk_contact_frame() if _visual != null else -1
+
+
+func is_dunk_contact_hold_active() -> bool:
+	return _visual.is_dunk_contact_hold_active() if _visual != null else false
+
+
+func get_debug_dunk_contact_hold_remaining() -> float:
+	return _visual.get_debug_dunk_contact_hold_remaining() if _visual != null else 0.0
+
+
 func get_debug_flip_h() -> bool:
 	return _visual.get_debug_flip_h() if _visual != null else false
 
@@ -255,6 +276,20 @@ func get_ball_screen_anchor() -> Vector2:
 	return global_position + BALL_ANCHOR_OFFSET * projected_scale
 
 
+func get_floor_marker_debug_snapshot() -> Dictionary:
+	return {
+		"shadow_enabled": false,
+		"marker_visible": is_controlled,
+		"marker_shape": "oval",
+		"marker_style": "outline",
+		"marker_center_local": CONTROL_MARKER_CENTER,
+		"marker_radii_local": CONTROL_MARKER_RADII,
+		"marker_center_screen": global_position + CONTROL_MARKER_CENTER * projected_scale,
+		"marker_radii_screen": CONTROL_MARKER_RADII * projected_scale,
+		"marker_width": CONTROL_MARKER_WIDTH,
+	}
+
+
 func _ensure_visual() -> void:
 	if _visual == null:
 		_visual = get_node_or_null("PlayerVisual") as PlayerVisual
@@ -264,7 +299,19 @@ func _ensure_visual() -> void:
 		add_child(_visual)
 		if _label != null:
 			move_child(_visual, 0)
+	_visual.set_animation_config(_animation_config)
 	_sync_visual_team()
+
+
+func _build_control_marker_points() -> PackedVector2Array:
+	var points: PackedVector2Array = PackedVector2Array()
+	for index in range(CONTROL_MARKER_SAMPLE_COUNT + 1):
+		var angle: float = (float(index) / float(CONTROL_MARKER_SAMPLE_COUNT)) * TAU
+		points.append(
+			CONTROL_MARKER_CENTER
+			+ Vector2(cos(angle) * CONTROL_MARKER_RADII.x, sin(angle) * CONTROL_MARKER_RADII.y)
+		)
+	return points
 
 
 func _sync_visual_team() -> void:

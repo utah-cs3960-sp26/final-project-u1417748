@@ -6,6 +6,9 @@
 script = ExtResource("1")
 camera_tilt_strength = 0.0
 depth_compression_exponent = 1.0
+camera_zoom_multiplier = 2.1
+camera_tracking_smoothing_seconds = 0.1
+player_tracking_anchor_offset = Vector2(0, -44)
 screen_center_x = 540.0
 screen_floor_y = 1920.0
 screen_horizon_y = 0.0

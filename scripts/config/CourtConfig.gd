@@ -2,13 +2,13 @@ class_name CourtConfig
 extends Resource
 
 @export var court_rect: Rect2 = Rect2(120.0, 220.0, 840.0, 1480.0)
-@export var hoop_position: Vector2 = Vector2(540.0, 360.0)
-@export var three_point_radius: float = 430.0
+@export var hoop_position: Vector2 = Vector2(540.0, -50.0)
+@export var three_point_radius: float = 840.0
 @export var rim_radius: float = 62.0
 @export var rim_inner_radius: float = 40.0
 @export var rim_height: float = 185.0
 @export var backboard_width: float = 180.0
-@export var backboard_y: float = 290.0
+@export var backboard_y: float = -120.0
 @export var backboard_x_center: float = 540.0
 @export var over_backboard_z_threshold: float = 320.0
 @export var net_channel_radius: float = 40.0

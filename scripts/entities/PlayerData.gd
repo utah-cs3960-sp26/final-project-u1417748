@@ -13,6 +13,7 @@ extends Resource
 @export var release_consistency: int = 70
 @export var perimeter_defense: int = 70
 @export var steal: int = 70
+@export var dunk: int = 70
 @export var block: int = 70
 @export var rebound: int = 70
 @export var sim_offense: int = 70
@@ -38,6 +39,8 @@ func get_rating(stat_name: String) -> int:
 			return perimeter_defense
 		"steal":
 			return steal
+		"dunk":
+			return dunk
 		"block":
 			return block
 		"rebound":

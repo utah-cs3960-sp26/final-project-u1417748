@@ -13,6 +13,11 @@ const RELEASE_AFTER_FRAME_BY_ROW: Dictionary = {
 	16: 10,
 	17: 11,
 }
+const DEFAULT_DUNK_CONTACT_FRAME_BY_ROW: Dictionary = {
+	13: 10,
+	15: 11,
+	16: 11,
+}
 const HOME_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW.png")
 const HOME_OUTLINE_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW_outline.png")
 const AWAY_FILL_TEXTURE: Texture2D = preload("res://assets/Character/Character2_NEW.png")
@@ -70,6 +75,7 @@ const NON_LOOPING_FAMILIES: Dictionary = {
 @export var sprite_offset: Vector2 = Vector2(0.0, -72.0)
 @export var sprite_base_scale: float = 2.3
 
+var animation_config: PlayerAnimationConfig
 var _fill_sprite: Sprite2D
 var _outline_sprite: Sprite2D
 var _team_key: String = "home"
@@ -82,8 +88,13 @@ var _mirror_west: bool = false
 var _show_outline: bool = false
 var _release_after_frame: int = -1
 var _release_ready_this_tick: bool = false
+var _world_ball_release_ready_this_tick: bool = false
 var _animation_elapsed: float = 0.0
 var _animation_completed: bool = false
+var _allow_dunk_contact_hold: bool = false
+var _dunk_contact_hold_active: bool = false
+var _dunk_contact_hold_finished: bool = false
+var _dunk_contact_hold_remaining: float = 0.0
 
 
 func _ready() -> void:
@@ -96,6 +107,11 @@ func _ready() -> void:
 func set_team_key(team_key: String) -> void:
 	_team_key = team_key
 	_apply_team_textures()
+
+
+func set_animation_config(config_value: PlayerAnimationConfig) -> void:
+	animation_config = config_value
+	_sync_sprite_positions()
 
 
 func apply_state(request, delta: float) -> void:
@@ -116,15 +132,25 @@ func apply_state(request, delta: float) -> void:
 	_current_row_index = next_row
 	_mirror_west = request.mirror_west
 	_show_outline = request.show_outline
+	_allow_dunk_contact_hold = bool(request.allow_dunk_contact_hold)
 	_release_after_frame = int(RELEASE_AFTER_FRAME_BY_ROW.get(_current_row_index, -1))
 	_release_ready_this_tick = false
+	_world_ball_release_ready_this_tick = false
+	var start_hold_on_entry: bool = false
 	if should_restart:
 		_frame_index = 0
 		_frame_elapsed = 0.0
 		_animation_elapsed = 0.0
 		_animation_completed = false
-	_advance_frames(delta)
+		_reset_dunk_contact_hold()
+	elif _should_use_dunk_contact_hold() and not _dunk_contact_hold_finished and not _dunk_contact_hold_active \
+		and _frame_index + 1 >= _get_dunk_contact_frame_for_row(_current_row_index):
+		_start_dunk_contact_hold()
+		start_hold_on_entry = true
+	_advance_frames(0.0 if start_hold_on_entry else delta)
 	_release_ready_this_tick = _is_release_crossed(previous_frame_number)
+	if not _should_use_dunk_contact_hold():
+		_world_ball_release_ready_this_tick = _release_ready_this_tick
 	_apply_current_frame()
 	_apply_sprite_flags()
 
@@ -162,11 +188,31 @@ func is_current_animation_complete() -> bool:
 
 
 func get_current_animation_timing_profile() -> Dictionary:
-	return build_timing_profile_for_family_variant(_animation_family, _variant_index)
+	var profile: Dictionary = build_timing_profile_for_family_variant(_animation_family, _variant_index)
+	profile["dunk_contact_frame"] = get_debug_dunk_contact_frame()
+	profile["dunk_contact_hold_seconds"] = _get_dunk_contact_hold_seconds()
+	profile["dunk_contact_hold_active"] = _dunk_contact_hold_active
+	return profile
 
 
 func is_ball_release_ready() -> bool:
 	return _release_ready_this_tick
+
+
+func is_world_ball_release_ready() -> bool:
+	return _world_ball_release_ready_this_tick
+
+
+func get_debug_dunk_contact_frame() -> int:
+	return _get_dunk_contact_frame_for_row(_current_row_index)
+
+
+func is_dunk_contact_hold_active() -> bool:
+	return _dunk_contact_hold_active
+
+
+func get_debug_dunk_contact_hold_remaining() -> float:
+	return _dunk_contact_hold_remaining
 
 
 func get_debug_flip_h() -> bool:
@@ -189,7 +235,6 @@ func _ensure_sprites() -> void:
 		_outline_sprite.name = "OutlineSprite"
 		_outline_sprite.centered = true
 		_outline_sprite.region_enabled = true
-		_outline_sprite.position = sprite_offset
 		_outline_sprite.scale = Vector2.ONE * sprite_base_scale
 		_outline_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(_outline_sprite)
@@ -198,10 +243,10 @@ func _ensure_sprites() -> void:
 		_fill_sprite.name = "FillSprite"
 		_fill_sprite.centered = true
 		_fill_sprite.region_enabled = true
-		_fill_sprite.position = sprite_offset
 		_fill_sprite.scale = Vector2.ONE * sprite_base_scale
 		_fill_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(_fill_sprite)
+	_sync_sprite_positions()
 
 
 func _apply_team_textures() -> void:
@@ -227,6 +272,14 @@ func _advance_frames(delta: float) -> void:
 	if delta <= 0.0 or frame_count <= 1:
 		_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
 		return
+	if _dunk_contact_hold_active:
+		_dunk_contact_hold_remaining = maxf(_dunk_contact_hold_remaining - delta, 0.0)
+		if _dunk_contact_hold_remaining <= 0.0:
+			_dunk_contact_hold_active = false
+			_dunk_contact_hold_finished = true
+			_world_ball_release_ready_this_tick = true
+		_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
+		return
 	var fps: float = float(FAMILY_FPS.get(_animation_family, 6.0))
 	if fps <= 0.0:
 		_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
@@ -240,6 +293,10 @@ func _advance_frames(delta: float) -> void:
 			_frame_index %= frame_count
 		else:
 			_frame_index = mini(_frame_index, frame_count - 1)
+		if _should_start_dunk_contact_hold():
+			_start_dunk_contact_hold()
+			_animation_completed = false
+			return
 	_animation_completed = not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1
 
 
@@ -275,6 +332,28 @@ func _apply_sprite_flags() -> void:
 	_fill_sprite.flip_h = _mirror_west
 	_outline_sprite.flip_h = _mirror_west
 	_outline_sprite.visible = _show_outline
+	_sync_sprite_positions()
+
+
+func _sync_sprite_positions() -> void:
+	if _fill_sprite == null or _outline_sprite == null:
+		return
+	var active_offset: Vector2 = _get_active_sprite_offset()
+	_fill_sprite.position = active_offset
+	_outline_sprite.position = active_offset
+
+
+func _get_active_sprite_offset() -> Vector2:
+	var active_offset: Vector2 = sprite_offset
+	var contact_frame: int = _get_dunk_contact_frame_for_row(_current_row_index)
+	var should_apply_contact_offset: bool = _dunk_contact_hold_active \
+		or (_dunk_contact_hold_finished and _frame_index + 1 == contact_frame and _allow_dunk_contact_hold)
+	if should_apply_contact_offset:
+		var extra_offset: Vector2 = _get_dunk_contact_offset_for_row(_current_row_index)
+		if _mirror_west:
+			extra_offset.x *= -1.0
+		active_offset += extra_offset
+	return active_offset
 
 
 func _get_frame_count_for_row(row_index: int) -> int:
@@ -285,6 +364,59 @@ func _get_frame_count_for_row(row_index: int) -> int:
 
 func _is_looping_family(animation_family: String) -> bool:
 	return not NON_LOOPING_FAMILIES.has(animation_family)
+
+
+func _should_use_dunk_contact_hold() -> bool:
+	return _allow_dunk_contact_hold and _get_dunk_contact_frame_for_row(_current_row_index) > 0
+
+
+func _should_start_dunk_contact_hold() -> bool:
+	if not _should_use_dunk_contact_hold() or _dunk_contact_hold_finished or _dunk_contact_hold_active:
+		return false
+	return _frame_index + 1 >= _get_dunk_contact_frame_for_row(_current_row_index)
+
+
+func _start_dunk_contact_hold() -> void:
+	_frame_index = clampi(_get_dunk_contact_frame_for_row(_current_row_index) - 1, 0, _get_frame_count_for_row(_current_row_index) - 1)
+	_frame_elapsed = 0.0
+	_dunk_contact_hold_active = true
+	_dunk_contact_hold_remaining = _get_dunk_contact_hold_seconds()
+
+
+func _reset_dunk_contact_hold() -> void:
+	_dunk_contact_hold_active = false
+	_dunk_contact_hold_finished = false
+	_dunk_contact_hold_remaining = 0.0
+
+
+func _get_dunk_contact_hold_seconds() -> float:
+	if animation_config != null:
+		return maxf(animation_config.dunk_contact_hold_seconds, 0.0)
+	return 0.5
+
+
+func _get_dunk_contact_frame_for_row(row_index: int) -> int:
+	if animation_config != null:
+		match row_index:
+			13:
+				return animation_config.dunk_contact_frame_row_13
+			15:
+				return animation_config.dunk_contact_frame_row_15
+			16:
+				return animation_config.dunk_contact_frame_row_16
+	return int(DEFAULT_DUNK_CONTACT_FRAME_BY_ROW.get(row_index, -1))
+
+
+func _get_dunk_contact_offset_for_row(row_index: int) -> Vector2:
+	if animation_config != null:
+		match row_index:
+			13:
+				return animation_config.dunk_contact_offset_row_13
+			15:
+				return animation_config.dunk_contact_offset_row_15
+			16:
+				return animation_config.dunk_contact_offset_row_16
+	return Vector2.ZERO
 
 
 static func get_row_index_for_family_variant(animation_family: String, variant_index: int) -> int:

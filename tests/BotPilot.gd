@@ -18,31 +18,35 @@ func move_joystick(direction: Vector2, duration: float) -> void:
 
 
 func release_pass(player_id: String) -> void:
-	action_queue.append({"kind": "release_pass", "player_id": player_id})
+	tap_pass(player_id)
 
 
 func flick_pass(player_id: String) -> void:
-	release_pass(player_id)
+	tap_pass(player_id)
 
 
 func tap_player(player_id: String) -> void:
-	release_pass(player_id)
+	tap_pass(player_id)
+
+
+func tap_pass(player_id: String = "") -> void:
+	action_queue.append({"kind": "tap_pass", "player_id": player_id})
 
 
 func tap_shot() -> void:
-	action_queue.append({"kind": "tap_shot"})
+	swipe_shot(Vector2.UP)
 
 
-func swipe_shot(_direction: Vector2 = Vector2.UP) -> void:
-	tap_shot()
+func swipe_shot(direction: Vector2 = Vector2.UP) -> void:
+	action_queue.append({"kind": "swipe_shot", "direction": direction})
 
 
 func arm_shot() -> void:
-	tap_shot()
+	swipe_shot(Vector2.UP)
 
 
 func hold_drag_from_ballhandler(_offset: Vector2, _duration: float) -> void:
-	tap_shot()
+	swipe_shot(Vector2.UP)
 
 
 func release_center() -> void:
@@ -140,14 +144,14 @@ func step(delta: float) -> bool:
 			if action_elapsed >= action["duration"]:
 				input_controller.movement_updated.emit(Vector2.ZERO, 0.0)
 				_advance()
-		"release_pass":
-			_execute_release_pass(str(action.get("player_id", "")))
+		"tap_pass", "release_pass":
+			_execute_tap_pass(str(action.get("player_id", "")))
 			_advance()
 		"tap_shot":
-			_execute_tap_shot()
+			_execute_swipe_shot(Vector2.UP)
 			_advance()
 		"swipe_shot":
-			_execute_tap_shot()
+			_execute_swipe_shot(action.get("direction", Vector2.UP))
 			_advance()
 		"release_center":
 			_execute_release_center()
@@ -208,28 +212,33 @@ func _advance() -> void:
 	action_elapsed = 0.0
 
 
-func _execute_release_pass(player_id: String) -> void:
+func _execute_tap_pass(player_id: String) -> void:
 	var target: PlayerController = coordinator.get_offense_player_by_role(player_id)
-	var ballhandler: PlayerController = coordinator.current_ballhandler
-	if target == null or ballhandler == null:
-		return
-	var anchor: Vector2 = _get_lower_zone_anchor()
-	var screen_vector: Vector2 = target.get_screen_anchor() - ballhandler.get_screen_anchor()
-	if screen_vector.length_squared() <= 0.001:
-		screen_vector = Vector2.RIGHT
-	var release_screen: Vector2 = anchor + _build_pass_release_offset(screen_vector)
-	input_controller.begin_test_live_gesture(anchor)
-	input_controller.update_test_live_gesture(release_screen)
-	input_controller.end_test_live_gesture(release_screen)
+	var tap_position: Vector2 = target.get_screen_anchor() if target != null else _get_upper_pass_tap_position()
+	input_controller.tap_test_pass(tap_position, 0.05)
 
 
-func _execute_tap_shot() -> void:
-	input_controller.tap_test_shot_arm(_get_upper_shot_tap_position(), 0.05)
+func _execute_swipe_shot(direction: Vector2 = Vector2.UP) -> void:
+	var swipe_direction: Vector2 = direction.normalized()
+	if swipe_direction.length_squared() <= 0.001:
+		swipe_direction = Vector2.UP
+	var swipe_start: Vector2 = _get_shot_swipe_start_position()
+	var swipe_end: Vector2 = swipe_start + swipe_direction * _get_shot_swipe_distance()
+	if swipe_direction.y < -0.001:
+		var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
+		var release_limit_ratio: float = float(coordinator.input_config.shot_swipe_max_release_y_ratio)
+		var top_half_limit_y: float = viewport_size.y * release_limit_ratio
+		swipe_end = Vector2(swipe_start.x, minf(swipe_end.y, top_half_limit_y - 24.0))
+	input_controller.swipe_test_shot_arm(
+		swipe_start,
+		swipe_end,
+		0.12
+	)
 
 
 func _execute_release_center() -> void:
 	var anchor: Vector2 = _get_lower_zone_anchor()
-	var drag_distance: float = maxf(float(coordinator.input_config.shot_tap_max_movement_pixels) + 24.0, float(coordinator.input_config.deadzone) + 12.0)
+	var drag_distance: float = maxf(float(coordinator.input_config.pass_tap_max_movement_pixels) + 24.0, float(coordinator.input_config.deadzone) + 12.0)
 	var drag_screen: Vector2 = anchor + Vector2(drag_distance, 0.0)
 	input_controller.begin_test_live_gesture(anchor)
 	input_controller.update_test_live_gesture(drag_screen)
@@ -241,16 +250,17 @@ func _get_lower_zone_anchor() -> Vector2:
 	return Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
 
 
-func _get_upper_shot_tap_position() -> Vector2:
+func _get_upper_pass_tap_position() -> Vector2:
 	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
 	return Vector2(viewport_size.x * 0.5, viewport_size.y * 0.56)
 
 
-func _build_pass_release_offset(target_screen_vector: Vector2) -> Vector2:
-	var pass_min_length: float = maxf(float(coordinator.input_config.pass_preview_min_vector_length) + 36.0, float(coordinator.input_config.deadzone) + 56.0)
-	if target_screen_vector.length_squared() <= 0.001:
-		return Vector2.RIGHT * pass_min_length
-	return target_screen_vector.normalized() * pass_min_length
+func _get_shot_swipe_start_position() -> Vector2:
+	return _get_lower_zone_anchor()
+
+
+func _get_shot_swipe_distance() -> float:
+	return maxf(float(coordinator.input_config.shot_swipe_min_distance_pixels) + 48.0, 140.0)
 
 
 func _set_meter_quality(quality: String) -> void:

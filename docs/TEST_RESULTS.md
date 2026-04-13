@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Date: 2026-04-09
+- Date: 2026-04-10
 - Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
 - Engine used for validation: Godot 4.6.1 stable
 
@@ -20,34 +20,21 @@ Automated suite:
 '/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
 ```
 
-Final passing rerun:
-
-```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
-```
-
-Smoke:
-
-```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit-after 3
-'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . res://scenes/GameRoot.tscn --quit-after 3
-```
-
 ## Automated Result
 
 Final headless suite status: pass
 
-- Pure logic: 378 / 378
+- Pure logic: 693 / 693
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `1.02`, normal `1.05`, hard `1.26`
+- `difficulty_order`: easy `0.89`, normal `1.12`, hard `1.28`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.30`, defense `0.70`
-- `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180`
+- `rebound_distribution`: offense `0.34`, defense `0.66`
+- `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
 
@@ -69,12 +56,28 @@ Passed scenarios:
 
 ## Smoke Result
 
-- default boot scene (`GameRoot.tscn`) booted headless without script/runtime errors
-- `GameRoot.tscn` booted headless without script/runtime errors
-- headless validation kept the gameplay scene stable after the cinematic arc refactor and restored aim-preview path
-- the projected court now maps into a centered responsive play rect below the banner instead of assuming the full viewport is playable court space
-- the hoop still clears the responsive HUD banner, all HUD child rects stayed fully inside the banner, the world ball stays hidden while a player-held sprite owns possession, and pass-flight ball anchors stay aligned with projection
-- the deterministic smoke pass stayed visible for 30 frames and advanced about 473 px on screen before the catch resolved
+- parse/load validation and the full headless suite both completed without script/runtime failures
+- headless validation kept the gameplay scene stable after the close-camera projection refactor and the control-scheme swap
+- opening possession now centers the controlled ballhandler on the visible viewport midpoint and shows a persistent light-blue pass marker on the coordinator-ranked default receiver
+- empty-space taps now pass to that marked teammate, while direct teammate taps override the marker and still preserve live ball flight, catch transfer, held-ball hiding, and ball-tracking camera handoff
+- only upward swipes that finish in the top half now arm `SHOT_AIM`, including qualifying releases that begin in the lower movement zone and still win over normal movement-stop behavior
+- downward swipes and upward swipes that stay in the lower half no longer enter shot mode
+- non-vertical lower-zone drags still behave as movement, not as shot entry
+- eligible live dunks now skip `SHOT_AIM` completely, never show the shot meter, and stage a guaranteed `dunk_auto_make` immediately off the swipe gesture
+- shot meter taps still lock quality immediately while the authored release-frame launch gate and projection-aware camera handoff remain unchanged
+- near-rim finish family selection now uses deterministic close-finish and dunk-only gates based on hoop distance, hoop-facing momentum, speed, and the shooter's explicit `dunk` rating
+- close-finish attempts that fail a dunk-only gate now fall back to layup rows `14` or `17` instead of leaking into jumper rows, while LC archetypes still reach dunk rows `13`, `15`, and `16`
+- defender distance no longer changes the layup-vs-dunk family choice; it only affects the later contest and block outcome after the family is already committed
+- the pause overlay now exposes a `No Defenders` toggle that hides all live defenders, strips them from on-court defense logic, and forces close-range shots into dunk families while it is active
+- dunk rows `13`, `15`, and `16` now freeze on their authored rim-contact frame for about `0.5` seconds with the world ball still hidden before release
+- live straight and side dunks now go straight from swipe entry into staged release, keep the meter hidden, and always finish through the make-drop guided descent for this phase
+- blocked close-finish attempts still bypass the dunk contact-hold path and resolve through the existing block flow
+- the live hoop, rim, backboard, and pole now all sit farther back above the court together at a real `Vector2(540, -50)` hoop anchor, and negative hoop depth now renders correctly because projection no longer clamps above-court world Y to the court top
+- the retuned `840` three-point radius plus the larger `550` layup radius and `485` dunk radius keep shot-value classification and close-finish access stable after the hoop geometry moved behind the court
+- pass flight and launched-shot flight now hand camera ownership to the rendered live ball on the first visible frame and keep that ball centered across subsequent smoke frames
+- controlled-player floor feedback now renders as a white outlined oval under the feet, and player ground shadows stay disabled without affecting the live ball shadow
+- the responsive HUD still stays inside the banner while the court, hoop, players, preview dots, and live ball move underneath the projection-layer camera transform
+- the world ball stays hidden while a player-held sprite owns possession, and visible pass-flight alignment is now validated against world-space travel plus projection correctness rather than raw screen-distance travel
 
 Additional pure-logic coverage now includes:
 
@@ -82,6 +85,17 @@ Additional pure-logic coverage now includes:
 - meter green-window stability under contest and ratings
 - meter red/green classification
 - one-way shot bar timing against the committed windup row
+- coordinator-driven dunk auto-finish staging with hidden meter state and `dunk_auto_make` timing tags
+- explicit roster dunk ratings for the default HOM and AWY teams
+- dunk momentum and minimum-rating thresholds for the stricter dunk gate
+- dunk-only block resistance scaling and layup block-chance invariance
+- pause-menu defender disabling plus forced no-defender close-range dunk selection
+- dunk contact-frame metadata for rows `13`, `15`, and `16`
+- dunk world-ball release gating after the authored rim-contact hold
+- dunk make release profiles starting directly in guided descent from the rim
+- dunk miss release profiles starting at the rim and moving upward and away
+- relocated hoop anchor, backboard plane, and preserved three-point arc geometry
+- retuned 2.1x close-camera zoom
 - cinematic near-shot airtime band
 - cinematic far-shot airtime band
 - cinematic far-shot apex band
@@ -104,10 +118,17 @@ Additional pure-logic coverage now includes:
 - flat rectangular court width consistency
 - flat projection linear depth mapping inside the centered play rect
 - flat projection ground-coordinate round trip
+- close-camera inverse ground-coordinate round trip after zoom and tracking offset removal
 - projected z-lift from a stable ground anchor
 - cinematic-strength projected z-lift
 - preview lift exceeding live-ball lift
 - actor scale and draw-order depth behavior
+- controlled-player tracking anchor landing on the visible viewport midpoint
+- in-flight live-ball tracking anchor landing on the visible viewport midpoint
+- close-camera actor, hoop, and guided terminal presentation scaling
+- player ground shadows disabled in presentation
+- controlled-player floor marker outline style
+- controlled-player floor marker oval geometry and feet-centered offset
 - projected lower-zone gesture mapping
 - projection-aware shot-mode arming input
 - gameplay boot scene selection
@@ -117,25 +138,33 @@ Additional pure-logic coverage now includes:
 - player sprite smoke instantiation
 - court mapping to the centered responsive play rect in a booted `GameRoot`
 - ratio-preserving full-height court crop with offensive-side bias
-- hoop art clearing the responsive HUD banner after the centered-court relayout
 - responsive HUD child-rect containment for score, timer, and pause controls
 - readable player presentation under the centered court framing
 - hidden-held-ball presentation on the first rendered possession frame
+- opening-possession floor marker using the outlined oval without player shadows
 - in-flight ball/projection alignment during the smoke pass
+- opening possession camera centering on the active ballhandler
+- pass-flight camera centering on the traveling ball
+- shot-flight camera centering on the launched ball from the first visible frame
 - invisible lower-zone movement dead zone and full-magnitude thumb radius
-- quick tap shot qualification by duration and movement
-- quick tap shot arming outside the movement zone
-- quick tap shot arming inside the movement zone
+- quick pass-tap qualification by duration and movement
+- empty quick tap outside the movement zone emitting the default pass request
+- empty quick tap inside the movement zone still emitting the default pass request when no real drag occurred
+- direct teammate tap hit testing and explicit pass-target emission
 - extra touches being ignored while dragging
-- center-release idle classification
-- off-center release pass vs no-target cancel classification
-- directional pass-preview cone selection and deterministic tie-breaking
-- quick-tap gesture arming shot mode instead of forcing a pass
-- shot timing running at normal speed after arm
+- upward swipe shot qualification only when the release reaches the top half
+- upward swipe rejection when the release stays in the lower half
+- downward swipe rejection for shot entry
+- qualifying upward swipe from the movement zone winning over normal movement release
+- default pass-target ranking by interception commit chance, pass distance, and hoop proximity
+- empty tap-to-pass default-target resolution inside the coordinator smoke flow
+- direct teammate tap overriding the default target in coordinator smoke flow
+- shot timing running at normal speed after swipe arm
 - tap-to-time decision locking and late-miss timeout behavior
 - home player fill textures binding to `Character1_NEW.png`
 - away player fill textures binding to `Character2_NEW.png`
 - controlled-player-only outline rendering plus outline transfer when control changes
+- floor-marker visibility transfer with control changes
 - exact row assertions for no-ball idle, open dribble idle, pressured dribble idle, small dribble move, run dribble, off-ball run, guard idle, guard shuffle, guard run, and jump contest
 - westward mirroring assertions for run dribbles and close-finish dunks
 - staged `SHOT_RELEASE` entry before the world ball becomes visible
@@ -144,6 +173,9 @@ Additional pure-logic coverage now includes:
 - deterministic jumper-release variant locking across repeated syncs
 - deterministic row-8-vs-10 jumper selection by seed once the set-shot gate is denied
 - straight-vs-side layup row selection inside the close-finish radius
+- low-dunk and low-speed close finishes falling back to layup while high-dunk finishers in the same geometry still commit dunk families
+- defender-distance invariance for close-finish family selection
+- pause-menu no-defenders toggling, defender hiding, and forced close-range dunk selection for low-dunk guards
 - straight-dunk row selection inside the stricter dunk gate
 - side-dunk row selection when the approach stays close and lateral
 - committed shot continuation keeping the same 15 FPS cadence instead of accelerating between aim and release
@@ -168,6 +200,109 @@ Additional pure-logic coverage now includes:
 - late defenders failing to steal safe passes
 - out-of-bounds passes resolving before any later claim
 - multi-frame pass flight staying visible through coordinator projection sync
+
+## 2026-04-10 No Defenders Pause Toggle Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 638
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `PauseOverlay` now exposes a `No Defenders` toggle and `GameCoordinator` now hides disabled defenders and removes them from pass, contest, block, and rebound logic.
+  - Close-range shots now force dunk families whenever no live defenders are active, even for low-dunk or stationary players inside the normal close-finish radius.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
+
+## 2026-04-10 Dunk Vs Layup Decision Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 629
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `PlayerData`, the default team resources, and `PlayerAnimationConfig` now expose an explicit `dunk` stat plus stricter dunk-speed and dunk-rating gates.
+  - `GameCoordinator` now commits close finishes through a deterministic two-stage chooser that falls back to layup when the dunk-only gates fail and logs the committed finish decision.
+  - `DefenseController` now exposes `get_block_chance()` and applies dunk-only block resistance from the committed shooter's `dunk` rating without changing layup or jumper block math.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
+
+## 2026-04-10 Dunk Contact Hold Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 598
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `PlayerAnimationConfig`, `PlayerVisual`, and `GameCoordinator` now hold rows `13`, `15`, and `16` on authored rim-contact frames before the world ball is allowed to release.
+  - `ShotController` and `BallSimulator` now validate dunk-specific make and miss release profiles, including direct guided descent for makes and upward-and-away bounce flight for misses.
+  - The overhold smoke reset now clears score-followthrough state between cases so through-net assertions do not leak across deterministic runs.
+
+## 2026-04-10 Tap Pass And Swipe Shot Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 470
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `InputController` now classifies quick taps as pass requests and upward shot swipes as shot-arm gestures, with movement-zone releases still able to win over the normal movement-stop path when they satisfy the swipe gate.
+  - `GameCoordinator` now maintains a persistent default pass target highlighted with the light-blue ring, resolves empty tap passes through that target, and still lets direct teammate taps override it.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
+
+## 2026-04-10 Upward Top-Half Shot Swipe Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 472
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `InputController` now only arms `SHOT_AIM` for upward swipes whose release finishes in the top half of the visible screen.
+  - The suite now rejects downward swipes and upward swipes that stay in the lower half, while still proving that a qualifying upward swipe from the movement zone wins over normal movement release.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
+
+## 2026-04-09 Dynamic Close Camera Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 441
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - `CourtProjection` now validates a base responsive court layout plus a second-stage close-camera transform, including inverse touch round-tripping after camera zoom and tracking offset removal.
+  - Smoke coverage now checks player-centered opening possession framing, ball-centered pass flight, first-frame shot-flight tracking handoff, hidden-held-ball presentation, and HUD containment while world presentation moves under the camera.
+  - The suite still exits with the existing non-blocking Godot CanvasItem/object/resource leak warnings after the passing summary.
+
+## 2026-04-09 Close-Camera Retune And Floor Marker Validation
+
+- Commands run:
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit`
+  - `'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd`
+- Result:
+  - Pure logic: 463
+  - Scenarios: 13
+  - Balance: 4
+  - Failures: 0
+- Notes:
+  - The close camera now validates against the retuned `2.1x` zoom while keeping the same player-vs-ball tracking handoff and inverse input mapping behavior.
+  - `PlayerController` presentation now exposes a debug floor-marker snapshot so smoke coverage can assert that player shadows remain disabled and the controlled-player marker stays a white outlined oval with the expected feet-centered placement.
+  - Godot still emits the existing non-blocking CanvasItem/object/resource warnings on exit after the passing summary.
 
 ## Notes
 

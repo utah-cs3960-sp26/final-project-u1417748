@@ -9,6 +9,7 @@ extends Resource
 @export var guard_deadband_radius: float = 22.0
 @export var contest_radius: float = 110.0
 @export var block_radius: float = 88.0
+@export var dunk_block_chance_min_multiplier: float = 0.55
 @export var pressure_radius: float = 72.0
 @export var stationary_turnover_time: float = 1.4
 @export var steal_check_interval: float = 0.35

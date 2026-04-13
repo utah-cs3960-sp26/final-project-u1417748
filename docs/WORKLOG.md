@@ -1,5 +1,64 @@
 # Worklog
 
+## 2026-04-10
+
+### Live dunks now auto-finish without the timing bar
+
+- changed `GameCoordinator` so any shot that commits to a dunk family now skips `SHOT_AIM`, never shows the shot bar, never requires a green tap, and immediately queues a guaranteed `dunk_auto_make`
+- kept the authored dunk release contract intact by still starting the hidden shot-timing controller for cleanup, preserving the rim-contact hold, hidden world-ball hang, and straight-through guided descent after release
+- rewrote the dunk smoke coverage so straight and side dunks now assert immediate `SHOT_RELEASE`, hidden meter state, auto-make timing tags, and the same post-hold make-drop launch path
+- reran the full headless suite after the dunk auto-finish change: Pure logic `693`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Hoop moved back to the top boundary
+
+- moved the real hoop anchor to `Vector2(540, -50)` and the backboard collision plane to `y = -120` so the pole, board, rim, and net all sit farther back above the court instead of relying on a support-only visual offset
+- removed the temporary split-support hoop art workaround and restored the single combined hoop-body atlas region
+- widened the live `three_point_radius` to `840`, `close_finish_radius` to `550`, and `dunk_finish_radius` to `485` so shot-value boundaries and near-rim finish access stay aligned after the actual hoop geometry moved back
+- removed the projection clamp that pinned negative hoop world Y to the court top, which is why earlier negative hoop values appeared not to move
+- nudged `easy_sim_efficiency` down to `0.88` so the difficulty balance batch still orders Easy below Normal after the hoop-distance retune
+- reran the full headless suite after the real negative-Y hoop move: Pure logic `641`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Pause-menu no-defenders toggle and forced close-range dunks
+
+- added a `No Defenders` toggle to the pause overlay so debug sessions can hide all live defenders without leaving the match
+- routed live defense, pass interception, and rebound candidate collection through an active-defenders filter so disabled defenders stop contesting, blocking, stealing, or rebounding while hidden
+- added a defender-free close-range override to the finish chooser so any shot taken inside the normal close-finish radius commits to a dunk family even for low-dunk or stationary players
+- added smoke coverage for the pause overlay toggle, defender visibility changes, and the forced close-range dunk override
+- reran the full headless suite after the no-defenders debug toggle: Pure logic `638`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Dunk vs layup decision gates and explicit dunk ratings
+
+- added an explicit `dunk` rating to `PlayerData`, exposed it through `get_rating()`, and seeded the current HOM and AWY rosters with role-specific dunk values
+- rewrote close-finish selection into a deterministic two-stage chooser: players first qualify for the layup-or-dunk family by hoop distance, hoop-facing momentum, and the existing finish speed gate, then only qualify for dunk rows if they also meet the stricter dunk radius, dunk-speed, and dunk-rating gates
+- kept straight-vs-side finish routing after the family choice, preserved the set-shot and jumper paths outside close-finish conditions, and limited straight-dunk row randomization to the already-committed dunk family
+- extended `DefenseController` with a pure dunk-aware block-chance helper so committed dunks gain block resistance from the new `dunk` rating while layups and jumpers keep the existing block formula
+- added deterministic coverage for dunk threshold metadata, roster dunk seeding, dunk-only block resistance, layup fallback on low dunk rating or low dunk speed, defender-independent family selection, and regression coverage proving LC archetypes still reach rows `13`, `15`, and `16`
+- reran the full headless suite after the dunk-vs-layup chooser rewrite: Pure logic `629`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Dunk contact hold and straight-through finish
+
+- added dunk-contact metadata for rows `13`, `15`, and `16`, including authored rim-contact frames, a shared `0.5` second hold, and per-row contact offsets so the dunk hand lands on the rim graphic during the freeze
+- extended `SHOT_RELEASE` so unblocked dunk rows now wait for the authored contact frame, hang on the rim with the world ball hidden, then release only after the hold completes
+- changed dunk makes to start directly at the rim entry point and drop straight through the hoop and net, while dunk misses now launch from that same point into a short upward-and-away bounce
+- added deterministic coverage for dunk contact metadata, hold timing, hidden-ball behavior during the rim hang, straight-through make descent, upward-and-away miss bounce, and blocked-dunk bypass behavior
+- reran the full headless suite after the dunk-specific release rewrite: Pure logic `598`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Stricter upward-only shot swipe gate
+
+- tightened shot entry so `SHOT_AIM` now only arms from an upward swipe whose release lands in the top half of the screen
+- removed downward swipe shot entry and rejected upward swipes that stay in the lower half, while keeping lower-zone movement active until a qualifying upward release wins on lift-off
+- updated the bot pilot and smoke helpers so automated shot-entry gestures now intentionally finish above the halfway line instead of relying on a shorter upward flick
+- reran the headless suite after the stricter gate: Pure logic `472`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Tap-pass and swipe-shot control swap
+
+- swapped live-offense control arbitration so quick taps now request passes and strong upward swipes now arm `SHOT_AIM`
+- added a coordinator-owned default pass target that stays marked with the light-blue ring during `LIVE_OFFENSE`, with empty taps passing to that ranked teammate and direct teammate taps overriding the marker
+- kept lower-zone drags as movement while the finger is down, but made qualifying upward lower-zone releases arm shot mode instead of resolving as ordinary movement-stop releases
+- added `PassController.evaluate_pass_target()` so the default pass marker, pass-risk ranking, and live pass start all share the same interception-commit, distance, and hoop-proximity evaluation
+- rewired `InputController`, `BotPilot`, `ScenarioRunner`, and coordinator smoke hooks around `tap_pass` and `swipe_shot` semantics while keeping backward-compatible aliases for older scenario resources
+- re-ran headless validation after the control swap: Pure logic `470`, Scenarios `13`, Balance `4`, Failures `0`
+
 ## 2026-04-07
 
 ### Clean-room scaffold
@@ -138,6 +197,23 @@
 - applied the same visual-only lowering to the terminal guided-make preview samples so the last green preview segment stays aligned with the live finish without affecting miss paths
 
 ## 2026-04-09
+
+### Close-camera retune and player floor marker cleanup
+
+- retuned the projection-layer close camera from `2.4x` down to `2.1x` so the court and players still read close, but with slightly more surrounding floor in frame
+- removed the old black player ground shadow draw from `PlayerController` while leaving the live ball shadow and the rest of the projection math untouched
+- replaced the controlled-player floor circle with a thin outlined oval positioned lower and wider so the player feet sit visually inside the marker instead of above its center
+- added a `PlayerController` debug floor-marker snapshot so the headless suite can assert that player shadows stay disabled and the controlled marker remains an outlined oval with the expected feet-centered offset
+- reran the headless suite after the visual cleanup; the latest pass landed at Pure logic `463`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Dynamic close camera
+
+- added a projection-layer close camera with `2.4x` zoom that hard-centers the tracked subject on the visible viewport midpoint without changing gameplay-world coordinates
+- extended `CourtProjection` into a base-layout-plus-camera pipeline so render zoom/translation apply after the responsive court mapping, while inverse touch mapping removes the same camera transform before converting back to world space
+- switched possession tracking to the controlled player using an upper-body anchor offset, and switched pass, shot, rebound, and made-shot follow-through tracking to the live rendered ball anchor including its z-height presentation
+- kept player-follow movement lightly smoothed, but snapped live-ball tracking so the launched ball stays centered from the first visible flight frame instead of easing behind fast passes or shots
+- moved depth ordering onto base projection space and scaled hoop, actor, shadow, held-ball, live-ball, and guided-make presentation through the zoomed projection values so the full court presentation reads much closer on screen
+- expanded deterministic coverage around centered opening possession framing, centered pass and shot flight, camera-aware inverse mapping, world-space pass travel under a centered camera, and HUD containment after the close-camera transform
 
 ### Visible pass flight and steal resolve
 

@@ -8,13 +8,16 @@ Covered by `tests/TestRunner.gd`:
 
 - invisible movement-zone dead-zone behavior
 - invisible-stick direction and magnitude normalization
-- quick-tap shot qualification by duration and movement
-- quick tap shot arming outside the movement zone
-- quick tap shot arming inside the movement zone
+- quick pass-tap qualification by duration and movement
+- quick empty tap pass requests outside the movement zone
+- quick empty tap pass requests inside the movement zone when no real drag occurred
+- direct teammate tap hit testing and explicit pass-target selection
+- upward swipe shot qualification only when the release finishes in the top half
+- upward swipe rejection when the release stays in the lower half
+- downward swipe rejection for shot entry
+- qualifying upward swipe from the movement zone winning over normal movement release
 - extra touches ignored while dragging
-- center release cancel behavior
-- off-center release pass vs no-target cancel behavior
-- directional-cone pass-preview selection and deterministic tie-breaking
+- default pass-target ranking by commit chance, distance, and hoop proximity
 - meter green-window sizing stays fixed under contest and ratings
 - red/yellow/green timing classification on the one-way shot bar
 - `SHOT_AIM` running at normal gameplay speed
@@ -141,15 +144,19 @@ Smoke game scene:
 - move the ballhandler by dragging in the lower touch zone and confirm no visible joystick is present
 - confirm a faint thumb anchor appears on touch-down and disappears cleanly on release
 - confirm tiny thumb movements inside the dead zone do not move the ballhandler
-- pass to at least one teammate by releasing off-center with a live preview lock and confirm the ball visibly travels between players instead of teleporting
-- confirm the teammate preview ring locks under the intended target before release
-- confirm releasing back near the anchor center does nothing except stop movement
-- confirm releasing off-center without a preview lock also does nothing except stop movement
+- confirm a persistent light-blue ring marks the default pass target during `LIVE_OFFENSE`
+- tap empty gameplay space and confirm the marked teammate receives the pass
+- tap a different teammate directly and confirm the pass goes to that teammate instead of the marked default target
+- quick tap inside the lower touch zone without turning it into a real drag and confirm it still passes
 - confirm a clean pass transfers control only after the live ball reaches the receiver
 - confirm a safe short pass usually reaches the target even if a defender was lane-eligible
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the possession jump-cut
-- swipe clearly up or down and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
+- swipe clearly upward into the top half of the screen and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
+- start an upward swipe from the lower touch zone and confirm it still arms shot mode once the release reaches the top half
+- swipe upward without reaching the top half and confirm it does not arm shot mode
+- swipe downward and confirm it does not arm shot mode
+- drag non-vertically in the lower touch zone and confirm it behaves as movement instead of arming a shot
 - confirm the committed shot row starts playing immediately during armed shot mode and the meter advances in one direction only
 - confirm committed shot rows keep a stable 15 FPS cadence instead of visibly speeding up between aim and release
 - confirm the tail-end green window ends exactly on the authored release frame for the selected row

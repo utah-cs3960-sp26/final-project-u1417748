@@ -10,14 +10,14 @@ I want to build a retro, arcade style, basketball game. The core mechanic would 
 
 For my agentic loop, I'll likely be using mostly AMP with possibly some Codex to generate the frame, the physics setup, and the UI while I will focus on tuning the gameplay to feel arcady and the logic that the AI probably won't get right on it's own. Before each task, I'll give AMP a structured checklist, what tasks to perform, what the expected behavior should look like, and what constraints to follow. For feedback, I'll have AMP run a build after every change to catch compile errors immediately and I'll maintain a testing.md or similar file that describes test cases to check for. 
 
-## Proposal (Week 13)
+## Responses (Week 13)
 
 ### What's working so far on your project? What are your concrete plans for the next week? What are the smartest and dumbest thing your agent loop did this week? If you're using Amp, link to the relevant threads. What did you change to stop the agent from doing that dumb thing again?
 
 
 So far, the gameplay and visual aspect of my project is working somewhat well. The user can pass the ball, shoot it based off a timer, and miss the shot if it's bad. There were a lot of troubles visually for AMP because it seemed a lot more reluctant to run the code and use visuals to help itself debug, so instead, I switched to Codex. I would instruct Codex to run the game and to see its placements of visuals to make sure they align with the details I was describing. 
 
-The dumbest things my agent loop did this week were assuming it knows the details of how items were drawn and the placements inside of those drawings. For example, if a player shot the ball, it would count as a score even if the ball didn't visually go through the hoop and instead was above it. To prevent codex from doing this again, I told it to place it as close as it could predict accurately and then to wait for me to help give it fine details on the placements such as: "lower the end point of the shot by 100 pixels" which worked well and was suprisingly faster then letting Codex try to figure it out itself. 
+The dumbest things my agent loop did this week were assuming it knows the details of how items were drawn and the placements inside of those drawings. For example, if a player shot the ball, it would count as a score even if the ball didn't visually go through the hoop and instead was above it. To prevent codex from doing this again, I told it to place it as close as it could predict accurately and then to wait for me to help give it fine details on the placements such as: "lower the end point of the shot by 100 pixels" which worked well and was suprisingly faster then letting Codex try to figure it out itself. It continues to start with rough estimates and tell itself "that's perfect" which causes a lot of visual bugs early on. 
 
 The smartest thing its done is get the arch for a more arcadic style shot right while still being accurate. Since it's a top down view, a shot would likely just look like a straight line, but I wanted to dramaticize the effect so adding a big arch and curve to the shot which AMP/Codex were able to achieve very well through creating a physics based environment. 
 
@@ -59,9 +59,10 @@ Headless automated tests:
 
 - Move: drag anywhere in the lower `35%` of the screen; a faint temporary anchor appears under the thumb. `WASD` / arrow keys still work in debug.
 - Pass: while moving, the best teammate inside the directional cone gets a filled preview ring. Releasing off-center passes only if that preview is locked.
-- Shoot: quick-tap the gameplay surface to arm shot mode. Lower-zone taps only arm a shot if they stay short and still; releasing near center after a real drag does nothing, and off-center release with no preview lock also does nothing.
-- Shot feel: the meter is mostly red with a smaller green chunk; tapping on green always scores through a planned downward swish path and cannot be blocked, tapping on red causes a miss or a block if the contest wins, and failing to tap before the bar ends counts as a late miss.
-- Shot preview: armed shot mode shows preview dots for the release path. Green preview dots show the guaranteed-make arc, and red preview dots show the deterministic miss path that would be launched if tapped immediately.
+- Shoot: a strong upward swipe that finishes in the top half arms shot mode. If that committed family is a dunk, the game skips the timing phase entirely and goes straight into the staged dunk release.
+- Shot feel: non-dunk shots use a mostly red meter with a smaller green chunk; tapping on green always scores through a planned downward swish path and cannot be blocked, tapping on red causes a miss or a block if the contest wins, and failing to tap before the bar ends counts as a late miss.
+- Dunk feel: eligible live dunks do not show a shot bar, do not require a green hit, and currently auto-commit into a guaranteed make while still honoring the authored rim-contact hold and straight-through finish.
+- Shot preview: non-dunk armed shot mode shows preview dots for the release path. Green preview dots show the guaranteed-make arc, and red preview dots show the deterministic miss path that would be launched if tapped immediately.
 - Made shots now hold on-screen briefly after the simulator-owned descent so the ball can fully clear the net before the possession resets.
 - Made shot visuals now use explicit hoop depth phases so the ball can read in front of the backboard, at the rim-plane handoff, behind the hanging net, or behind the board only when it truly goes over it.
 - The final green-make approach and descent now render about 60px lower on screen as a visual-only terminal drop, but the legal score corridor and hoop geometry are unchanged.

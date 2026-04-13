@@ -119,6 +119,37 @@ func launch_shot_profile(profile: Dictionary) -> void:
 			float(profile.get("vz", 0.0)),
 			bool(profile.get("force_make", false))
 		)
+		shot_profile = profile.duplicate(true)
+		profile_kind = PROFILE_KIND_FREE_FLIGHT
+		return
+	var start_phase: String = str(profile.get("start_phase", FLIGHT_PHASE_FREE_FLIGHT))
+	if start_phase != FLIGHT_PHASE_FREE_FLIGHT:
+		shot_profile = profile.duplicate(true)
+		profile_kind = PROFILE_KIND_GUIDED_MAKE
+		is_guided_make = true
+		guided_make_captured = start_phase != FLIGHT_PHASE_FREE_FLIGHT
+		passed_score_gate = false
+		_clear_step_events()
+		position_xy = profile.get("entry_xy", profile.get("launch_position", Vector2.ZERO))
+		previous_position_xy = position_xy
+		launch_z = float(profile.get("entry_z", profile.get("launch_z", 0.0)))
+		z = launch_z
+		previous_z = launch_z
+		velocity_xy = Vector2.ZERO
+		vz = 0.0
+		is_in_flight = true
+		already_scored = false
+		forced_make = false
+		shot_elapsed = float(profile.get("entry_time", 0.0))
+		phase_elapsed = 0.0
+		match start_phase:
+			FLIGHT_PHASE_GUIDED_DESCENT:
+				_enter_guided_descent()
+			FLIGHT_PHASE_NET_EXIT:
+				passed_score_gate = true
+				_enter_net_exit()
+			_:
+				flight_phase = FLIGHT_PHASE_FREE_FLIGHT
 		return
 	shot_profile = profile.duplicate(true)
 	profile_kind = PROFILE_KIND_GUIDED_MAKE

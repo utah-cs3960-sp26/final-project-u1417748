@@ -38,7 +38,7 @@ const BALL_RENDER_EXIT_SCREEN_MARGIN: float = 16.0
 @export var hoop_front_net_offset: Vector2 = Vector2(0.0, 12.0)
 
 var court_config: CourtConfig
-var projection: CourtProjection
+var projection
 
 var _backboard_sprite: Sprite2D
 var _rear_hoop_sprite: Sprite2D
@@ -51,14 +51,14 @@ var _net_swish_duration: float = 0.0
 var _net_swish_direction: float = 1.0
 
 
-func setup(config_value: CourtConfig, projection_value: CourtProjection = null) -> void:
+func setup(config_value: CourtConfig, projection_value = null) -> void:
 	court_config = config_value
 	projection = projection_value
 	_ensure_sprites()
 	queue_redraw()
 
 
-func set_projection(projection_value: CourtProjection) -> void:
+func set_projection(projection_value) -> void:
 	projection = projection_value
 	_sync_projection()
 

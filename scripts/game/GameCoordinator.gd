@@ -7,6 +7,7 @@ const HOOP_SCENE: PackedScene = preload("res://scenes/entities/Hoop.tscn")
 const PLAYER_ANIMATION_CONFIG_SCRIPT = preload("res://scripts/config/PlayerAnimationConfig.gd")
 const PLAYER_VISUAL_REQUEST_SCRIPT = preload("res://scripts/entities/PlayerVisualRequest.gd")
 const INPUT_CONFIG_SCRIPT = preload("res://scripts/config/InputConfig.gd")
+const COURT_PROJECTION_SCRIPT = preload("res://scripts/game/CourtProjection.gd")
 const BASE_PRESENTATION_SIZE: Vector2 = Vector2(1080.0, 1920.0)
 
 enum BallVisualMode {
@@ -45,7 +46,7 @@ var rebound_controller: ReboundController = ReboundController.new()
 var opponent_sim_controller: OpponentSimController = OpponentSimController.new()
 var ball_simulator: BallSimulator = BallSimulator.new()
 var hoop_resolver: HoopResolver
-var court_projection: CourtProjection
+var court_projection
 
 var court_view: CourtView
 var entities_node: Node2D
@@ -90,9 +91,11 @@ var active_shot_sequence: Dictionary = {}
 var pending_shot_release: Dictionary = {}
 var ball_visual_mode: int = BallVisualMode.HIDDEN_WHILE_OWNED
 var ball_visual_owner: PlayerController
-var current_pass_preview_target: PlayerController
-var current_pass_preview_details: Dictionary = {}
+var default_pass_target: PlayerController
+var default_pass_target_details: Dictionary = {}
 var layout_metrics: Dictionary = {}
+var camera_tracking_signature: String = ""
+var defenders_disabled: bool = false
 
 
 func _ready() -> void:
@@ -159,7 +162,8 @@ func _apply_responsive_layout(sync_visuals: bool = true) -> void:
 	if court_projection != null:
 		court_projection.apply_screen_layout(
 			layout_metrics.get("court_screen_rect", Rect2(Vector2.ZERO, BASE_PRESENTATION_SIZE)),
-			float(layout_metrics.get("presentation_scale", 1.0))
+			float(layout_metrics.get("presentation_scale", 1.0)),
+			layout_metrics.get("viewport_rect", Rect2(Vector2.ZERO, BASE_PRESENTATION_SIZE))
 		)
 	if court_view != null:
 		court_view.apply_layout(layout_metrics)
@@ -230,7 +234,7 @@ func _build_services() -> void:
 	log_writer = LogWriter.new()
 	log_writer.set_prefix("match")
 	context.difficulty_level = difficulty_config.level
-	court_projection = CourtProjection.new(projection_config, court_config)
+	court_projection = COURT_PROJECTION_SCRIPT.new(projection_config, court_config)
 	shot_controller.shot_config = shot_config
 	shot_controller.ball_config = ball_config
 	shot_controller.court_config = court_config
@@ -261,12 +265,12 @@ func _spawn_entities() -> void:
 	hoop_node.setup(court_config, court_projection)
 	for player_data in home_team.players:
 		var player: PlayerController = PLAYER_SCENE.instantiate() as PlayerController
-		player.setup(player_data, true, home_team.primary_color)
+		player.setup(player_data, true, home_team.primary_color, player_animation_config)
 		entities_node.add_child(player)
 		offense_players.append(player)
 	for player_data in away_team.players:
 		var defender: PlayerController = PLAYER_SCENE.instantiate() as PlayerController
-		defender.setup(player_data, false, Color(0.91, 0.34, 0.3))
+		defender.setup(player_data, false, Color(0.91, 0.34, 0.3), player_animation_config)
 		entities_node.add_child(defender)
 		defense_players.append(defender)
 	ball_node = BALL_SCENE.instantiate() as BallController
@@ -281,15 +285,16 @@ func _wire_input_and_ui() -> void:
 	input_controller.movement_zone_started.connect(_on_movement_zone_started)
 	input_controller.movement_zone_ended.connect(_on_movement_zone_ended)
 	input_controller.movement_updated.connect(_on_movement_updated)
-	input_controller.pass_preview_changed.connect(_on_pass_preview_changed)
 	input_controller.pass_requested.connect(_on_pass_requested)
 	input_controller.shot_mode_requested.connect(_on_shot_mode_requested)
 	input_controller.shot_timing_tapped.connect(_on_shot_timing_tapped)
 	input_controller.pause_requested.connect(_toggle_pause)
 	hud.pause_pressed.connect(_toggle_pause)
 	pause_overlay.resume_pressed.connect(_resume_from_pause)
+	pause_overlay.no_defenders_toggled.connect(_on_pause_overlay_no_defenders_toggled)
 	pause_overlay.restart_pressed.connect(_start_new_match)
 	pause_overlay.quit_pressed.connect(_quit_game)
+	pause_overlay.set_no_defenders_enabled(defenders_disabled)
 	game_over_overlay.restart_pressed.connect(_start_new_match)
 	game_over_overlay.quit_pressed.connect(_quit_game)
 
@@ -298,6 +303,9 @@ func _start_new_match() -> void:
 	context.reset(game_config.match_length_seconds, game_config.default_seed)
 	rng.reseed(context.current_seed)
 	_reseed_visual_rng(context.current_seed)
+	if court_projection != null:
+		court_projection.reset_camera_tracking()
+	camera_tracking_signature = ""
 	log_writer.set_prefix("match_%d" % Time.get_ticks_msec())
 	log_writer.clear_runtime_logs()
 	player_visual_memory.clear()
@@ -315,8 +323,8 @@ func _start_new_match() -> void:
 	last_pass_commit_succeeded = false
 	last_pass_eligible_interceptor_name = ""
 	last_pass_committed_interceptor_name = ""
-	current_pass_preview_target = null
-	current_pass_preview_details.clear()
+	default_pass_target = null
+	default_pass_target_details.clear()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
 	_set_ball_visual_hidden(null)
@@ -327,6 +335,7 @@ func _start_new_match() -> void:
 	_change_state(GameState.State.LIVE_OFFENSE)
 	_update_hud()
 	pause_overlay.visible = false
+	pause_overlay.set_no_defenders_enabled(defenders_disabled)
 	game_over_overlay.visible = false
 
 
@@ -346,8 +355,8 @@ func _reset_possession() -> void:
 	made_shot_animation_timer = 0.0
 	_clear_steal_resolve()
 	_clear_score_followthrough(false)
-	current_pass_preview_target = null
-	current_pass_preview_details.clear()
+	default_pass_target = null
+	default_pass_target_details.clear()
 	current_preview_points.clear()
 	court_view.clear_preview()
 	court_view.clear_shot_meter()
@@ -363,6 +372,7 @@ func _reset_possession() -> void:
 		defender.velocity = Vector2.ZERO
 		defender.set_has_ball(false)
 	defense_controller.setup_assignments(offense_players, defense_players)
+	_refresh_defender_mode()
 	var point_guard: PlayerController = offense_players[0]
 	for player in offense_players:
 		if player.get_position_role() == "PG":
@@ -447,7 +457,9 @@ func _update_shot_aim(delta: float) -> void:
 	var preview_profile: Dictionary = shot_controller.build_current_launch_profile(
 		current_ballhandler.world_position,
 		current_ballhandler.get_player_data(),
-		contested
+		contested,
+		str(active_shot_sequence.get("family", "")),
+		bool(active_shot_sequence.get("mirror_west", false))
 	)
 	if preview_profile.is_empty():
 		current_preview_points.clear()
@@ -602,7 +614,8 @@ func _update_rebound_live(delta: float) -> void:
 	for player in offense_players:
 		_move_offense_ai_toward_target(player, active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
 		_clamp_to_court(player)
-	for defender in defense_players:
+	var active_defenders: Array[PlayerController] = _get_active_defenders()
+	for defender in active_defenders:
 		_move_defense_ai_toward_target(defender, active_rebound_zone, rebound_config.pursuit_speed_bonus, delta)
 		_clamp_to_court(defender)
 	if rebound_delay_timer < rebound_config.rebound_reaction_delay:
@@ -611,7 +624,7 @@ func _update_rebound_live(delta: float) -> void:
 		log_writer.log_match("Loose ball out of bounds")
 		_run_opponent_possession()
 		return
-	var candidates: Array[Dictionary] = rebound_controller.get_rebound_candidates(active_rebound_zone, offense_players, defense_players)
+	var candidates: Array[Dictionary] = rebound_controller.get_rebound_candidates(active_rebound_zone, offense_players, active_defenders)
 	if candidates.is_empty():
 		_run_opponent_possession()
 		return
@@ -639,11 +652,9 @@ func _update_off_ball_offense(delta: float, excluded_players: Array = []) -> voi
 
 
 func _update_defense(delta: float, excluded_defenders: Array = []) -> void:
-	var active_defenders: Array[PlayerController] = []
-	for defender in defense_players:
-		if excluded_defenders.has(defender):
-			continue
-		active_defenders.append(defender)
+	var active_defenders: Array[PlayerController] = _get_active_defenders(excluded_defenders)
+	if active_defenders.is_empty():
+		return
 	defense_controller.update_defense(delta, offense_players, active_defenders, current_ballhandler)
 	for defender in active_defenders:
 		_clamp_to_court(defender)
@@ -681,32 +692,24 @@ func _on_movement_zone_ended(release_screen: Vector2, release_world: Vector2, el
 		}
 	)
 
-
-func _on_pass_preview_changed(target: PlayerController, details: Dictionary) -> void:
-	if target == current_pass_preview_target and details == current_pass_preview_details:
-		return
-	var previous_target: PlayerController = current_pass_preview_target
-	current_pass_preview_target = target
-	current_pass_preview_details = details.duplicate(true)
-	log_writer.log_event(
-		"pass_preview_changed",
-		{
-			"target": _player_name_or_empty(target),
-			"previous_target": _player_name_or_empty(previous_target),
-			"angle_error_rad": float(details.get("angle_error_rad", 0.0)),
-			"distance": float(details.get("distance", 0.0)),
-		}
-	)
-	if target != null and target != previous_target:
-		_trigger_light_haptic()
-
-
 func _on_pass_requested(target: PlayerController, details: Dictionary = {}) -> void:
 	if context.current_state != GameState.State.LIVE_OFFENSE:
 		return
-	if target == null or target == current_ballhandler:
+	var resolved_target: PlayerController = target
+	if resolved_target == null:
+		resolved_target = default_pass_target
+	if resolved_target == null or resolved_target == current_ballhandler:
+		log_writer.log_event(
+			"pass_request_ignored",
+			{
+				"reason": "no_default_target" if target == null else "invalid_target",
+				"requested_target": _player_name_or_empty(target),
+				"default_target": _player_name_or_empty(default_pass_target),
+				"release_reason": str(details.get("release_reason", "")),
+			}
+		)
 		return
-	_begin_pass_to_target(target, details)
+	_begin_pass_to_target(resolved_target, details)
 
 
 func _begin_pass_to_target(target: PlayerController, details: Dictionary = {}) -> void:
@@ -714,14 +717,14 @@ func _begin_pass_to_target(target: PlayerController, details: Dictionary = {}) -
 		return
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
-	current_pass_preview_target = null
-	current_pass_preview_details.clear()
+	default_pass_target = null
+	default_pass_target_details.clear()
 	log_writer.log_match("Pass requested to %s" % target.get_display_name())
 	_change_state(GameState.State.PASS_IN_FLIGHT)
 	current_ballhandler.set_has_ball(false)
 	last_pass_resolution_point = Vector2.INF
 	last_pass_resolution_outcome = ""
-	var pass_snapshot: Dictionary = pass_controller.start_pass(current_ballhandler.world_position, target, defense_players, rng, current_ballhandler)
+	var pass_snapshot: Dictionary = pass_controller.start_pass(current_ballhandler.world_position, target, _get_active_defenders(), rng, current_ballhandler)
 	last_pass_commit_chance = float(pass_snapshot.get("commit_chance", 0.0))
 	last_pass_commit_succeeded = bool(pass_snapshot.get("commit_succeeded", false))
 	last_pass_eligible_interceptor_name = _player_name_or_empty(pass_snapshot.get("eligible_interceptor", null))
@@ -742,10 +745,45 @@ func _begin_pass_to_target(target: PlayerController, details: Dictionary = {}) -
 			"gesture_release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
 			"gesture_release_distance": float(details.get("release_distance", 0.0)),
 			"gesture_release_reason": str(details.get("release_reason", "")),
-			"gesture_angle_error_rad": float(details.get("pass_angle_error_rad", 0.0)),
+			"pass_target_source": str(details.get("pass_target_source", "")),
 		}
 	)
 	_sync_pass_ball_visual(current_ballhandler.world_position)
+
+
+func _build_shot_arm_log_payload(details: Dictionary) -> Dictionary:
+	return {
+		"arm_reason": str(details.get("arm_reason", "")),
+		"tap_start_screen": _vector2_payload(details.get("tap_start_screen", details.get("anchor_screen", Vector2.ZERO))),
+		"tap_end_screen": _vector2_payload(details.get("tap_end_screen", details.get("release_screen", Vector2.ZERO))),
+		"tap_start_world": _vector2_payload(details.get("tap_start_world", details.get("anchor_world", current_ballhandler.world_position))),
+		"tap_end_world": _vector2_payload(details.get("tap_end_world", details.get("release_world", current_ballhandler.world_position))),
+		"tap_duration": float(details.get("tap_duration", 0.0)),
+		"tap_max_distance": float(details.get("tap_max_distance", 0.0)),
+		"started_in_movement_zone": bool(details.get("started_in_movement_zone", false)),
+		"release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
+		"release_distance": float(details.get("release_distance", 0.0)),
+		"release_reason": str(details.get("release_reason", "")),
+	}
+
+
+func _should_auto_commit_active_dunk() -> bool:
+	return not active_shot_sequence.is_empty() and _is_dunk_family(str(active_shot_sequence.get("family", "")))
+
+
+func _build_auto_dunk_make_action(shooter: PlayerController) -> Dictionary:
+	if shooter == null:
+		return {"kind": "cancel"}
+	return shot_controller.build_action_for_quality(
+		shooter.world_position,
+		shooter.get_player_data(),
+		"green",
+		rng,
+		"dunk_auto_make",
+		false,
+		str(active_shot_sequence.get("family", "")),
+		bool(active_shot_sequence.get("mirror_west", false))
+	)
 
 
 func _on_shot_mode_requested(details: Dictionary) -> void:
@@ -753,31 +791,37 @@ func _on_shot_mode_requested(details: Dictionary) -> void:
 		return
 	if current_ballhandler == null:
 		return
-	current_pass_preview_target = null
-	current_pass_preview_details.clear()
+	default_pass_target = null
+	default_pass_target_details.clear()
 	_begin_active_shot_sequence(current_ballhandler)
-	_change_state(GameState.State.SHOT_AIM)
-	context.gameplay_time_scale = 1.0
-	shot_controller.begin_aim(current_ballhandler.world_position, _get_active_shot_timing_profile(), rng)
 	current_move_direction = Vector2.ZERO
 	current_move_magnitude = 0.0
+	context.gameplay_time_scale = 1.0
+	var arm_payload: Dictionary = _build_shot_arm_log_payload(details)
+	if _should_auto_commit_active_dunk():
+		shot_controller.begin_aim(current_ballhandler.world_position, _get_active_shot_timing_profile(), rng)
+		current_preview_points.clear()
+		if court_view != null:
+			court_view.clear_preview()
+			court_view.clear_shot_meter()
+		log_writer.log_match("Dunk auto-finish armed")
+		log_writer.log_event(
+			"dunk_auto_finish_armed",
+			arm_payload.merged(
+				{
+					"player": current_ballhandler.get_display_name(),
+					"family": str(active_shot_sequence.get("family", "")),
+					"variant_index": int(active_shot_sequence.get("variant_index", 0)),
+				},
+				true
+			)
+		)
+		_queue_shot_release(_build_auto_dunk_make_action(current_ballhandler), null)
+		return
+	_change_state(GameState.State.SHOT_AIM)
+	shot_controller.begin_aim(current_ballhandler.world_position, _get_active_shot_timing_profile(), rng)
 	log_writer.log_match("Shot mode armed")
-	log_writer.log_event(
-		"shot_mode_armed",
-		{
-			"arm_reason": str(details.get("arm_reason", "")),
-			"tap_start_screen": _vector2_payload(details.get("tap_start_screen", details.get("anchor_screen", Vector2.ZERO))),
-			"tap_end_screen": _vector2_payload(details.get("tap_end_screen", details.get("release_screen", Vector2.ZERO))),
-			"tap_start_world": _vector2_payload(details.get("tap_start_world", details.get("anchor_world", current_ballhandler.world_position))),
-			"tap_end_world": _vector2_payload(details.get("tap_end_world", details.get("release_world", current_ballhandler.world_position))),
-			"tap_duration": float(details.get("tap_duration", 0.0)),
-			"tap_max_distance": float(details.get("tap_max_distance", 0.0)),
-			"started_in_movement_zone": bool(details.get("started_in_movement_zone", false)),
-			"release_offset_screen": _vector2_payload(details.get("release_offset_screen", Vector2.ZERO)),
-			"release_distance": float(details.get("release_distance", 0.0)),
-			"release_reason": str(details.get("release_reason", "")),
-		}
-	)
+	log_writer.log_event("shot_mode_armed", arm_payload)
 
 
 func _on_shot_timing_tapped(screen_position: Vector2) -> void:
@@ -792,7 +836,10 @@ func _on_shot_timing_tapped(screen_position: Vector2) -> void:
 		current_ballhandler.get_player_data(),
 		quality,
 		rng,
-		quality
+		quality,
+		false,
+		str(active_shot_sequence.get("family", "")),
+		bool(active_shot_sequence.get("mirror_west", false))
 	)
 	context.gameplay_time_scale = 1.0
 	log_writer.log_event(
@@ -815,8 +862,9 @@ func _on_shot_timing_tapped(screen_position: Vector2) -> void:
 			court_view.clear_preview()
 			current_preview_points.clear()
 			var blocker: PlayerController = null
+			var shot_family: String = str(active_shot_sequence.get("family", ""))
 			if action["outcome"] == "miss" and contested:
-				blocker = defense_controller.get_blocking_defender(current_ballhandler, rng)
+				blocker = defense_controller.get_blocking_defender(current_ballhandler, rng, shot_family)
 			_queue_shot_release(action, blocker)
 
 
@@ -826,6 +874,7 @@ func _toggle_pause() -> void:
 		return
 	context.previous_state = context.current_state
 	_change_state(GameState.State.PAUSED)
+	pause_overlay.set_no_defenders_enabled(defenders_disabled)
 	pause_overlay.visible = true
 	log_writer.log_match("Paused")
 
@@ -1164,6 +1213,7 @@ func begin_test_mode(seed: int) -> void:
 
 
 func apply_test_setup(home_score: int, away_score: int, time_remaining: float) -> void:
+	_clear_score_followthrough()
 	context.home_score = home_score
 	context.away_score = away_score
 	context.match_time_remaining = time_remaining
@@ -1173,6 +1223,9 @@ func apply_test_setup(home_score: int, away_score: int, time_remaining: float) -
 func apply_scenario_setup(setup: Dictionary) -> void:
 	if setup.is_empty():
 		return
+	if court_projection != null:
+		court_projection.reset_camera_tracking()
+	camera_tracking_signature = ""
 	route_controller.reset_runtime_state()
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
@@ -1187,6 +1240,7 @@ func apply_scenario_setup(setup: Dictionary) -> void:
 	if setup.has("defense_positions"):
 		_apply_role_positions(defense_players, setup["defense_positions"])
 	defense_controller.setup_assignments(offense_players, defense_players)
+	_refresh_defender_mode()
 	if setup.has("ballhandler_role"):
 		var handler: PlayerController = get_offense_player_by_role(str(setup["ballhandler_role"]))
 		if handler != null:
@@ -1250,8 +1304,16 @@ func get_defense_player_by_role(role: String) -> PlayerController:
 	return null
 
 
+func are_defenders_disabled() -> bool:
+	return defenders_disabled
+
+
 func test_toggle_pause() -> void:
 	_toggle_pause()
+
+
+func test_set_defenders_disabled(enabled: bool) -> void:
+	_set_defenders_disabled(enabled)
 
 
 func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
@@ -1301,7 +1363,7 @@ func test_force_defensive_rebound(role: String = "") -> void:
 
 
 func test_force_pass_interception() -> void:
-	var forced_pass: Dictionary = pass_controller.force_interception(defense_players)
+	var forced_pass: Dictionary = pass_controller.force_interception(_get_active_defenders())
 	if forced_pass.is_empty():
 		return
 	log_writer.log_match("Scripted pass interception armed")
@@ -1379,6 +1441,10 @@ func _apply_ball_setup(ball_setup: Dictionary) -> void:
 func _sync_projection_visuals(delta: float = 0.0) -> void:
 	if court_projection == null:
 		return
+	for player in offense_players + defense_players:
+		player.sync_visual_state(_build_player_visual_request(player), delta)
+	_maybe_commit_pending_shot_release()
+	_update_camera_tracking(delta)
 	if hoop_node != null:
 		hoop_node.set_projection(court_projection)
 		hoop_node.advance_visual_animation(delta)
@@ -1392,13 +1458,63 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 			court_projection.shadow_scale(player.world_position),
 			court_projection.depth_key(player.world_position)
 		)
-		player.sync_visual_state(_build_player_visual_request(player), delta)
-	_maybe_commit_pending_shot_release()
+	_update_default_pass_target()
 	_maybe_finish_active_shot_sequence()
 	_sync_shot_meter_display()
 	_sync_ball_visuals()
 	if court_view != null and input_controller != null:
 		court_view.set_input_feedback(_build_court_input_feedback())
+
+
+func _update_camera_tracking(delta: float) -> void:
+	if court_projection == null:
+		return
+	var tracking_target: Dictionary = _build_camera_tracking_target()
+	if tracking_target.is_empty():
+		return
+	var next_signature: String = str(tracking_target.get("signature", ""))
+	var should_snap: bool = next_signature.begins_with("ball")
+	var base_target_screen: Vector2 = tracking_target.get("base_screen", court_projection.get_viewport_rect().get_center())
+	var post_camera_offset: Vector2 = tracking_target.get("post_camera_offset", Vector2.ZERO)
+	court_projection.update_camera_target(base_target_screen, delta, should_snap, post_camera_offset)
+	camera_tracking_signature = next_signature
+
+
+func _build_camera_tracking_target() -> Dictionary:
+	match context.current_state:
+		GameState.State.PASS_IN_FLIGHT, GameState.State.SHOT_IN_FLIGHT, GameState.State.REBOUND_LIVE:
+			return _build_ball_camera_tracking_target()
+		GameState.State.STEAL_RESOLVE:
+			if current_steal_holder != null:
+				return _build_player_camera_tracking_target(current_steal_holder)
+	if current_ballhandler != null:
+		return _build_player_camera_tracking_target(current_ballhandler)
+	if current_steal_holder != null:
+		return _build_player_camera_tracking_target(current_steal_holder)
+	return {}
+
+
+func _build_player_camera_tracking_target(player: PlayerController) -> Dictionary:
+	if player == null or court_projection == null:
+		return {}
+	return {
+		"base_screen": court_projection.player_tracking_anchor_base_screen(player.world_position),
+		"post_camera_offset": Vector2.ZERO,
+		"signature": "player_%s" % player.get_instance_id(),
+	}
+
+
+func _build_ball_camera_tracking_target() -> Dictionary:
+	if court_projection == null:
+		return {}
+	if ball_visual_mode == BallVisualMode.HIDDEN_WHILE_OWNED and ball_visual_owner != null:
+		return _build_player_camera_tracking_target(ball_visual_owner)
+	var render_context: Dictionary = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, ball_simulator.vz)
+	return {
+		"base_screen": court_projection.world_to_base_screen(ball_simulator.position_xy, ball_simulator.z),
+		"post_camera_offset": Vector2(0.0, float(render_context.get("screen_drop_px", 0.0))),
+		"signature": "ball",
+	}
 
 
 func _sync_ball_visuals() -> void:
@@ -1457,7 +1573,7 @@ func _get_live_ball_render_radius(z_ratio: float) -> float:
 		return lerpf(15.0, 30.0, pow(z_ratio, 0.82))
 	var clamped_ratio: float = clampf(z_ratio, 0.0, 1.0)
 	var scaled_ratio: float = pow(clamped_ratio, 0.82)
-	var presentation_scale: float = court_projection.get_presentation_scale() if court_projection != null else 1.0
+	var presentation_scale: float = court_projection.get_total_presentation_scale() if court_projection != null else 1.0
 	var min_radius: float = maxf(projection_config.live_ball_render_radius_min * presentation_scale, 1.0)
 	var max_radius: float = maxf(projection_config.live_ball_render_radius_max * presentation_scale, min_radius)
 	return lerpf(min_radius, max_radius, scaled_ratio)
@@ -1580,11 +1696,54 @@ func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bo
 	return z_value >= court_config.net_exit_z
 
 
+func _update_default_pass_target() -> void:
+	if context.current_state != GameState.State.LIVE_OFFENSE or current_ballhandler == null:
+		default_pass_target = null
+		default_pass_target_details.clear()
+		return
+	var active_defenders: Array[PlayerController] = _get_active_defenders()
+	var best_target: PlayerController
+	var best_details: Dictionary = {}
+	for teammate in offense_players:
+		if teammate == null or teammate == current_ballhandler:
+			continue
+		var candidate: Dictionary = pass_controller.evaluate_pass_target(
+			current_ballhandler.world_position,
+			teammate,
+			active_defenders,
+			current_ballhandler
+		)
+		if candidate.is_empty():
+			continue
+		if best_target == null:
+			best_target = teammate
+			best_details = candidate
+			continue
+		var candidate_commit: float = float(candidate.get("commit_chance", INF))
+		var best_commit: float = float(best_details.get("commit_chance", INF))
+		if candidate_commit < best_commit - 0.0001:
+			best_target = teammate
+			best_details = candidate
+			continue
+		if absf(candidate_commit - best_commit) <= 0.0001:
+			var candidate_distance: float = float(candidate.get("distance", INF))
+			var best_distance: float = float(best_details.get("distance", INF))
+			if candidate_distance < best_distance - 0.0001:
+				best_target = teammate
+				best_details = candidate
+				continue
+			if absf(candidate_distance - best_distance) <= 0.0001 and teammate.world_position.y < best_target.world_position.y - 0.0001:
+				best_target = teammate
+				best_details = candidate
+	default_pass_target = best_target
+	default_pass_target_details = best_details.duplicate(true)
+
+
 func _build_court_input_feedback() -> Dictionary:
 	var feedback: Dictionary = input_controller.get_touch_feedback_snapshot() if input_controller != null else {}
-	if current_pass_preview_target != null:
-		feedback["pass_target_screen"] = court_projection.world_to_screen_ground(current_pass_preview_target.world_position)
-		feedback["pass_target_radius"] = maxf(22.0 * current_pass_preview_target.projected_scale, 16.0)
+	if context.current_state == GameState.State.LIVE_OFFENSE and default_pass_target != null:
+		feedback["pass_target_screen"] = court_projection.world_to_screen_ground(default_pass_target.world_position)
+		feedback["pass_target_radius"] = maxf(22.0 * default_pass_target.projected_scale, 16.0)
 		feedback["pass_target_style"] = "blue_ring"
 	else:
 		feedback["pass_target_screen"] = Vector2.INF
@@ -1618,7 +1777,14 @@ func _build_player_visual_request(player: PlayerController):
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
 	}
-	return PLAYER_VISUAL_REQUEST_SCRIPT.new(family, variant_index, mirror_west, player.is_controlled, force_restart)
+	return PLAYER_VISUAL_REQUEST_SCRIPT.new(
+		family,
+		variant_index,
+		mirror_west,
+		player.is_controlled,
+		force_restart,
+		_should_allow_dunk_contact_hold(player, family)
+	)
 
 
 func _resolve_player_animation_family(player: PlayerController) -> String:
@@ -1780,7 +1946,42 @@ func _should_apply_facing_hysteresis(family: String) -> bool:
 		or family == "guard_idle"
 
 
+func _is_dunk_family(family: String) -> bool:
+	return family == "close_finish_dunk" or family == "close_finish_side_dunk"
+
+
+func _should_allow_dunk_contact_hold(player: PlayerController, family: String) -> bool:
+	if player == null or not _is_dunk_family(family):
+		return false
+	if context.current_state != GameState.State.SHOT_RELEASE:
+		return false
+	if pending_shot_release.is_empty():
+		return false
+	return pending_shot_release.get("player", null) == player and bool(pending_shot_release.get("use_dunk_contact_hold", false))
+
+
 func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
+	var decision: Dictionary = _build_shot_release_visual_decision(player, motion_vector_override, defender_distance_override)
+	return {
+		"family": str(decision.get("family", "jumper_release")),
+		"variant_index": int(decision.get("variant_index", 0)),
+	}
+
+
+func _build_shot_release_visual_decision(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
+	if player == null:
+		return {
+			"distance_to_hoop": INF,
+			"lateral_offset": INF,
+			"speed": 0.0,
+			"toward_hoop_dot": -1.0,
+			"dunk_rating": 0,
+			"close_finish_eligible": false,
+			"dunk_eligible": false,
+			"force_no_defenders_dunk": false,
+			"family": "jumper_release",
+			"variant_index": 1,
+		}
 	var motion_vector: Vector2 = motion_vector_override
 	if motion_vector == Vector2.INF:
 		motion_vector = _resolve_player_motion_vector(player)
@@ -1791,23 +1992,49 @@ func _resolve_shot_release_visual(player: PlayerController, motion_vector_overri
 	var to_hoop: Vector2 = court_config.hoop_position - player.world_position
 	var distance_to_hoop: float = to_hoop.length()
 	var lateral_offset: float = absf(player.world_position.x - court_config.hoop_position.x)
+	var player_data: PlayerData = player.get_player_data() if player != null else null
+	var dunk_rating: int = player_data.dunk if player_data != null else 0
+	var force_no_defenders_dunk: bool = not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
 	var toward_hoop_dot: float = -1.0
 	if motion_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
 		toward_hoop_dot = motion_vector.normalized().dot(to_hoop.normalized())
 	var toward_hoop: bool = speed >= player_animation_config.finish_momentum_speed_threshold and toward_hoop_dot >= player_animation_config.toward_hoop_dot_threshold
-	if speed < player_animation_config.finish_momentum_speed_threshold and defender_distance >= player_animation_config.set_shot_space_radius:
-		return {"family": "set_shot_release", "variant_index": 0}
-	if toward_hoop:
-		if distance_to_hoop <= player_animation_config.dunk_finish_radius:
-			if lateral_offset >= player_animation_config.side_finish_lateral_threshold:
-				return {"family": "close_finish_side_dunk", "variant_index": 0}
-			return {"family": "close_finish_dunk", "variant_index": visual_rng.randi_range(0, 1) if visual_rng != null else 0}
-		if distance_to_hoop <= player_animation_config.close_finish_radius:
-			return {"family": "close_finish_layup", "variant_index": 1 if lateral_offset >= player_animation_config.side_finish_lateral_threshold else 0}
-	return {
+	var close_finish_eligible: bool = force_no_defenders_dunk or (toward_hoop and distance_to_hoop <= player_animation_config.close_finish_radius)
+	var dunk_eligible: bool = force_no_defenders_dunk or (close_finish_eligible \
+		and distance_to_hoop <= player_animation_config.dunk_finish_radius \
+		and speed >= player_animation_config.dunk_momentum_speed_threshold \
+		and dunk_rating >= player_animation_config.dunk_rating_min)
+	var decision: Dictionary = {
+		"distance_to_hoop": distance_to_hoop,
+		"lateral_offset": lateral_offset,
+		"speed": speed,
+		"toward_hoop_dot": toward_hoop_dot,
+		"dunk_rating": dunk_rating,
+		"close_finish_eligible": close_finish_eligible,
+		"dunk_eligible": dunk_eligible,
+		"force_no_defenders_dunk": force_no_defenders_dunk,
 		"family": "jumper_release",
-		"variant_index": 0 if speed > player_animation_config.stationary_speed_threshold else 1,
+		"variant_index": 0,
 	}
+	if not force_no_defenders_dunk and speed < player_animation_config.finish_momentum_speed_threshold and defender_distance >= player_animation_config.set_shot_space_radius:
+		decision["family"] = "set_shot_release"
+		decision["variant_index"] = 0
+		return decision
+	if close_finish_eligible:
+		if dunk_eligible:
+			if lateral_offset >= player_animation_config.side_finish_lateral_threshold:
+				decision["family"] = "close_finish_side_dunk"
+				decision["variant_index"] = 0
+				return decision
+			decision["family"] = "close_finish_dunk"
+			decision["variant_index"] = visual_rng.randi_range(0, 1) if visual_rng != null else 0
+			return decision
+		decision["family"] = "close_finish_layup"
+		decision["variant_index"] = 1 if lateral_offset >= player_animation_config.side_finish_lateral_threshold else 0
+		return decision
+	decision["family"] = "jumper_release"
+	decision["variant_index"] = 0 if speed > player_animation_config.stationary_speed_threshold else 1
+	return decision
 
 
 func _resolve_shot_release_action_vector(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF) -> Vector2:
@@ -1870,9 +2097,9 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 		return
 	var motion_vector: Vector2 = _resolve_player_motion_vector(shooter)
 	var defender_distance: float = _get_primary_defender_distance(shooter)
-	var shot_visual: Dictionary = _resolve_shot_release_visual(shooter, motion_vector, defender_distance)
-	var shot_family: String = str(shot_visual.get("family", "jumper_release"))
-	var variant_index: int = int(shot_visual.get("variant_index", 0))
+	var shot_visual_decision: Dictionary = _build_shot_release_visual_decision(shooter, motion_vector, defender_distance)
+	var shot_family: String = str(shot_visual_decision.get("family", "jumper_release"))
+	var variant_index: int = int(shot_visual_decision.get("variant_index", 0))
 	var action_vector: Vector2 = _resolve_shot_release_action_vector(shooter, motion_vector)
 	var mirror_west: bool = _resolve_family_mirror_west(shot_family, action_vector, false)
 	var timing_profile: Dictionary = PlayerVisual.build_timing_profile_for_family_variant(shot_family, variant_index)
@@ -1885,13 +2112,94 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 		"committed": false,
 		"launched": false,
 		"timing_result": "",
+		"finish_decision": shot_visual_decision.duplicate(true),
 	}
 	shot_visual_locks[shooter] = {
 		"family": shot_family,
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
 	}
+	log_writer.log_event(
+		"shot_finish_selected",
+		{
+			"player": shooter.get_display_name(),
+			"role": shooter.get_position_role(),
+			"distance_to_hoop": shot_visual_decision.get("distance_to_hoop", 0.0),
+			"lateral_offset": shot_visual_decision.get("lateral_offset", 0.0),
+			"speed": shot_visual_decision.get("speed", 0.0),
+			"toward_hoop_dot": shot_visual_decision.get("toward_hoop_dot", -1.0),
+			"dunk_rating": shot_visual_decision.get("dunk_rating", 0),
+			"close_finish_eligible": shot_visual_decision.get("close_finish_eligible", false),
+			"dunk_eligible": shot_visual_decision.get("dunk_eligible", false),
+			"force_no_defenders_dunk": shot_visual_decision.get("force_no_defenders_dunk", false),
+			"selected_family": shot_family,
+		}
+	)
 	shot_owner = shooter
+
+
+func _get_active_defenders(excluded_defenders: Array = []) -> Array[PlayerController]:
+	if defenders_disabled:
+		return []
+	var active_defenders: Array[PlayerController] = []
+	for defender in defense_players:
+		if excluded_defenders.has(defender):
+			continue
+		active_defenders.append(defender)
+	return active_defenders
+
+
+func _has_active_defenders() -> bool:
+	return not _get_active_defenders().is_empty()
+
+
+func _on_pause_overlay_no_defenders_toggled(enabled: bool) -> void:
+	_set_defenders_disabled(enabled)
+
+
+func _set_defenders_disabled(enabled: bool) -> void:
+	if defenders_disabled == enabled:
+		if pause_overlay != null:
+			pause_overlay.set_no_defenders_enabled(defenders_disabled)
+		return
+	defenders_disabled = enabled
+	_refresh_defender_mode(not defenders_disabled)
+	_update_default_pass_target()
+	log_writer.log_event("defenders_toggled", {"defenders_disabled": defenders_disabled})
+	log_writer.log_match("Defenders %s" % ("disabled" if defenders_disabled else "enabled"))
+
+
+func _refresh_defender_mode(reposition_defenders: bool = false) -> void:
+	if pause_overlay != null:
+		pause_overlay.set_no_defenders_enabled(defenders_disabled)
+	if defenders_disabled:
+		defense_controller.assignments.clear()
+		_clear_active_pass_interceptor()
+	for defender in defense_players:
+		defender.visible = not defenders_disabled
+		defender.velocity = Vector2.ZERO
+		defender.set_has_ball(false)
+	if not defenders_disabled:
+		defense_controller.setup_assignments(offense_players, defense_players)
+		if reposition_defenders:
+			for defender in defense_players:
+				defender.world_position = _get_defender_guard_target(defender)
+	if debug_overlay != null:
+		debug_overlay.queue_redraw()
+
+
+func _clear_active_pass_interceptor() -> void:
+	if pass_controller == null or pass_controller.active_pass.is_empty():
+		return
+	var target_point: Vector2 = pass_controller.active_pass.get("end", Vector2.ZERO)
+	pass_controller.active_pass["eligible_interceptor"] = null
+	pass_controller.active_pass["active_interceptor"] = null
+	pass_controller.active_pass["eligible_chase_point"] = target_point
+	pass_controller.active_pass["chase_point"] = target_point
+	pass_controller.active_pass["interceptor_claim_radius"] = 0.0
+	pass_controller.active_pass["commit_chance"] = 0.0
+	pass_controller.active_pass["commit_succeeded"] = false
+	pass_controller.active_pass["force_steal"] = false
 
 
 func _clear_active_shot_sequence(preserve_visual_lock: bool = false) -> void:
@@ -1948,7 +2256,9 @@ func _queue_auto_late_miss_release(shooter: PlayerController) -> void:
 		"red",
 		rng,
 		"late_miss",
-		true
+		true,
+		str(active_shot_sequence.get("family", "")),
+		bool(active_shot_sequence.get("mirror_west", false))
 	)
 	action["late_miss_forced"] = true
 	log_writer.log_match("Shot timing expired late")
@@ -1980,11 +2290,16 @@ func _queue_shot_release(action: Dictionary, blocker: PlayerController = null) -
 	if not active_shot_sequence.is_empty():
 		active_shot_sequence["committed"] = true
 		active_shot_sequence["timing_result"] = str(action.get("timing_result", action.get("quality", "red")))
+	var shot_family: String = str(active_shot_sequence.get("family", ""))
+	var use_dunk_contact_hold: bool = blocker == null and _is_dunk_family(shot_family)
 	pending_shot_release = {
 		"player": shooter,
 		"action": action,
 		"blocked": action.get("outcome", "") == "miss" and blocker != null,
 		"blocker": blocker,
+		"use_dunk_contact_hold": use_dunk_contact_hold,
+		"dunk_hold_started_logged": false,
+		"dunk_hold_finished_logged": false,
 	}
 	_clear_score_followthrough(false)
 	_set_ball_visual_hidden(shooter)
@@ -2018,8 +2333,34 @@ func _maybe_commit_pending_shot_release() -> void:
 	if shooter == null:
 		_clear_pending_shot_release()
 		return
-	if not shooter.is_ball_release_ready():
+	var use_dunk_contact_hold: bool = bool(pending_shot_release.get("use_dunk_contact_hold", false))
+	if use_dunk_contact_hold and shooter.is_dunk_contact_hold_active() and not bool(pending_shot_release.get("dunk_hold_started_logged", false)):
+		pending_shot_release["dunk_hold_started_logged"] = true
+		log_writer.log_match("Dunk contact hold started")
+		log_writer.log_event(
+			"dunk_contact_hold_start",
+			{
+				"player": shooter.get_display_name(),
+				"row": shooter.get_debug_row_index(),
+				"contact_frame": shooter.get_debug_dunk_contact_frame(),
+				"hold_remaining": shooter.get_debug_dunk_contact_hold_remaining(),
+				"release_mode": pending_shot_release.get("action", {}).get("release_mode", ""),
+			}
+		)
+	if not shooter.is_world_ball_release_ready():
 		return
+	if use_dunk_contact_hold and not bool(pending_shot_release.get("dunk_hold_finished_logged", false)):
+		pending_shot_release["dunk_hold_finished_logged"] = true
+		log_writer.log_match("Dunk contact hold finished")
+		log_writer.log_event(
+			"dunk_contact_hold_end",
+			{
+				"player": shooter.get_display_name(),
+				"row": shooter.get_debug_row_index(),
+				"contact_frame": shooter.get_debug_dunk_contact_frame(),
+				"release_mode": pending_shot_release.get("action", {}).get("release_mode", ""),
+			}
+		)
 	_commit_pending_shot_release(shooter)
 
 
@@ -2045,6 +2386,7 @@ func _commit_pending_shot_release(shooter: PlayerController) -> void:
 		"shot_launch",
 		{
 			"profile_kind": action.get("profile_kind", "free_flight"),
+			"release_mode": action.get("release_mode", ""),
 			"quality": action.get("quality", "red"),
 			"timing_result": action.get("timing_result", action.get("quality", "red")),
 			"outcome": action.get("outcome", "miss"),
@@ -2058,10 +2400,11 @@ func _commit_pending_shot_release(shooter: PlayerController) -> void:
 		}
 	)
 	log_writer.log_match(
-		"Shot released %s %s for %d apex=%0.1f flight=%0.2f" % [
+		"Shot released %s %s for %d mode=%s apex=%0.1f flight=%0.2f" % [
 			str(action.get("timing_result", action.get("quality", "red"))),
 			str(action.get("outcome", "miss")),
 			context.shot_value_pending,
+			str(action.get("release_mode", "")),
 			float(action.get("apex_z", 0.0)),
 			float(action.get("flight_time", 0.0)),
 		]

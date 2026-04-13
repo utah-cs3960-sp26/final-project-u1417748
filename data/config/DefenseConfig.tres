@@ -9,3 +9,4 @@ guard_stop_radius = 14.0
 guard_acceleration = 840.0
 guard_deceleration = 980.0
 guard_deadband_radius = 24.0
+dunk_block_chance_min_multiplier = 0.55

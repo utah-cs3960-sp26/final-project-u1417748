@@ -72,20 +72,37 @@ func is_contested(shooter: PlayerController) -> bool:
 	return get_contest_level(shooter) > 0.2
 
 
-func can_block_shot(shooter: PlayerController, rng: GameRng) -> bool:
-	return get_blocking_defender(shooter, rng) != null
+func can_block_shot(shooter: PlayerController, rng: GameRng, shot_family: String = "") -> bool:
+	return get_blocking_defender(shooter, rng, shot_family) != null
 
 
-func get_blocking_defender(shooter: PlayerController, rng: GameRng) -> PlayerController:
+func get_block_chance(shooter: PlayerController, defender: PlayerController, shot_family: String = "") -> float:
+	if shooter == null or defender == null or defense_config == null:
+		return 0.0
+	var distance_value: float = defender.world_position.distance_to(shooter.world_position)
+	if distance_value > defense_config.block_radius:
+		return 0.0
+	var defender_data: PlayerData = defender.get_player_data()
+	if defender_data == null:
+		return 0.0
+	var chance: float = clampf((float(defender_data.block) / 100.0) * (1.0 - distance_value / defense_config.block_radius), 0.0, 0.4)
+	if _is_dunk_family(shot_family):
+		var shooter_data: PlayerData = shooter.get_player_data()
+		var dunk_ratio: float = clampf(float(shooter_data.dunk if shooter_data != null else 0) / 100.0, 0.0, 1.0)
+		chance *= lerpf(1.0, defense_config.dunk_block_chance_min_multiplier, dunk_ratio)
+	return clampf(chance, 0.0, 0.4)
+
+
+func get_blocking_defender(shooter: PlayerController, rng: GameRng, shot_family: String = "") -> PlayerController:
 	var defender: PlayerController = get_assigned_defender(shooter)
 	if defender == null:
 		return null
-	var distance_value: float = defender.world_position.distance_to(shooter.world_position)
-	if distance_value > defense_config.block_radius:
-		return null
-	var data: PlayerData = defender.get_player_data()
-	var chance: float = clampf((float(data.block) / 100.0) * (1.0 - distance_value / defense_config.block_radius), 0.0, 0.4)
+	var chance: float = get_block_chance(shooter, defender, shot_family)
 	return defender if rng.randf() < chance else null
+
+
+func _is_dunk_family(shot_family: String) -> bool:
+	return shot_family == "close_finish_dunk" or shot_family == "close_finish_side_dunk"
 
 
 func should_trigger_pressure_turnover(

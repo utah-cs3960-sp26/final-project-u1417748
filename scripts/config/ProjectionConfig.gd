@@ -3,6 +3,9 @@ extends Resource
 
 @export var camera_tilt_strength: float = 0.0
 @export var depth_compression_exponent: float = 1.0
+@export var camera_zoom_multiplier: float = 2.1
+@export var camera_tracking_smoothing_seconds: float = 0.10
+@export var player_tracking_anchor_offset: Vector2 = Vector2(0.0, -44.0)
 @export var screen_center_x: float = 540.0
 @export var screen_floor_y: float = 1920.0
 @export var screen_horizon_y: float = 0.0

@@ -10,7 +10,7 @@ const PASS_PREVIEW_FILL_COLOR: Color = Color(0.35, 0.85, 1.0, 0.16)
 @export var court_strip_count: int = 28
 
 var court_config: CourtConfig
-var projection: CourtProjection
+var projection
 var court_screen_rect: Rect2 = Rect2(0.0, 0.0, 1080.0, 1920.0)
 var trajectory_points: Array[Dictionary] = []
 var trajectory_color: Color = Color(0.3, 0.95, 0.4, 0.95)
@@ -22,13 +22,13 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 
-func setup(config_value: CourtConfig, projection_value: CourtProjection = null) -> void:
+func setup(config_value: CourtConfig, projection_value = null) -> void:
 	court_config = config_value
 	projection = projection_value
 	queue_redraw()
 
 
-func set_projection(projection_value: CourtProjection) -> void:
+func set_projection(projection_value) -> void:
 	projection = projection_value
 	queue_redraw()
 

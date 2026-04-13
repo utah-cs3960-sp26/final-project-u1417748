@@ -3,11 +3,13 @@ extends RefCounted
 
 const PROFILE_KIND_FREE_FLIGHT: String = "free_flight"
 const PROFILE_KIND_GUIDED_MAKE: String = "guided_make"
+const RELEASE_MODE_DUNK_MAKE_DROP: String = "dunk_make_drop"
+const RELEASE_MODE_DUNK_MISS_BOUNCE: String = "dunk_miss_bounce"
 
 var shot_config: ShotTimingConfig
 var ball_config: BallPhysicsConfig
 var court_config: CourtConfig
-var projection: CourtProjection
+var projection
 
 var is_aiming: bool = false
 var aim_elapsed: float = 0.0
@@ -71,7 +73,9 @@ func release_action(
 	ballhandler_position: Vector2,
 	shooter: PlayerData,
 	contested: bool,
-	rng: GameRng
+	rng: GameRng,
+	shot_family: String = "",
+	mirror_west: bool = false
 ) -> Dictionary:
 	if not is_aiming or aim_elapsed <= 0.0:
 		cancel_aim()
@@ -79,7 +83,7 @@ func release_action(
 	if not aim_variant_ready:
 		_roll_aim_variant(rng)
 	var quality: String = get_current_quality(contested, shooter.release_consistency)
-	var params: Dictionary = build_launch_profile(ballhandler_position, quality)
+	var params: Dictionary = build_launch_profile(ballhandler_position, quality, shot_family, mirror_west)
 	var action: Dictionary = _compose_release_action(params, quality, quality)
 	cancel_aim()
 	return action
@@ -91,12 +95,14 @@ func build_action_for_quality(
 	quality: String,
 	rng: GameRng = null,
 	forced_timing_result: String = "",
-	force_miss: bool = false
+	force_miss: bool = false,
+	shot_family: String = "",
+	mirror_west: bool = false
 ) -> Dictionary:
 	if not aim_variant_ready:
 		_roll_aim_variant(rng)
 	var launch_quality: String = "red" if force_miss else quality
-	var params: Dictionary = build_launch_profile(ballhandler_position, launch_quality)
+	var params: Dictionary = build_launch_profile(ballhandler_position, launch_quality, shot_family, mirror_west)
 	if force_miss:
 		params["outcome"] = "miss"
 		params["force_make"] = false
@@ -155,15 +161,27 @@ func get_meter_snapshot(contested: bool, release_consistency: int) -> Dictionary
 	}
 
 
-func get_preview_profile(ballhandler_position: Vector2, shooter: PlayerData, contested: bool) -> Dictionary:
+func get_preview_profile(
+	ballhandler_position: Vector2,
+	shooter: PlayerData,
+	contested: bool,
+	shot_family: String = "",
+	mirror_west: bool = false
+) -> Dictionary:
 	if not is_aiming:
 		return {}
 	var quality: String = get_current_quality(contested, shooter.release_consistency)
-	return build_launch_profile(ballhandler_position, quality)
+	return build_launch_profile(ballhandler_position, quality, shot_family, mirror_west)
 
 
-func build_current_launch_profile(ballhandler_position: Vector2, shooter: PlayerData, contested: bool) -> Dictionary:
-	return get_preview_profile(ballhandler_position, shooter, contested)
+func build_current_launch_profile(
+	ballhandler_position: Vector2,
+	shooter: PlayerData,
+	contested: bool,
+	shot_family: String = "",
+	mirror_west: bool = false
+) -> Dictionary:
+	return get_preview_profile(ballhandler_position, shooter, contested, shot_family, mirror_west)
 
 
 func _get_release_progress() -> float:
@@ -176,6 +194,7 @@ func _compose_release_action(params: Dictionary, quality: String, timing_result:
 	return {
 		"kind": "shot",
 		"profile_kind": params.get("profile_kind", PROFILE_KIND_FREE_FLIGHT),
+		"release_mode": params.get("release_mode", ""),
 		"quality": quality,
 		"timing_result": timing_result,
 		"outcome": params["outcome"],
@@ -191,8 +210,12 @@ func _compose_release_action(params: Dictionary, quality: String, timing_result:
 	}.merged(params, true)
 
 
-func build_launch_profile(launch_origin: Vector2, quality: String) -> Dictionary:
+func build_launch_profile(launch_origin: Vector2, quality: String, shot_family: String = "", mirror_west: bool = false) -> Dictionary:
 	var shot_value: int = 3 if court_config.is_three_point(launch_origin) else 2
+	if _is_dunk_family(shot_family):
+		if quality == "green":
+			return _build_dunk_make_profile(launch_origin, quality, shot_value)
+		return _build_dunk_miss_profile(launch_origin, quality, shot_value, mirror_west)
 	if quality == "green":
 		return _build_guided_make_profile(launch_origin, quality, shot_value)
 	var target_xy: Vector2 = get_current_miss_target()
@@ -296,6 +319,88 @@ func _roll_aim_variant(rng: GameRng = null) -> void:
 		return
 	aim_miss_side_sign = -1.0 if rng.randf() < 0.5 else 1.0
 	aim_miss_depth_sign = -1.0 if rng.randf() < 0.5 else 1.0
+
+
+func _is_dunk_family(shot_family: String) -> bool:
+	return shot_family == "close_finish_dunk" or shot_family == "close_finish_side_dunk"
+
+
+func _build_dunk_make_profile(launch_origin: Vector2, quality: String, shot_value: int) -> Dictionary:
+	var entry_xy: Vector2 = _get_make_handoff_xy()
+	var entry_z: float = court_config.rim_height
+	var score_gate_xy: Vector2 = _get_make_score_gate_xy()
+	var score_gate_z: float = _get_make_score_gate_z()
+	var guided_descent_duration: float = maxf(ball_config.dunk_make_descent_duration, 0.08)
+	var net_exit_xy: Vector2 = Vector2(court_config.hoop_position.x, score_gate_xy.y)
+	var net_exit_z: float = court_config.net_exit_z
+	var exit_xy: Vector2 = net_exit_xy + Vector2(0.0, ball_config.ball_radius * 0.18)
+	var exit_z: float = maxf(court_config.net_exit_z - 36.0, 0.0)
+	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.12), 0.06)
+	return {
+		"profile_kind": PROFILE_KIND_GUIDED_MAKE,
+		"release_mode": RELEASE_MODE_DUNK_MAKE_DROP,
+		"quality": quality,
+		"outcome": "make",
+		"launch_position": entry_xy,
+		"launch_z": entry_z,
+		"velocity_xy": Vector2.ZERO,
+		"vz": 0.0,
+		"flight_time": guided_descent_duration + exit_duration,
+		"apex_z": entry_z,
+		"apex_time": 0.0,
+		"target_xy": score_gate_xy,
+		"shot_value": shot_value,
+		"force_make": false,
+		"approach_launch_position": entry_xy,
+		"approach_launch_z": entry_z,
+		"approach_velocity_xy": Vector2.ZERO,
+		"approach_vz": 0.0,
+		"entry_xy": entry_xy,
+		"entry_z": entry_z,
+		"entry_time": 0.0,
+		"score_gate_xy": score_gate_xy,
+		"score_gate_z": score_gate_z,
+		"net_exit_xy": net_exit_xy,
+		"net_exit_z": net_exit_z,
+		"exit_xy": exit_xy,
+		"exit_z": exit_z,
+		"descent_duration": guided_descent_duration,
+		"capture_duration": 0.0,
+		"guided_descent_duration": guided_descent_duration,
+		"net_exit_duration": exit_duration,
+		"launch_origin": launch_origin,
+		"start_phase": BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT,
+	}
+
+
+func _build_dunk_miss_profile(launch_origin: Vector2, quality: String, shot_value: int, _mirror_west: bool = false) -> Dictionary:
+	var bounce_direction: Vector2 = (launch_origin - court_config.hoop_position).normalized()
+	if bounce_direction.length_squared() <= 0.0001:
+		bounce_direction = Vector2.DOWN
+	var launch_xy: Vector2 = court_config.hoop_position + bounce_direction * maxf(court_config.rim_inner_radius + ball_config.ball_radius * 0.9, 1.0)
+	var launch_z: float = court_config.rim_height
+	var velocity_xy: Vector2 = bounce_direction * ball_config.dunk_miss_bounce_lateral_speed
+	var vz: float = maxf(ball_config.dunk_miss_bounce_vertical_speed, 1.0)
+	var flight_time: float = (vz + sqrt(vz * vz + 2.0 * maxf(absf(ball_config.gravity), 0.001) * launch_z)) / maxf(absf(ball_config.gravity), 0.001)
+	var target_xy: Vector2 = launch_xy + velocity_xy * flight_time
+	var apex_z: float = launch_z + (vz * vz) / (2.0 * maxf(absf(ball_config.gravity), 0.001))
+	return {
+		"profile_kind": PROFILE_KIND_FREE_FLIGHT,
+		"release_mode": RELEASE_MODE_DUNK_MISS_BOUNCE,
+		"quality": quality,
+		"outcome": "miss",
+		"launch_position": launch_xy,
+		"launch_z": launch_z,
+		"velocity_xy": velocity_xy,
+		"vz": vz,
+		"flight_time": flight_time,
+		"apex_z": apex_z,
+		"apex_time": vz / maxf(absf(ball_config.gravity), 0.001),
+		"target_xy": target_xy,
+		"shot_value": shot_value,
+		"force_make": false,
+		"launch_origin": launch_origin,
+	}
 
 
 func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_value: int) -> Dictionary:

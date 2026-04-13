@@ -14,14 +14,15 @@ func start_pass(
 	rng: GameRng = null,
 	passer: PlayerController = null
 ) -> Dictionary:
-	var target_position: Vector2 = target_player.world_position
-	var distance_value: float = from_position.distance_to(target_position)
-	var eligible_interceptor: Dictionary = _find_interceptor(from_position, target_position, defenders)
-	var eligible_player: PlayerController = eligible_interceptor.get("player", null) as PlayerController
-	var commit_chance: float = _calculate_commit_chance(from_position, target_position, eligible_interceptor, target_player, passer)
+	var evaluation: Dictionary = evaluate_pass_target(from_position, target_player, defenders, passer)
+	var target_position: Vector2 = evaluation.get("target_position", target_player.world_position if target_player != null else from_position)
+	var distance_value: float = float(evaluation.get("distance", from_position.distance_to(target_position)))
+	var eligible_interceptor: Dictionary = evaluation.get("eligible_interceptor_data", {})
+	var eligible_player: PlayerController = evaluation.get("eligible_interceptor", null) as PlayerController
+	var commit_chance: float = float(evaluation.get("commit_chance", 0.0))
 	var commit_succeeded: bool = eligible_player != null and _roll_commit(commit_chance, rng)
 	var active_interceptor: PlayerController = eligible_player if commit_succeeded else null
-	var chase_point: Vector2 = eligible_interceptor.get("closest_point", target_position)
+	var chase_point: Vector2 = evaluation.get("eligible_chase_point", target_position)
 	active_pass = {
 		"start": from_position,
 		"end": target_position,
@@ -44,6 +45,32 @@ func start_pass(
 		"force_steal": false,
 	}
 	return get_active_pass_snapshot()
+
+
+func evaluate_pass_target(
+	from_position: Vector2,
+	target_player: PlayerController,
+	defenders: Array[PlayerController],
+	passer: PlayerController = null
+) -> Dictionary:
+	if target_player == null:
+		return {}
+	var target_position: Vector2 = target_player.world_position
+	var distance_value: float = from_position.distance_to(target_position)
+	var eligible_interceptor: Dictionary = _find_interceptor(from_position, target_position, defenders)
+	var eligible_player: PlayerController = eligible_interceptor.get("player", null) as PlayerController
+	var chase_point: Vector2 = eligible_interceptor.get("closest_point", target_position)
+	var commit_chance: float = _calculate_commit_chance(from_position, target_position, eligible_interceptor, target_player, passer)
+	return {
+		"target_player": target_player,
+		"target_position": target_position,
+		"distance": distance_value,
+		"eligible_interceptor": eligible_player,
+		"eligible_interceptor_data": eligible_interceptor.duplicate(true),
+		"eligible_chase_point": chase_point,
+		"commit_chance": commit_chance,
+		"target_y": target_position.y,
+	}
 
 
 func step_pass(delta: float) -> Dictionary:

@@ -4,6 +4,9 @@
 
 [resource]
 script = ExtResource("1")
+hoop_position = Vector2(540, 160)
+three_point_radius = 840.0
+backboard_y = 0.0
 over_backboard_z_threshold = 320.0
 net_channel_radius = 40.0
 net_followthrough_depth = 26.0

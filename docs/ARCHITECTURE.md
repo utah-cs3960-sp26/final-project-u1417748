@@ -31,6 +31,8 @@
 - owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim takes over
 - owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
+- resolves the active close-camera target each frame, following the controlled ballhandler during owned possession and the rendered live ball during passes, shots, rebounds, and score follow-through
+- commits any staged shot release before final projection sync so the first visible launched-ball frame already hands camera ownership from the player to the live ball
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - owns the full-sheet animation classifier, including family selection, deterministic variant locking, close-finish layup/dunk routing, westward mirroring, and controlled-player outline visibility
@@ -43,7 +45,9 @@
 - `InputController`
   - lower-zone invisible-stick movement, directional pass-preview selection, release-to-pass arbitration, quick-tap shot classification, shot-mode arm requests, tap-to-time input, UI-safe unhandled touch routing, and debug mouse/keyboard support
 - `CourtProjection`
-  - render-only world/screen mapping, inverse ground-plane mapping for action input, depth sort keys, actor/shadow scale, and amplified z-lift projection for a flat rectangular court view
+  - render-only world/screen mapping with a two-stage projection: a stable base court layout plus a close-camera zoom/translation transform that hard-centers the tracked subject on the visible viewport midpoint
+  - removes the same camera transform before inverse ground-plane mapping so touch, bot gestures, and other screen-driven input still round-trip back into unchanged world coordinates
+  - derives depth sort keys from base projection space while actor/shadow scale, hoop scale, ball size, and amplified z-lift presentation all use the zoomed close-camera view
   - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
