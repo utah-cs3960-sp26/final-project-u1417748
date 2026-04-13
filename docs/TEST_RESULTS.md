@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Date: 2026-04-10
+- Date: 2026-04-13
 - Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
 - Engine used for validation: Godot 4.6.1 stable
 
@@ -24,16 +24,16 @@ Automated suite:
 
 Final headless suite status: pass
 
-- Pure logic: 693 / 693
+- Pure logic: 723 / 723
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.89`, normal `1.12`, hard `1.28`
+- `difficulty_order`: easy `0.88`, normal `1.06`, hard `1.30`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.34`, defense `0.66`
+- `rebound_distribution`: offense `0.28`, defense `0.72`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -69,7 +69,9 @@ Passed scenarios:
 - close-finish attempts that fail a dunk-only gate now fall back to layup rows `14` or `17` instead of leaking into jumper rows, while LC archetypes still reach dunk rows `13`, `15`, and `16`
 - defender distance no longer changes the layup-vs-dunk family choice; it only affects the later contest and block outcome after the family is already committed
 - the pause overlay now exposes a `No Defenders` toggle that hides all live defenders, strips them from on-court defense logic, and forces close-range shots into dunk families while it is active
-- dunk rows `13`, `15`, and `16` now freeze on their authored rim-contact frame for about `0.5` seconds with the world ball still hidden before release
+- dunk rows `13`, `15`, and `16` now freeze on their authored rim-contact frame for about `0.5` seconds with the world ball still hidden before release, and each hold row now snaps to one configured root anchor instead of composing a shared snap with a second sprite-only contact offset
+- row `13` now uses the tuned `Vector2(0, 160)` contact anchor from `PlayerAnimationConfig.tres`, which centers its frame-10 freeze closer to the approved reference placement
+- deterministic smoke coverage now proves rows `13`, `15`, and `16` all land on the same configured world anchor and projected screen anchor across repeated seeds and approach setups
 - live straight and side dunks now go straight from swipe entry into staged release, keep the meter hidden, and always finish through the make-drop guided descent for this phase
 - blocked close-finish attempts still bypass the dunk contact-hold path and resolve through the existing block flow
 - the live hoop, rim, backboard, and pole now all sit farther back above the court together at a real `Vector2(540, -50)` hoop anchor, and negative hoop depth now renders correctly because projection no longer clamps above-court world Y to the court top

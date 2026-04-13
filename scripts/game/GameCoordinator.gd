@@ -1960,6 +1960,51 @@ func _should_allow_dunk_contact_hold(player: PlayerController, family: String) -
 	return pending_shot_release.get("player", null) == player and bool(pending_shot_release.get("use_dunk_contact_hold", false))
 
 
+func get_dunk_contact_anchor_offset_for_row(row_index: int) -> Vector2:
+	if player_animation_config != null:
+		match row_index:
+			13:
+				return player_animation_config.dunk_contact_anchor_offset_row_13
+			15:
+				return player_animation_config.dunk_contact_anchor_offset_row_15
+			16:
+				return player_animation_config.dunk_contact_anchor_offset_row_16
+	return Vector2(0.0, 40.0)
+
+
+func _resolve_dunk_contact_row_index(shooter: PlayerController) -> int:
+	if shooter == null:
+		return -1
+	var visual_row_index: int = shooter.get_debug_row_index()
+	if visual_row_index > 0:
+		return visual_row_index
+	if _has_active_shot_sequence_for_player(shooter):
+		return PlayerVisual.get_row_index_for_family_variant(
+			str(active_shot_sequence.get("family", "")),
+			int(active_shot_sequence.get("variant_index", 0))
+		)
+	return -1
+
+
+func _build_dunk_contact_snap_snapshot(shooter: PlayerController) -> Dictionary:
+	if shooter == null:
+		return {}
+	var row_index: int = _resolve_dunk_contact_row_index(shooter)
+	var anchor_offset: Vector2 = get_dunk_contact_anchor_offset_for_row(row_index)
+	var snapped_world_position: Vector2 = court_config.hoop_position + anchor_offset
+	var ground_screen: Vector2 = (
+		court_projection.world_to_screen_ground(snapped_world_position)
+		if court_projection != null
+		else Vector2.ZERO
+	)
+	return {
+		"row_index": row_index,
+		"anchor_offset": anchor_offset,
+		"world_position": snapped_world_position,
+		"ground_screen": ground_screen,
+	}
+
+
 func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
 	var decision: Dictionary = _build_shot_release_visual_decision(player, motion_vector_override, defender_distance_override)
 	return {
@@ -2336,19 +2381,24 @@ func _maybe_commit_pending_shot_release() -> void:
 	var use_dunk_contact_hold: bool = bool(pending_shot_release.get("use_dunk_contact_hold", false))
 	if use_dunk_contact_hold and shooter.is_dunk_contact_hold_active() and not bool(pending_shot_release.get("dunk_hold_started_logged", false)):
 		pending_shot_release["dunk_hold_started_logged"] = true
-		var anchor_offset: Vector2 = player_animation_config.dunk_contact_anchor_offset if player_animation_config != null else Vector2(0.0, 40.0)
-		shooter.world_position = court_config.hoop_position + anchor_offset
+		var snap_snapshot: Dictionary = _build_dunk_contact_snap_snapshot(shooter)
+		shooter.world_position = snap_snapshot.get("world_position", shooter.world_position)
 		shooter.velocity = Vector2.ZERO
+		if court_projection != null:
+			var snap_screen: Vector2 = court_projection.player_tracking_anchor_base_screen(shooter.world_position)
+			court_projection.update_camera_target(snap_screen, 0.0, true)
 		log_writer.log_match("Dunk contact hold started")
 		log_writer.log_event(
 			"dunk_contact_hold_start",
 			{
 				"player": shooter.get_display_name(),
-				"row": shooter.get_debug_row_index(),
+				"row": int(snap_snapshot.get("row_index", shooter.get_debug_row_index())),
 				"contact_frame": shooter.get_debug_dunk_contact_frame(),
 				"hold_remaining": shooter.get_debug_dunk_contact_hold_remaining(),
 				"release_mode": pending_shot_release.get("action", {}).get("release_mode", ""),
+				"contact_anchor_offset": _vector2_payload(snap_snapshot.get("anchor_offset", Vector2.ZERO)),
 				"snapped_to": {"x": shooter.world_position.x, "y": shooter.world_position.y},
+				"snapped_ground_screen": _vector2_payload(snap_snapshot.get("ground_screen", Vector2.ZERO)),
 			}
 		)
 	if not shooter.is_world_ball_release_ready():

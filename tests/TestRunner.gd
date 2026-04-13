@@ -93,10 +93,10 @@ func _run_pure_logic() -> void:
 		{"row": 4, "family": "set_shot_release", "release_after": 5},
 		{"row": 8, "family": "jumper_release", "release_after": 11},
 		{"row": 10, "family": "jumper_release", "release_after": 23},
-		{"row": 13, "family": "close_finish_dunk", "release_after": 9},
+		{"row": 13, "family": "close_finish_dunk", "release_after": 10},
 		{"row": 14, "family": "close_finish_layup", "release_after": 9},
-		{"row": 15, "family": "close_finish_dunk", "release_after": 10},
-		{"row": 16, "family": "close_finish_side_dunk", "release_after": 10},
+		{"row": 15, "family": "close_finish_dunk", "release_after": 11},
+		{"row": 16, "family": "close_finish_side_dunk", "release_after": 11},
 		{"row": 17, "family": "close_finish_layup", "release_after": 11},
 	]
 	for shot_timing_entry in shot_timing_rows:
@@ -123,6 +123,9 @@ func _run_pure_logic() -> void:
 	_assert_true(animation_config.dunk_contact_frame_row_15 == 11, "row 15 contact frame metadata", str(animation_config.dunk_contact_frame_row_15))
 	_assert_true(animation_config.dunk_contact_frame_row_16 == 11, "row 16 contact frame metadata", str(animation_config.dunk_contact_frame_row_16))
 	_assert_true(absf(animation_config.dunk_contact_hold_seconds - 0.5) < 0.001, "dunk contact hold duration metadata", str(animation_config.dunk_contact_hold_seconds))
+	_assert_true(animation_config.dunk_contact_anchor_offset_row_13.distance_to(Vector2(0.0, 160.0)) < 0.001, "row 13 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_13))
+	_assert_true(animation_config.dunk_contact_anchor_offset_row_15.distance_to(Vector2(-8.0, 141.0)) < 0.001, "row 15 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_15))
+	_assert_true(animation_config.dunk_contact_anchor_offset_row_16.distance_to(Vector2(-42.0, 160.0)) < 0.001, "row 16 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_16))
 	var home_team_data: TeamData = load("res://data/teams/HOM.tres") as TeamData
 	var away_team_data: TeamData = load("res://data/teams/AWY.tres") as TeamData
 	var expected_dunk_ratings: Dictionary = {
@@ -1285,8 +1288,8 @@ func _run_pure_logic() -> void:
 					break
 		_assert_true(straight_dunk_profiles.has(13), "straight dunk row 13 timing profile reachable", str(straight_dunk_profiles))
 		_assert_true(straight_dunk_profiles.has(15), "straight dunk row 15 timing profile reachable", str(straight_dunk_profiles))
-		_assert_true(int(straight_dunk_profiles[13]) == 9, "straight dunk row 13 release frame", str(straight_dunk_profiles[13]))
-		_assert_true(int(straight_dunk_profiles[15]) == 10, "straight dunk row 15 release frame", str(straight_dunk_profiles[15]))
+		_assert_true(int(straight_dunk_profiles[13]) == 10, "straight dunk row 13 release frame", str(straight_dunk_profiles[13]))
+		_assert_true(int(straight_dunk_profiles[15]) == 11, "straight dunk row 15 release frame", str(straight_dunk_profiles[15]))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
@@ -1300,7 +1303,10 @@ func _run_pure_logic() -> void:
 			_assert_true(side_dunk_family == "close_finish_side_dunk", "side dunk family", side_dunk_family)
 			_assert_true(side_dunk_row == 16, "side dunk row", str(side_dunk_row))
 			_assert_true(bool(smoke_coordinator.active_shot_sequence.get("mirror_west", false)), "side dunk flip", str(smoke_coordinator.active_shot_sequence.get("mirror_west", false)))
-			_assert_true(int(side_dunk_timing_profile.get("release_after_frame", -1)) == 10, "side dunk release frame", str(side_dunk_timing_profile.get("release_after_frame", -1)))
+			_assert_true(int(side_dunk_timing_profile.get("release_after_frame", -1)) == 11, "side dunk release frame", str(side_dunk_timing_profile.get("release_after_frame", -1)))
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 13 dunk hold")
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 15 dunk hold")
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(90.0, 80.0), Vector2(104.0, 92.0)], "row 16 dunk hold")
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
@@ -1587,6 +1593,72 @@ func _assert_release_profile(player: PlayerController, expected_release_after_fr
 	_assert_true(absf(float(timing_profile.get("release_time_seconds", 0.0)) - float(expected_release_after_frame) / expected_fps) < 0.001, "%s release seconds" % name_prefix, str(timing_profile.get("release_time_seconds", 0.0)))
 	var total_frames: int = int(timing_profile.get("total_frames", 0))
 	_assert_true(absf(float(timing_profile.get("full_animation_duration_seconds", 0.0)) - float(total_frames) / expected_fps) < 0.001, "%s full duration seconds" % name_prefix, str(timing_profile.get("full_animation_duration_seconds", 0.0)))
+
+
+func _collect_dunk_hold_snapshot(
+	coordinator: GameCoordinator,
+	ballhandler_role: String,
+	seed: int,
+	start_offset: Vector2
+) -> Dictionary:
+	_reset_visual_test_state(coordinator, ballhandler_role, seed)
+	var shooter: PlayerController = coordinator.get_offense_player_by_role(ballhandler_role)
+	if shooter == null:
+		return {}
+	var motion_vector: Vector2 = (coordinator.court_config.hoop_position - (coordinator.court_config.hoop_position + start_offset)).normalized() * 190.0
+	shooter.world_position = coordinator.court_config.hoop_position + start_offset
+	shooter.velocity = motion_vector
+	coordinator.current_move_direction = motion_vector.normalized()
+	coordinator.current_move_magnitude = 1.0
+	_arm_test_shot(coordinator)
+	for _frame in 180:
+		await get_tree().process_frame
+		if coordinator.context.current_state == GameState.State.SHOT_RELEASE and shooter.is_dunk_contact_hold_active():
+			return {
+				"row": shooter.get_debug_row_index(),
+				"world_position": shooter.world_position,
+				"ground_screen": shooter.global_position,
+				"anchor_offset": shooter.world_position - coordinator.court_config.hoop_position,
+			}
+		if coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT:
+			break
+	return {}
+
+
+func _assert_dunk_hold_anchor_consistency(
+	coordinator: GameCoordinator,
+	expected_row: int,
+	ballhandler_role: String,
+	seeds: Array,
+	start_offsets: Array[Vector2],
+	name_prefix: String
+) -> void:
+	var snapshots: Array[Dictionary] = []
+	for start_offset in start_offsets:
+		for seed in seeds:
+			var snapshot: Dictionary = await _collect_dunk_hold_snapshot(coordinator, ballhandler_role, int(seed), start_offset)
+			if snapshot.is_empty() or int(snapshot.get("row", -1)) != expected_row:
+				continue
+			snapshots.append(snapshot)
+			if snapshots.size() >= 2:
+				break
+		if snapshots.size() >= 2:
+			break
+	_assert_true(snapshots.size() >= 2, "%s snapshots reachable" % name_prefix, JSON.stringify(snapshots))
+	if snapshots.size() < 2:
+		return
+	var configured_anchor: Vector2 = coordinator.get_dunk_contact_anchor_offset_for_row(expected_row)
+	var first_snapshot: Dictionary = snapshots[0]
+	var first_world_position: Vector2 = first_snapshot.get("world_position", Vector2.INF)
+	var first_ground_screen: Vector2 = first_snapshot.get("ground_screen", Vector2.INF)
+	for snapshot in snapshots:
+		var anchor_offset: Vector2 = snapshot.get("anchor_offset", Vector2.INF)
+		var world_position: Vector2 = snapshot.get("world_position", Vector2.INF)
+		var ground_screen: Vector2 = snapshot.get("ground_screen", Vector2.INF)
+		_assert_true(int(snapshot.get("row", -1)) == expected_row, "%s row" % name_prefix, JSON.stringify(snapshot))
+		_assert_true(anchor_offset.distance_to(configured_anchor) < 0.01, "%s snaps to configured anchor" % name_prefix, str(anchor_offset))
+		_assert_true(world_position.distance_to(first_world_position) < 0.01, "%s world position stays deterministic" % name_prefix, "%s %s" % [world_position, first_world_position])
+		_assert_true(ground_screen.distance_to(first_ground_screen) < 0.01, "%s screen anchor stays deterministic" % name_prefix, "%s %s" % [ground_screen, first_ground_screen])
 
 
 func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerController, aim_frames: int = 12) -> void:

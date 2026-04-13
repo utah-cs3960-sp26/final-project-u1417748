@@ -7,10 +7,10 @@ const RELEASE_AFTER_FRAME_BY_ROW: Dictionary = {
 	4: 5,
 	8: 11,
 	10: 23,
-	13: 9,
+	13: 10,
 	14: 9,
-	15: 10,
-	16: 10,
+	15: 11,
+	16: 11,
 	17: 11,
 }
 const DEFAULT_DUNK_CONTACT_FRAME_BY_ROW: Dictionary = {
@@ -338,22 +338,8 @@ func _apply_sprite_flags() -> void:
 func _sync_sprite_positions() -> void:
 	if _fill_sprite == null or _outline_sprite == null:
 		return
-	var active_offset: Vector2 = _get_active_sprite_offset()
-	_fill_sprite.position = active_offset
-	_outline_sprite.position = active_offset
-
-
-func _get_active_sprite_offset() -> Vector2:
-	var active_offset: Vector2 = sprite_offset
-	var contact_frame: int = _get_dunk_contact_frame_for_row(_current_row_index)
-	var should_apply_contact_offset: bool = _dunk_contact_hold_active \
-		or (_dunk_contact_hold_finished and _frame_index + 1 == contact_frame and _allow_dunk_contact_hold)
-	if should_apply_contact_offset:
-		var extra_offset: Vector2 = _get_dunk_contact_offset_for_row(_current_row_index)
-		if _mirror_west:
-			extra_offset.x *= -1.0
-		active_offset += extra_offset
-	return active_offset
+	_fill_sprite.position = sprite_offset
+	_outline_sprite.position = sprite_offset
 
 
 func _get_frame_count_for_row(row_index: int) -> int:
@@ -405,18 +391,6 @@ func _get_dunk_contact_frame_for_row(row_index: int) -> int:
 			16:
 				return animation_config.dunk_contact_frame_row_16
 	return int(DEFAULT_DUNK_CONTACT_FRAME_BY_ROW.get(row_index, -1))
-
-
-func _get_dunk_contact_offset_for_row(row_index: int) -> Vector2:
-	if animation_config != null:
-		match row_index:
-			13:
-				return animation_config.dunk_contact_offset_row_13
-			15:
-				return animation_config.dunk_contact_offset_row_15
-			16:
-				return animation_config.dunk_contact_offset_row_16
-	return Vector2.ZERO
 
 
 static func get_row_index_for_family_variant(animation_family: String, variant_index: int) -> int:

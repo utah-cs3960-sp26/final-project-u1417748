@@ -1,5 +1,11 @@
 # Decisions
 
+## 2026-04-13
+
+### Dunk freeze placement now uses one row-specific root anchor per authored hold row
+
+The earlier dunk-hold contract split freeze placement across two systems: `GameCoordinator` snapped the player root to one shared hoop-relative world anchor, and `PlayerVisual` then added a second row-specific local sprite translation only while the rim-contact hold was active. That made the final pose harder to reason about and harder to tune because there was no single authored value that meant “row `13` frame `10` goes here.” The current contract removes the hold-only sprite translation entirely. Rows `13`, `15`, and `16` now each own one authored world-space contact anchor in `PlayerAnimationConfig`, and `GameCoordinator` snaps the shooter root directly to that row-specific anchor when the hold starts. This was chosen to make dunk freeze placement deterministic, to expose one clear manual tuning knob per hold row, and to move row `13` closer to the user-approved centered finish pose.
+
 ## 2026-04-07
 
 ### Built clean-room on `main`

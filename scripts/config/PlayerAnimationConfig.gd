@@ -19,7 +19,6 @@ extends Resource
 @export var dunk_contact_frame_row_13: int = 10
 @export var dunk_contact_frame_row_15: int = 11
 @export var dunk_contact_frame_row_16: int = 11
-@export var dunk_contact_anchor_offset: Vector2 = Vector2(0.0, 40.0)
-@export var dunk_contact_offset_row_13: Vector2 = Vector2(0.0, 111.2)
-@export var dunk_contact_offset_row_15: Vector2 = Vector2(0.0, 95.2)
-@export var dunk_contact_offset_row_16: Vector2 = Vector2(0.0, 113.2)
+@export var dunk_contact_anchor_offset_row_13: Vector2 = Vector2(0.0, 160.0)
+@export var dunk_contact_anchor_offset_row_15: Vector2 = Vector2(-8.0, 141.0)
+@export var dunk_contact_anchor_offset_row_16: Vector2 = Vector2(-42.0, 160.0)
