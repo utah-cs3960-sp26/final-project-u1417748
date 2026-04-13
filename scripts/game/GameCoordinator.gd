@@ -2336,6 +2336,9 @@ func _maybe_commit_pending_shot_release() -> void:
 	var use_dunk_contact_hold: bool = bool(pending_shot_release.get("use_dunk_contact_hold", false))
 	if use_dunk_contact_hold and shooter.is_dunk_contact_hold_active() and not bool(pending_shot_release.get("dunk_hold_started_logged", false)):
 		pending_shot_release["dunk_hold_started_logged"] = true
+		var anchor_offset: Vector2 = player_animation_config.dunk_contact_anchor_offset if player_animation_config != null else Vector2(0.0, 40.0)
+		shooter.world_position = court_config.hoop_position + anchor_offset
+		shooter.velocity = Vector2.ZERO
 		log_writer.log_match("Dunk contact hold started")
 		log_writer.log_event(
 			"dunk_contact_hold_start",
@@ -2345,6 +2348,7 @@ func _maybe_commit_pending_shot_release() -> void:
 				"contact_frame": shooter.get_debug_dunk_contact_frame(),
 				"hold_remaining": shooter.get_debug_dunk_contact_hold_remaining(),
 				"release_mode": pending_shot_release.get("action", {}).get("release_mode", ""),
+				"snapped_to": {"x": shooter.world_position.x, "y": shooter.world_position.y},
 			}
 		)
 	if not shooter.is_world_ball_release_ready():
