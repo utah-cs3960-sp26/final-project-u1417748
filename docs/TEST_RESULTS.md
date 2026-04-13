@@ -24,16 +24,16 @@ Automated suite:
 
 Final headless suite status: pass
 
-- Pure logic: 723 / 723
+- Pure logic: 1041 / 1041
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.88`, normal `1.06`, hard `1.30`
+- `difficulty_order`: easy `0.84`, normal `1.06`, hard `1.24`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.28`, defense `0.72`
+- `rebound_distribution`: offense `0.27`, defense `0.73`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -70,8 +70,11 @@ Passed scenarios:
 - defender distance no longer changes the layup-vs-dunk family choice; it only affects the later contest and block outcome after the family is already committed
 - the pause overlay now exposes a `No Defenders` toggle that hides all live defenders, strips them from on-court defense logic, and forces close-range shots into dunk families while it is active
 - dunk rows `13`, `15`, and `16` now freeze on their authored rim-contact frame for about `0.5` seconds with the world ball still hidden before release, and each hold row now snaps to one configured root anchor instead of composing a shared snap with a second sprite-only contact offset
-- row `13` now uses the tuned `Vector2(0, 160)` contact anchor from `PlayerAnimationConfig.tres`, which centers its frame-10 freeze closer to the approved reference placement
-- deterministic smoke coverage now proves rows `13`, `15`, and `16` all land on the same configured world anchor and projected screen anchor across repeated seeds and approach setups
+- dunk rows `13`, `15`, and `16` now also use coordinator-owned frame-locked root motion so the run-up moves only along the floor, the jump frames continue toward the rim, the contact frame window pins exactly to the configured contact anchor, and the landing frames carry the player back down to the configured floor anchor after launch
+- the current user-authored contact anchors remain the manual tuning knobs in `PlayerAnimationConfig.tres`: row `13` `Vector2(-20, 172)`, row `15` `Vector2(-30, 162)`, row `16` `Vector2(-42, 160)`
+- the current user-authored landing anchors remain manually tunable in the same config: row `13` `Vector2(-20, 268)`, row `15` `Vector2(-30, 258)`, row `16` `Vector2(-42, 256)`
+- deterministic smoke coverage now proves rows `13`, `15`, and `16` snap to their configured world anchor and projected screen anchor in the seeded hold/root-motion cases exercised by the suite
+- deterministic frame-step coverage now proves every non-contact dunk frame keeps moving, row `16` stays pinned across both contact frames, the first landing frame starts at the contact anchor, and later landing frames reach the configured grounded anchor in the completed landing traces captured by the suite
 - live straight and side dunks now go straight from swipe entry into staged release, keep the meter hidden, and always finish through the make-drop guided descent for this phase
 - blocked close-finish attempts still bypass the dunk contact-hold path and resolve through the existing block flow
 - the live hoop, rim, backboard, and pole now all sit farther back above the court together at a real `Vector2(540, -50)` hoop anchor, and negative hoop depth now renders correctly because projection no longer clamps above-court world Y to the court top
@@ -93,7 +96,10 @@ Additional pure-logic coverage now includes:
 - dunk-only block resistance scaling and layup block-chance invariance
 - pause-menu defender disabling plus forced no-defender close-range dunk selection
 - dunk contact-frame metadata for rows `13`, `15`, and `16`
+- dunk per-row run-end, jump-end, and contact-end frame metadata for rows `13`, `15`, and `16`
+- dunk per-row landing-anchor metadata plus shared landing-ease tuning
 - dunk world-ball release gating after the authored rim-contact hold
+- dunk frame-progress reporting from `PlayerVisual` into coordinator-owned root motion
 - dunk make release profiles starting directly in guided descent from the rim
 - dunk miss release profiles starting at the rim and moving upward and away
 - relocated hoop anchor, backboard plane, and preserved three-point arc geometry

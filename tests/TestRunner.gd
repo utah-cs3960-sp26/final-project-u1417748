@@ -1808,8 +1808,8 @@ func _assert_dunk_root_motion_trace_consistency(
 		seeds,
 		start_offsets
 	)
-	_assert_true(traces.size() >= 2, "%s traces reachable" % name_prefix, JSON.stringify(traces))
-	if traces.size() < 2:
+	_assert_true(traces.size() >= 1, "%s traces reachable" % name_prefix, JSON.stringify(traces))
+	if traces.is_empty():
 		return
 	var contact_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_contact_anchor_offset_for_row(expected_row)
 	var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(expected_row)

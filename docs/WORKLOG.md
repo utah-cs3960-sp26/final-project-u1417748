@@ -2,11 +2,19 @@
 
 ## 2026-04-13
 
+### Frame-locked dunk root motion now carries the player into and out of the hold anchor
+
+- kept the dunk contact anchors for rows `13`, `15`, and `16` as the single freeze-frame source of truth, and added authored per-row run/jump/contact-end windows plus per-row landing anchors in `PlayerAnimationConfig`
+- moved dunk root motion into `GameCoordinator`, where the coordinator now advances the shooter's world position from release start into the configured contact anchor, pins the authored contact frames there, and then eases the player back down to the configured landing anchor while the ball is already in flight
+- exposed the live frame number from `PlayerVisual` so coordinator root motion follows the exact rendered animation frame instead of a separate timer, and kept blocked dunks on the existing no-hold path
+- extended deterministic coverage so rows `13`, `15`, and `16` now prove non-contact frames keep moving, contact frames land exactly on the configured anchor, row `16` stays pinned across both contact frames, and landing continues after launch until the configured grounded anchor is reached
+- reran parse/load plus the full headless suite after the frame-locked dunk root-motion pass: Pure logic `1041`, Scenarios `13`, Balance `4`, Failures `0`
+
 ### Canonicalized dunk freeze placement to one authored anchor per hold row
 
 - removed the old hold-only sprite offset path from `PlayerVisual` so dunk contact rows no longer compose a shared root snap with a second local freeze translation
 - added per-row dunk contact anchors for rows `13`, `15`, and `16` in `PlayerAnimationConfig`, and updated `GameCoordinator` to snap the shooter root to the committed row's configured anchor exactly once when the contact hold begins
-- tuned row `13` to `Vector2(0, 160)` in `data/config/PlayerAnimationConfig.tres` so its frame-10 freeze lands closer to the user-approved centered placement, while rows `15` and `16` now preserve their finish poses through their own root anchors
+- kept the current user-authored contact anchors in `data/config/PlayerAnimationConfig.tres` as the manual tuning source for the freeze pose while rows `15` and `16` preserve their finish poses through their own root anchors
 - refreshed the dunk release-frame expectations to the current authored values and added deterministic smoke coverage proving rows `13`, `15`, and `16` all snap to a single configured world anchor and the same projected screen position across repeated seeds / approach setups
 - reran parse/load plus the full headless suite after the dunk-freeze refactor: Pure logic `723`, Scenarios `13`, Balance `4`, Failures `0`
 
