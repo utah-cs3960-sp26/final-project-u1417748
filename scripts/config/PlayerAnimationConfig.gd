@@ -19,6 +19,85 @@ extends Resource
 @export var dunk_contact_frame_row_13: int = 10
 @export var dunk_contact_frame_row_15: int = 11
 @export var dunk_contact_frame_row_16: int = 11
-@export var dunk_contact_anchor_offset_row_13: Vector2 = Vector2(0.0, 160.0)
-@export var dunk_contact_anchor_offset_row_15: Vector2 = Vector2(-8.0, 141.0)
+@export var dunk_run_end_frame_row_13: int = 7
+@export var dunk_run_end_frame_row_15: int = 7
+@export var dunk_run_end_frame_row_16: int = 7
+@export var dunk_jump_end_frame_row_13: int = 9
+@export var dunk_jump_end_frame_row_15: int = 10
+@export var dunk_jump_end_frame_row_16: int = 10
+@export var dunk_contact_end_frame_row_13: int = 10
+@export var dunk_contact_end_frame_row_15: int = 11
+@export var dunk_contact_end_frame_row_16: int = 12
+@export var dunk_contact_anchor_offset_row_13: Vector2 = Vector2(-20.0, 172.0)
+@export var dunk_contact_anchor_offset_row_15: Vector2 = Vector2(-30.0, 162.0)
 @export var dunk_contact_anchor_offset_row_16: Vector2 = Vector2(-42.0, 160.0)
+@export var dunk_landing_anchor_offset_row_13: Vector2 = Vector2(-20.0, 268.0)
+@export var dunk_landing_anchor_offset_row_15: Vector2 = Vector2(-30.0, 258.0)
+@export var dunk_landing_anchor_offset_row_16: Vector2 = Vector2(-42.0, 256.0)
+@export var dunk_landing_ease_power: float = 1.8
+
+
+func get_dunk_contact_frame(row_index: int) -> int:
+	match row_index:
+		13:
+			return dunk_contact_frame_row_13
+		15:
+			return dunk_contact_frame_row_15
+		16:
+			return dunk_contact_frame_row_16
+	return -1
+
+
+func get_dunk_run_end_frame(row_index: int) -> int:
+	match row_index:
+		13:
+			return dunk_run_end_frame_row_13
+		15:
+			return dunk_run_end_frame_row_15
+		16:
+			return dunk_run_end_frame_row_16
+	return -1
+
+
+func get_dunk_jump_end_frame(row_index: int) -> int:
+	match row_index:
+		13:
+			return dunk_jump_end_frame_row_13
+		15:
+			return dunk_jump_end_frame_row_15
+		16:
+			return dunk_jump_end_frame_row_16
+	return -1
+
+
+func get_dunk_contact_end_frame(row_index: int) -> int:
+	match row_index:
+		13:
+			return dunk_contact_end_frame_row_13
+		15:
+			return dunk_contact_end_frame_row_15
+		16:
+			return dunk_contact_end_frame_row_16
+	return -1
+
+
+func get_dunk_contact_anchor_offset(row_index: int) -> Vector2:
+	match row_index:
+		13:
+			return dunk_contact_anchor_offset_row_13
+		15:
+			return dunk_contact_anchor_offset_row_15
+		16:
+			return dunk_contact_anchor_offset_row_16
+	return Vector2.ZERO
+
+
+func get_dunk_landing_anchor_offset(row_index: int) -> Vector2:
+	match row_index:
+		13:
+			return dunk_landing_anchor_offset_row_13
+		15:
+			return dunk_landing_anchor_offset_row_15
+		16:
+			return dunk_landing_anchor_offset_row_16
+	return Vector2.ZERO

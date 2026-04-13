@@ -122,10 +122,23 @@ func _run_pure_logic() -> void:
 	_assert_true(animation_config.dunk_contact_frame_row_13 == 10, "row 13 contact frame metadata", str(animation_config.dunk_contact_frame_row_13))
 	_assert_true(animation_config.dunk_contact_frame_row_15 == 11, "row 15 contact frame metadata", str(animation_config.dunk_contact_frame_row_15))
 	_assert_true(animation_config.dunk_contact_frame_row_16 == 11, "row 16 contact frame metadata", str(animation_config.dunk_contact_frame_row_16))
+	_assert_true(animation_config.dunk_run_end_frame_row_13 == 7, "row 13 run-end frame metadata", str(animation_config.dunk_run_end_frame_row_13))
+	_assert_true(animation_config.dunk_run_end_frame_row_15 == 7, "row 15 run-end frame metadata", str(animation_config.dunk_run_end_frame_row_15))
+	_assert_true(animation_config.dunk_run_end_frame_row_16 == 7, "row 16 run-end frame metadata", str(animation_config.dunk_run_end_frame_row_16))
+	_assert_true(animation_config.dunk_jump_end_frame_row_13 == 9, "row 13 jump-end frame metadata", str(animation_config.dunk_jump_end_frame_row_13))
+	_assert_true(animation_config.dunk_jump_end_frame_row_15 == 10, "row 15 jump-end frame metadata", str(animation_config.dunk_jump_end_frame_row_15))
+	_assert_true(animation_config.dunk_jump_end_frame_row_16 == 10, "row 16 jump-end frame metadata", str(animation_config.dunk_jump_end_frame_row_16))
+	_assert_true(animation_config.dunk_contact_end_frame_row_13 == 10, "row 13 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_13))
+	_assert_true(animation_config.dunk_contact_end_frame_row_15 == 11, "row 15 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_15))
+	_assert_true(animation_config.dunk_contact_end_frame_row_16 == 12, "row 16 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_16))
 	_assert_true(absf(animation_config.dunk_contact_hold_seconds - 0.5) < 0.001, "dunk contact hold duration metadata", str(animation_config.dunk_contact_hold_seconds))
-	_assert_true(animation_config.dunk_contact_anchor_offset_row_13.distance_to(Vector2(0.0, 160.0)) < 0.001, "row 13 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_13))
-	_assert_true(animation_config.dunk_contact_anchor_offset_row_15.distance_to(Vector2(-8.0, 141.0)) < 0.001, "row 15 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_15))
+	_assert_true(animation_config.dunk_contact_anchor_offset_row_13.distance_to(Vector2(-20.0, 172.0)) < 0.001, "row 13 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_13))
+	_assert_true(animation_config.dunk_contact_anchor_offset_row_15.distance_to(Vector2(-30.0, 162.0)) < 0.001, "row 15 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_15))
 	_assert_true(animation_config.dunk_contact_anchor_offset_row_16.distance_to(Vector2(-42.0, 160.0)) < 0.001, "row 16 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_16))
+	_assert_true(animation_config.dunk_landing_anchor_offset_row_13.distance_to(Vector2(-20.0, 268.0)) < 0.001, "row 13 landing anchor metadata", str(animation_config.dunk_landing_anchor_offset_row_13))
+	_assert_true(animation_config.dunk_landing_anchor_offset_row_15.distance_to(Vector2(-30.0, 258.0)) < 0.001, "row 15 landing anchor metadata", str(animation_config.dunk_landing_anchor_offset_row_15))
+	_assert_true(animation_config.dunk_landing_anchor_offset_row_16.distance_to(Vector2(-42.0, 256.0)) < 0.001, "row 16 landing anchor metadata", str(animation_config.dunk_landing_anchor_offset_row_16))
+	_assert_true(absf(animation_config.dunk_landing_ease_power - 1.8) < 0.001, "dunk landing ease metadata", str(animation_config.dunk_landing_ease_power))
 	var home_team_data: TeamData = load("res://data/teams/HOM.tres") as TeamData
 	var away_team_data: TeamData = load("res://data/teams/AWY.tres") as TeamData
 	var expected_dunk_ratings: Dictionary = {
@@ -1307,6 +1320,9 @@ func _run_pure_logic() -> void:
 		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 13 dunk hold")
 		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 15 dunk hold")
 		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(90.0, 80.0), Vector2(104.0, 92.0)], "row 16 dunk hold")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 13 root motion")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 15 root motion")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(90.0, 80.0), Vector2(104.0, 92.0)], "row 16 root motion")
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
@@ -1323,6 +1339,7 @@ func _run_pure_logic() -> void:
 			var dunk_make_launch_seen: bool = false
 			var dunk_make_release_phase: String = ""
 			var dunk_make_release_mode: String = ""
+			var dunk_make_landing_motion_seen: bool = false
 			for _dunk_make_frame in 180:
 				await get_tree().process_frame
 				if smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
@@ -1341,12 +1358,17 @@ func _run_pure_logic() -> void:
 			_assert_true(dunk_make_release_phase == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "dunk make starts in guided descent after release", dunk_make_release_phase)
 			_assert_true(dunk_make_release_mode == ShotController.RELEASE_MODE_DUNK_MAKE_DROP, "dunk make uses straight-through release mode in smoke", dunk_make_release_mode)
 			var dunk_make_peak_z: float = smoke_coordinator.ball_simulator.z
-			for _dunk_make_follow_frame in 8:
+			var previous_dunk_make_world: Vector2 = visual_lc.world_position
+			for _dunk_make_follow_frame in 32:
 				if smoke_coordinator.context.current_state != GameState.State.SHOT_IN_FLIGHT:
 					break
 				dunk_make_peak_z = maxf(dunk_make_peak_z, smoke_coordinator.ball_simulator.z)
 				await get_tree().process_frame
+				if visual_lc.world_position.distance_to(previous_dunk_make_world) > 0.01:
+					dunk_make_landing_motion_seen = true
+				previous_dunk_make_world = visual_lc.world_position
 			_assert_true(dunk_make_peak_z <= smoke_coordinator.court_config.rim_height + 0.01, "dunk make never rises above the rim after release", str(dunk_make_peak_z))
+			_assert_true(dunk_make_landing_motion_seen, "dunk make keeps moving through the landing after launch", str(visual_lc.world_position))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
@@ -1362,6 +1384,7 @@ func _run_pure_logic() -> void:
 			var straight_dunk_hold_started: bool = false
 			var straight_dunk_launch_seen: bool = false
 			var straight_dunk_release_mode: String = ""
+			var straight_dunk_landing_motion_seen: bool = false
 			for _straight_dunk_frame in 180:
 				await get_tree().process_frame
 				if smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE:
@@ -1376,12 +1399,17 @@ func _run_pure_logic() -> void:
 			_assert_true(straight_dunk_launch_seen, "straight dunk launches after the contact hold", smoke_coordinator.get_state_name())
 			_assert_true(straight_dunk_release_mode == ShotController.RELEASE_MODE_DUNK_MAKE_DROP, "straight dunk keeps the make-drop release mode in smoke", straight_dunk_release_mode)
 			var straight_dunk_peak_z: float = smoke_coordinator.ball_simulator.z
-			for _straight_dunk_follow_frame in 8:
+			var previous_straight_dunk_world: Vector2 = visual_lc.world_position
+			for _straight_dunk_follow_frame in 32:
 				if smoke_coordinator.context.current_state != GameState.State.SHOT_IN_FLIGHT:
 					break
 				straight_dunk_peak_z = maxf(straight_dunk_peak_z, smoke_coordinator.ball_simulator.z)
 				await get_tree().process_frame
+				if visual_lc.world_position.distance_to(previous_straight_dunk_world) > 0.01:
+					straight_dunk_landing_motion_seen = true
+				previous_straight_dunk_world = visual_lc.world_position
 			_assert_true(straight_dunk_peak_z <= smoke_coordinator.court_config.rim_height + 0.01, "straight dunk never rises above the rim after release", str(straight_dunk_peak_z))
+			_assert_true(straight_dunk_landing_motion_seen, "straight dunk keeps moving through the landing after launch", str(visual_lc.world_position))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		var visual_lc_defender: PlayerController = smoke_coordinator.get_defense_player_by_role("LC")
@@ -1659,6 +1687,238 @@ func _assert_dunk_hold_anchor_consistency(
 		_assert_true(anchor_offset.distance_to(configured_anchor) < 0.01, "%s snaps to configured anchor" % name_prefix, str(anchor_offset))
 		_assert_true(world_position.distance_to(first_world_position) < 0.01, "%s world position stays deterministic" % name_prefix, "%s %s" % [world_position, first_world_position])
 		_assert_true(ground_screen.distance_to(first_ground_screen) < 0.01, "%s screen anchor stays deterministic" % name_prefix, "%s %s" % [ground_screen, first_ground_screen])
+
+
+func _collect_dunk_motion_trace(
+	coordinator: GameCoordinator,
+	ballhandler_role: String,
+	seed: int,
+	start_offset: Vector2
+) -> Dictionary:
+	_reset_visual_test_state(coordinator, ballhandler_role, seed)
+	var shooter: PlayerController = coordinator.get_offense_player_by_role(ballhandler_role)
+	if shooter == null:
+		return {}
+	var motion_vector: Vector2 = (coordinator.court_config.hoop_position - (coordinator.court_config.hoop_position + start_offset)).normalized() * 190.0
+	shooter.world_position = coordinator.court_config.hoop_position + start_offset
+	shooter.velocity = motion_vector
+	coordinator.current_move_direction = motion_vector.normalized()
+	coordinator.current_move_magnitude = 1.0
+	_arm_test_shot(coordinator)
+	var frames: Array[Dictionary] = []
+	var samples: Array[Dictionary] = []
+	var resolved_row: int = -1
+	var started: bool = false
+	for _frame in 360:
+		await get_tree().process_frame
+		var root_motion_active: bool = not coordinator.active_dunk_root_motion.is_empty()
+		if not coordinator.active_shot_sequence.is_empty():
+			resolved_row = PlayerVisual.get_row_index_for_family_variant(
+				str(coordinator.active_shot_sequence.get("family", "")),
+				int(coordinator.active_shot_sequence.get("variant_index", 0))
+			)
+		elif root_motion_active:
+			resolved_row = int(coordinator.active_dunk_root_motion.get("row_index", resolved_row))
+		elif resolved_row <= 0:
+			resolved_row = shooter.get_debug_row_index()
+		var in_dunk_sequence: bool = root_motion_active \
+			or coordinator.context.current_state == GameState.State.SHOT_RELEASE \
+			or coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT \
+			or not samples.is_empty()
+		if not in_dunk_sequence:
+			continue
+		started = true
+		var frame_number: int = shooter.get_debug_frame_number()
+		if resolved_row <= 0 or frame_number <= 0:
+			if started and not root_motion_active and not samples.is_empty():
+				break
+			continue
+		var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(resolved_row)
+		var outside_release_states: bool = coordinator.context.current_state != GameState.State.SHOT_RELEASE \
+			and coordinator.context.current_state != GameState.State.SHOT_IN_FLIGHT
+		if not root_motion_active and outside_release_states and shooter.world_position.distance_to(landing_anchor_world) >= 0.01:
+			break
+		var sample_snapshot: Dictionary = {
+			"frame": frame_number,
+			"frame_progress": shooter.get_debug_frame_progress(),
+			"state": coordinator.get_state_name(),
+			"world_position": shooter.world_position,
+			"ground_screen": shooter.global_position,
+			"velocity": shooter.velocity,
+			"hold_active": shooter.is_dunk_contact_hold_active(),
+			"root_motion_active": root_motion_active,
+		}
+		samples.append(sample_snapshot)
+		var should_append: bool = frames.is_empty() or int(frames[-1].get("frame", -1)) != frame_number
+		if should_append:
+			frames.append(sample_snapshot.duplicate(true))
+		if not root_motion_active and shooter.world_position.distance_to(landing_anchor_world) < 0.01:
+			break
+		if not root_motion_active and outside_release_states:
+			break
+	return {"row": resolved_row, "frames": frames, "samples": samples}
+
+
+func _collect_matching_dunk_motion_traces(
+	coordinator: GameCoordinator,
+	expected_row: int,
+	ballhandler_role: String,
+	seeds: Array,
+	start_offsets: Array[Vector2],
+	required_count: int = 2
+) -> Array[Dictionary]:
+	var traces: Array[Dictionary] = []
+	var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(expected_row)
+	for start_offset in start_offsets:
+		for seed in seeds:
+			var trace: Dictionary = await _collect_dunk_motion_trace(coordinator, ballhandler_role, int(seed), start_offset)
+			if trace.is_empty() or int(trace.get("row", -1)) != expected_row:
+				continue
+			var trace_samples: Array = trace.get("samples", [])
+			if trace_samples.is_empty():
+				continue
+			var final_world: Vector2 = trace_samples[-1].get("world_position", Vector2.INF)
+			if final_world.distance_to(landing_anchor_world) >= 0.01:
+				continue
+			traces.append(trace)
+			if traces.size() >= required_count:
+				return traces
+	return traces
+
+
+func _find_dunk_motion_frame_snapshot(trace_frames: Array, frame_number: int) -> Dictionary:
+	for snapshot in trace_frames:
+		if int(snapshot.get("frame", -1)) == frame_number:
+			return snapshot
+	return {}
+
+
+func _assert_dunk_root_motion_trace_consistency(
+	coordinator: GameCoordinator,
+	expected_row: int,
+	ballhandler_role: String,
+	seeds: Array,
+	start_offsets: Array[Vector2],
+	name_prefix: String
+) -> void:
+	var traces: Array[Dictionary] = await _collect_matching_dunk_motion_traces(
+		coordinator,
+		expected_row,
+		ballhandler_role,
+		seeds,
+		start_offsets
+	)
+	_assert_true(traces.size() >= 2, "%s traces reachable" % name_prefix, JSON.stringify(traces))
+	if traces.size() < 2:
+		return
+	var contact_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_contact_anchor_offset_for_row(expected_row)
+	var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(expected_row)
+	var run_end_frame: int = coordinator.player_animation_config.get_dunk_run_end_frame(expected_row)
+	var jump_end_frame: int = coordinator.player_animation_config.get_dunk_jump_end_frame(expected_row)
+	var contact_start_frame: int = coordinator.player_animation_config.get_dunk_contact_frame(expected_row)
+	var contact_end_frame: int = coordinator.player_animation_config.get_dunk_contact_end_frame(expected_row)
+	var first_trace_frames: Array = traces[0].get("frames", [])
+	var first_trace_samples: Array = traces[0].get("samples", [])
+	var first_contact_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(first_trace_frames, contact_start_frame)
+	var first_final_snapshot: Dictionary = first_trace_samples[-1] if not first_trace_samples.is_empty() else {}
+	for trace in traces:
+		var trace_frames: Array = trace.get("frames", [])
+		var trace_samples: Array = trace.get("samples", [])
+		_assert_true(not trace_samples.is_empty(), "%s captured root-motion samples" % name_prefix, JSON.stringify(trace))
+		var previous_distance_to_contact: float = INF
+		var previous_world_position: Vector2 = Vector2.INF
+		for frame_number in range(1, run_end_frame + 1):
+			var run_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, frame_number)
+			_assert_true(not run_snapshot.is_empty(), "%s run frame %d exists" % [name_prefix, frame_number], JSON.stringify(trace_frames))
+			if run_snapshot.is_empty():
+				continue
+			var run_world: Vector2 = run_snapshot.get("world_position", Vector2.INF)
+			if frame_number > 1:
+				_assert_true(run_world.distance_to(previous_world_position) > 0.01, "%s run frame %d keeps moving" % [name_prefix, frame_number], "%s %s" % [run_world, previous_world_position])
+			var run_distance_to_contact: float = run_world.distance_to(contact_anchor_world)
+			_assert_true(run_distance_to_contact <= previous_distance_to_contact + 0.01, "%s run frame %d moves toward contact" % [name_prefix, frame_number], "%0.3f %0.3f" % [run_distance_to_contact, previous_distance_to_contact])
+			previous_distance_to_contact = run_distance_to_contact
+			previous_world_position = run_world
+		for frame_number in range(run_end_frame + 1, jump_end_frame + 1):
+			var jump_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, frame_number)
+			_assert_true(not jump_snapshot.is_empty(), "%s jump frame %d exists" % [name_prefix, frame_number], JSON.stringify(trace_frames))
+			if jump_snapshot.is_empty():
+				continue
+			var jump_world: Vector2 = jump_snapshot.get("world_position", Vector2.INF)
+			_assert_true(jump_world.distance_to(previous_world_position) > 0.01, "%s jump frame %d keeps moving" % [name_prefix, frame_number], "%s %s" % [jump_world, previous_world_position])
+			var jump_distance_to_contact: float = jump_world.distance_to(contact_anchor_world)
+			_assert_true(jump_distance_to_contact <= previous_distance_to_contact + 0.01, "%s jump frame %d keeps moving toward contact" % [name_prefix, frame_number], "%0.3f %0.3f" % [jump_distance_to_contact, previous_distance_to_contact])
+			previous_distance_to_contact = jump_distance_to_contact
+			previous_world_position = jump_world
+		for frame_number in range(contact_start_frame, contact_end_frame + 1):
+			var contact_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, frame_number)
+			_assert_true(not contact_snapshot.is_empty(), "%s contact frame %d exists" % [name_prefix, frame_number], JSON.stringify(trace_frames))
+			if contact_snapshot.is_empty():
+				continue
+			var contact_world: Vector2 = contact_snapshot.get("world_position", Vector2.INF)
+			_assert_true(contact_world.distance_to(contact_anchor_world) < 0.01, "%s contact frame %d pins to contact anchor" % [name_prefix, frame_number], str(contact_world))
+		if expected_row == 16:
+			var row16_contact_a: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, 11)
+			var row16_contact_b: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, 12)
+			_assert_true(not row16_contact_a.is_empty() and not row16_contact_b.is_empty(), "%s row 16 captures both dunk frames" % name_prefix, JSON.stringify(trace_frames))
+			if not row16_contact_a.is_empty() and not row16_contact_b.is_empty():
+				_assert_true(
+					row16_contact_a.get("world_position", Vector2.INF).distance_to(row16_contact_b.get("world_position", Vector2.INF)) < 0.01,
+					"%s row 16 stays pinned across both contact frames" % name_prefix,
+					"%s %s" % [row16_contact_a.get("world_position", Vector2.ZERO), row16_contact_b.get("world_position", Vector2.ZERO)]
+				)
+		var landing_start_index: int = -1
+		for sample_index in range(trace_samples.size()):
+			if str(trace_samples[sample_index].get("state", "")) == "SHOT_IN_FLIGHT":
+				landing_start_index = sample_index
+				break
+		_assert_true(landing_start_index >= 0, "%s landing starts after launch" % name_prefix, JSON.stringify(trace_samples))
+		if landing_start_index >= 0:
+			var landing_start_snapshot: Dictionary = trace_samples[landing_start_index]
+			var landing_start_world: Vector2 = landing_start_snapshot.get("world_position", Vector2.INF)
+			_assert_true(landing_start_world.distance_to(contact_anchor_world) < 0.01, "%s landing starts on contact anchor" % name_prefix, str(landing_start_world))
+			var previous_landing_world: Vector2 = landing_start_world
+			var previous_landing_distance: float = landing_start_world.distance_to(landing_anchor_world)
+			var landing_motion_seen: bool = false
+			for sample_index in range(landing_start_index + 1, trace_samples.size()):
+				var landing_snapshot: Dictionary = trace_samples[sample_index]
+				var landing_world: Vector2 = landing_snapshot.get("world_position", Vector2.INF)
+				if landing_world.distance_to(previous_landing_world) > 0.01:
+					landing_motion_seen = true
+				var landing_distance: float = landing_world.distance_to(landing_anchor_world)
+				_assert_true(landing_distance <= previous_landing_distance + 0.01, "%s landing keeps descending to landing anchor" % name_prefix, "%0.3f %0.3f" % [landing_distance, previous_landing_distance])
+				previous_landing_world = landing_world
+				previous_landing_distance = landing_distance
+			_assert_true(landing_motion_seen, "%s landing keeps moving after launch" % name_prefix, JSON.stringify(trace_samples))
+			var final_snapshot: Dictionary = trace_samples[-1]
+			var final_world: Vector2 = final_snapshot.get("world_position", Vector2.INF)
+			_assert_true(final_world.distance_to(landing_anchor_world) < 0.01, "%s final landing sample reaches landing anchor" % name_prefix, str(final_world))
+		var contact_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, contact_start_frame)
+		var final_snapshot_again: Dictionary = trace_samples[-1] if not trace_samples.is_empty() else {}
+		_assert_true(not contact_snapshot.is_empty(), "%s contact snapshot available for determinism" % name_prefix, JSON.stringify(trace_frames))
+		_assert_true(not final_snapshot_again.is_empty(), "%s final snapshot available for determinism" % name_prefix, JSON.stringify(trace_frames))
+		if not contact_snapshot.is_empty() and not first_contact_snapshot.is_empty():
+			_assert_true(
+				contact_snapshot.get("world_position", Vector2.INF).distance_to(first_contact_snapshot.get("world_position", Vector2.INF)) < 0.01,
+				"%s contact world position stays deterministic" % name_prefix,
+				"%s %s" % [contact_snapshot.get("world_position", Vector2.ZERO), first_contact_snapshot.get("world_position", Vector2.ZERO)]
+			)
+			_assert_true(
+				contact_snapshot.get("ground_screen", Vector2.INF).distance_to(first_contact_snapshot.get("ground_screen", Vector2.INF)) < 0.01,
+				"%s contact screen anchor stays deterministic" % name_prefix,
+				"%s %s" % [contact_snapshot.get("ground_screen", Vector2.ZERO), first_contact_snapshot.get("ground_screen", Vector2.ZERO)]
+			)
+		if not final_snapshot_again.is_empty() and not first_final_snapshot.is_empty():
+			_assert_true(
+				final_snapshot_again.get("world_position", Vector2.INF).distance_to(first_final_snapshot.get("world_position", Vector2.INF)) < 0.01,
+				"%s landing world position stays deterministic" % name_prefix,
+				"%s %s" % [final_snapshot_again.get("world_position", Vector2.ZERO), first_final_snapshot.get("world_position", Vector2.ZERO)]
+			)
+			_assert_true(
+				final_snapshot_again.get("ground_screen", Vector2.INF).distance_to(first_final_snapshot.get("ground_screen", Vector2.INF)) < 0.01,
+				"%s landing screen anchor stays deterministic" % name_prefix,
+				"%s %s" % [final_snapshot_again.get("ground_screen", Vector2.ZERO), first_final_snapshot.get("ground_screen", Vector2.ZERO)]
+			)
 
 
 func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerController, aim_frames: int = 12) -> void:

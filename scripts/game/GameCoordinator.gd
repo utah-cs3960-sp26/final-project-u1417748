@@ -88,6 +88,7 @@ var last_pass_committed_interceptor_name: String = ""
 var player_visual_memory: Dictionary = {}
 var shot_visual_locks: Dictionary = {}
 var active_shot_sequence: Dictionary = {}
+var active_dunk_root_motion: Dictionary = {}
 var pending_shot_release: Dictionary = {}
 var ball_visual_mode: int = BallVisualMode.HIDDEN_WHILE_OWNED
 var ball_visual_owner: PlayerController
@@ -310,7 +311,7 @@ func _start_new_match() -> void:
 	log_writer.clear_runtime_logs()
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
-	active_shot_sequence.clear()
+	_clear_active_dunk_root_motion()
 	route_controller.reset_runtime_state()
 	route_phase_time = 0.0
 	rebound_delay_timer = 0.0
@@ -347,6 +348,7 @@ func _reset_possession() -> void:
 	route_controller.reset_runtime_state()
 	shot_owner = null
 	context.gameplay_time_scale = 1.0
+	_clear_active_dunk_root_motion()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
 	shot_visual_locks.clear()
@@ -601,7 +603,10 @@ func _update_shot_in_flight(delta: float) -> void:
 			_update_hud()
 			_begin_score_followthrough(interaction)
 			_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
-			made_shot_animation_timer = maxf(shot_config.made_shot_animation_duration, ball_simulator.get_remaining_visual_time() + 0.08)
+			made_shot_animation_timer = maxf(
+				maxf(shot_config.made_shot_animation_duration, ball_simulator.get_remaining_visual_time() + 0.08),
+				_get_active_dunk_root_motion_remaining_seconds()
+			)
 			return
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 	if not ball_simulator.is_in_flight and not ball_simulator.already_scored:
@@ -1206,6 +1211,7 @@ func begin_test_mode(seed: int) -> void:
 	_reseed_visual_rng(seed)
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
+	_clear_active_dunk_root_motion()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
 	log_writer.set_prefix("test_%d" % seed)
@@ -1229,6 +1235,7 @@ func apply_scenario_setup(setup: Dictionary) -> void:
 	route_controller.reset_runtime_state()
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
+	_clear_active_dunk_root_motion()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
 	if setup.has("route_package"):
@@ -1443,6 +1450,7 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 		return
 	for player in offense_players + defense_players:
 		player.sync_visual_state(_build_player_visual_request(player), delta)
+	_advance_active_dunk_root_motion(delta)
 	_maybe_commit_pending_shot_release()
 	_update_camera_tracking(delta)
 	if hoop_node != null:
@@ -1962,27 +1970,94 @@ func _should_allow_dunk_contact_hold(player: PlayerController, family: String) -
 
 func get_dunk_contact_anchor_offset_for_row(row_index: int) -> Vector2:
 	if player_animation_config != null:
-		match row_index:
-			13:
-				return player_animation_config.dunk_contact_anchor_offset_row_13
-			15:
-				return player_animation_config.dunk_contact_anchor_offset_row_15
-			16:
-				return player_animation_config.dunk_contact_anchor_offset_row_16
+		return player_animation_config.get_dunk_contact_anchor_offset(row_index)
 	return Vector2(0.0, 40.0)
+
+
+func get_dunk_landing_anchor_offset_for_row(row_index: int) -> Vector2:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_landing_anchor_offset(row_index)
+	return get_dunk_contact_anchor_offset_for_row(row_index) + Vector2(0.0, 96.0)
+
+
+func _get_dunk_contact_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_contact_frame(row_index)
+	match row_index:
+		13:
+			return 10
+		15, 16:
+			return 11
+	return -1
+
+
+func _get_dunk_run_end_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_run_end_frame(row_index)
+	match row_index:
+		13, 15, 16:
+			return 7
+	return -1
+
+
+func _get_dunk_jump_end_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_jump_end_frame(row_index)
+	match row_index:
+		13:
+			return 9
+		15, 16:
+			return 10
+	return -1
+
+
+func _get_dunk_contact_end_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_contact_end_frame(row_index)
+	match row_index:
+		13:
+			return 10
+		15:
+			return 11
+		16:
+			return 12
+	return -1
+
+
+func _get_dunk_landing_ease_power() -> float:
+	if player_animation_config != null:
+		return maxf(player_animation_config.dunk_landing_ease_power, 0.01)
+	return 1.8
+
+
+func _get_active_dunk_root_motion_remaining_seconds() -> float:
+	if active_dunk_root_motion.is_empty():
+		return 0.0
+	var shooter: PlayerController = active_dunk_root_motion.get("player", null) as PlayerController
+	if shooter == null:
+		return 0.0
+	var total_frames: int = int(active_dunk_root_motion.get("total_frames", 0))
+	if total_frames <= 0:
+		return 0.0
+	var fps: float = 15.0
+	if _has_active_shot_sequence_for_player(shooter):
+		fps = float(Dictionary(active_shot_sequence.get("timing_profile", {})).get("fps", fps))
+	return maxf(float(total_frames) - shooter.get_debug_frame_progress(), 0.0) / maxf(fps, 0.001)
 
 
 func _resolve_dunk_contact_row_index(shooter: PlayerController) -> int:
 	if shooter == null:
 		return -1
-	var visual_row_index: int = shooter.get_debug_row_index()
-	if visual_row_index > 0:
-		return visual_row_index
 	if _has_active_shot_sequence_for_player(shooter):
-		return PlayerVisual.get_row_index_for_family_variant(
+		var active_row_index: int = PlayerVisual.get_row_index_for_family_variant(
 			str(active_shot_sequence.get("family", "")),
 			int(active_shot_sequence.get("variant_index", 0))
 		)
+		if active_row_index > 0:
+			return active_row_index
+	var visual_row_index: int = shooter.get_debug_row_index()
+	if visual_row_index > 0:
+		return visual_row_index
 	return -1
 
 
@@ -2003,6 +2078,146 @@ func _build_dunk_contact_snap_snapshot(shooter: PlayerController) -> Dictionary:
 		"world_position": snapped_world_position,
 		"ground_screen": ground_screen,
 	}
+
+
+func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
+	_clear_active_dunk_root_motion(false)
+	if shooter == null or court_config == null:
+		return
+	var row_index: int = _resolve_dunk_contact_row_index(shooter)
+	if row_index <= 0:
+		return
+	var contact_start_frame: int = _get_dunk_contact_frame_for_row(row_index)
+	var total_frames: int = PlayerVisual.ROW_FRAME_COUNTS[row_index - 1] if row_index >= 1 and row_index <= PlayerVisual.ROW_FRAME_COUNTS.size() else 0
+	if contact_start_frame <= 1 or total_frames <= 0:
+		return
+	var run_end_frame: int = clampi(_get_dunk_run_end_frame_for_row(row_index), 1, contact_start_frame - 1)
+	var jump_end_frame: int = clampi(_get_dunk_jump_end_frame_for_row(row_index), run_end_frame, contact_start_frame - 1)
+	var contact_end_frame: int = clampi(_get_dunk_contact_end_frame_for_row(row_index), contact_start_frame, total_frames)
+	var release_start_world_position: Vector2 = shooter.world_position
+	var contact_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_contact_anchor_offset_for_row(row_index)
+	var landing_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_landing_anchor_offset_for_row(row_index)
+	var run_fraction: float = clampf(float(run_end_frame) / maxf(float(contact_start_frame - 1), 1.0), 0.0, 1.0)
+	var run_end_world_position: Vector2 = release_start_world_position.lerp(contact_anchor_world_position, run_fraction)
+	active_dunk_root_motion = {
+		"player": shooter,
+		"row_index": row_index,
+		"release_start_world_position": release_start_world_position,
+		"contact_anchor_world_position": contact_anchor_world_position,
+		"landing_anchor_world_position": landing_anchor_world_position,
+		"run_end_world_position": run_end_world_position,
+		"run_end_frame": run_end_frame,
+		"jump_end_frame": jump_end_frame,
+		"contact_start_frame": contact_start_frame,
+		"contact_end_frame": contact_end_frame,
+		"total_frames": total_frames,
+		"last_applied_frame": 0,
+		"last_phase": "",
+	}
+	log_writer.log_event(
+		"dunk_root_motion_started",
+		{
+			"player": shooter.get_display_name(),
+			"row": row_index,
+			"phase": "run",
+			"frame": 1,
+			"release_start": _vector2_payload(release_start_world_position),
+			"contact_anchor": _vector2_payload(contact_anchor_world_position),
+			"landing_anchor": _vector2_payload(landing_anchor_world_position),
+		}
+	)
+
+
+func _advance_active_dunk_root_motion(delta: float) -> void:
+	if active_dunk_root_motion.is_empty():
+		return
+	var shooter: PlayerController = active_dunk_root_motion.get("player", null) as PlayerController
+	if shooter == null:
+		_clear_active_dunk_root_motion(false)
+		return
+	var current_frame: int = shooter.get_debug_frame_number()
+	var current_frame_progress: float = shooter.get_debug_frame_progress()
+	if current_frame <= 0:
+		return
+	var phase: String = _resolve_dunk_root_motion_phase(current_frame, active_dunk_root_motion)
+	var resolved_position: Vector2 = _resolve_dunk_root_motion_world_position(current_frame_progress, active_dunk_root_motion)
+	var total_frames: int = int(active_dunk_root_motion.get("total_frames", current_frame))
+	var root_motion_completed: bool = current_frame >= total_frames and shooter.is_current_animation_complete()
+	if root_motion_completed:
+		phase = "landing"
+		resolved_position = active_dunk_root_motion.get("landing_anchor_world_position", resolved_position)
+	var previous_position: Vector2 = shooter.world_position
+	shooter.world_position = resolved_position
+	if delta > 0.0:
+		var frame_delta: Vector2 = resolved_position - previous_position
+		shooter.velocity = frame_delta / delta if frame_delta.length_squared() > 0.0001 else Vector2.ZERO
+	else:
+		shooter.velocity = Vector2.ZERO
+	var last_phase: String = str(active_dunk_root_motion.get("last_phase", ""))
+	var last_frame: int = int(active_dunk_root_motion.get("last_applied_frame", 0))
+	if phase != last_phase or current_frame != last_frame:
+		active_dunk_root_motion["last_phase"] = phase
+		active_dunk_root_motion["last_applied_frame"] = current_frame
+		if phase != last_phase:
+			log_writer.log_event(
+				"dunk_root_motion_phase",
+				{
+					"player": shooter.get_display_name(),
+					"row": int(active_dunk_root_motion.get("row_index", shooter.get_debug_row_index())),
+					"phase": phase,
+					"frame": current_frame,
+					"release_start": _vector2_payload(active_dunk_root_motion.get("release_start_world_position", Vector2.ZERO)),
+					"contact_anchor": _vector2_payload(active_dunk_root_motion.get("contact_anchor_world_position", Vector2.ZERO)),
+					"landing_anchor": _vector2_payload(active_dunk_root_motion.get("landing_anchor_world_position", Vector2.ZERO)),
+				}
+			)
+	if root_motion_completed:
+		_clear_active_dunk_root_motion()
+
+
+func _resolve_dunk_root_motion_phase(frame_number: int, motion_snapshot: Dictionary) -> String:
+	var run_end_frame: int = int(motion_snapshot.get("run_end_frame", 0))
+	var jump_end_frame: int = int(motion_snapshot.get("jump_end_frame", run_end_frame))
+	var contact_end_frame: int = int(motion_snapshot.get("contact_end_frame", jump_end_frame))
+	if frame_number <= run_end_frame:
+		return "run"
+	if frame_number <= jump_end_frame:
+		return "jump"
+	if frame_number <= contact_end_frame:
+		return "contact"
+	return "landing"
+
+
+func _resolve_dunk_root_motion_world_position(frame_progress: float, motion_snapshot: Dictionary) -> Vector2:
+	var release_start_world_position: Vector2 = motion_snapshot.get("release_start_world_position", Vector2.ZERO)
+	var run_end_world_position: Vector2 = motion_snapshot.get("run_end_world_position", release_start_world_position)
+	var contact_anchor_world_position: Vector2 = motion_snapshot.get("contact_anchor_world_position", release_start_world_position)
+	var landing_anchor_world_position: Vector2 = motion_snapshot.get("landing_anchor_world_position", contact_anchor_world_position)
+	var run_end_frame: int = int(motion_snapshot.get("run_end_frame", 0))
+	var contact_start_frame: int = int(motion_snapshot.get("contact_start_frame", run_end_frame + 1))
+	var contact_end_frame: int = int(motion_snapshot.get("contact_end_frame", contact_start_frame))
+	var total_frames: int = int(motion_snapshot.get("total_frames", contact_end_frame))
+	var resolved_progress: float = clampf(frame_progress, 1.0, float(total_frames))
+	if resolved_progress <= float(run_end_frame):
+		var run_alpha: float = clampf(resolved_progress / maxf(float(run_end_frame), 1.0), 0.0, 1.0)
+		return release_start_world_position.lerp(run_end_world_position, run_alpha)
+	if resolved_progress < float(contact_start_frame):
+		var jump_alpha: float = clampf(
+			(resolved_progress - float(run_end_frame)) / maxf(float(contact_start_frame - run_end_frame), 1.0),
+			0.0,
+			1.0
+		)
+		return run_end_world_position.lerp(contact_anchor_world_position, jump_alpha)
+	if resolved_progress <= float(contact_end_frame):
+		return contact_anchor_world_position
+	var landing_start_frame: int = contact_end_frame + 1
+	var landing_alpha: float = clampf(
+		(resolved_progress - float(landing_start_frame)) / maxf(float(total_frames - landing_start_frame), 1.0),
+		0.0,
+		1.0
+	)
+	landing_alpha = pow(landing_alpha, _get_dunk_landing_ease_power())
+	return contact_anchor_world_position.lerp(landing_anchor_world_position, landing_alpha)
 
 
 func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
@@ -2247,14 +2462,25 @@ func _clear_active_pass_interceptor() -> void:
 	pass_controller.active_pass["force_steal"] = false
 
 
-func _clear_active_shot_sequence(preserve_visual_lock: bool = false) -> void:
+func _clear_active_shot_sequence(preserve_visual_lock: bool = false, clear_dunk_root_motion: bool = true) -> void:
 	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
 	active_shot_sequence.clear()
+	if clear_dunk_root_motion:
+		_clear_active_dunk_root_motion(true, shooter)
 	shot_controller.cancel_aim()
 	if court_view != null:
 		court_view.clear_shot_meter()
 	if not preserve_visual_lock and shooter != null:
 		shot_visual_locks.erase(shooter)
+
+
+func _clear_active_dunk_root_motion(reset_velocity: bool = true, player_override: PlayerController = null) -> void:
+	var shooter: PlayerController = player_override
+	if shooter == null:
+		shooter = active_dunk_root_motion.get("player", null) as PlayerController
+	active_dunk_root_motion.clear()
+	if reset_velocity and shooter != null:
+		shooter.velocity = Vector2.ZERO
 
 
 func _sync_shot_meter_display() -> void:
@@ -2279,7 +2505,7 @@ func _maybe_finish_active_shot_sequence() -> void:
 		_clear_active_shot_sequence()
 		return
 	if shooter.is_current_animation_complete() and shot_controller.get_meter_progress() >= 0.999:
-		_clear_active_shot_sequence(true)
+		_clear_active_shot_sequence(true, false)
 
 
 func _get_remaining_shot_pose_duration() -> float:
@@ -2337,6 +2563,10 @@ func _queue_shot_release(action: Dictionary, blocker: PlayerController = null) -
 		active_shot_sequence["timing_result"] = str(action.get("timing_result", action.get("quality", "red")))
 	var shot_family: String = str(active_shot_sequence.get("family", ""))
 	var use_dunk_contact_hold: bool = blocker == null and _is_dunk_family(shot_family)
+	if use_dunk_contact_hold:
+		_begin_active_dunk_root_motion(shooter)
+	else:
+		_clear_active_dunk_root_motion()
 	pending_shot_release = {
 		"player": shooter,
 		"action": action,

@@ -175,6 +175,21 @@ func get_debug_frame_number() -> int:
 	return _frame_index + 1
 
 
+func get_debug_frame_progress() -> float:
+	var frame_count: int = _get_frame_count_for_row(_current_row_index)
+	if frame_count <= 0:
+		return 0.0
+	var current_frame_number: int = _frame_index + 1
+	if _dunk_contact_hold_active or (not _is_looping_family(_animation_family) and _frame_index >= frame_count - 1):
+		return float(current_frame_number)
+	var fps: float = float(FAMILY_FPS.get(_animation_family, 6.0))
+	if fps <= 0.0:
+		return float(current_frame_number)
+	var frame_duration: float = 1.0 / fps
+	var frame_alpha: float = clampf(_frame_elapsed / maxf(frame_duration, 0.001), 0.0, 0.999)
+	return minf(float(current_frame_number) + frame_alpha, float(frame_count))
+
+
 func get_debug_release_after_frame() -> int:
 	return _release_after_frame
 
@@ -383,13 +398,7 @@ func _get_dunk_contact_hold_seconds() -> float:
 
 func _get_dunk_contact_frame_for_row(row_index: int) -> int:
 	if animation_config != null:
-		match row_index:
-			13:
-				return animation_config.dunk_contact_frame_row_13
-			15:
-				return animation_config.dunk_contact_frame_row_15
-			16:
-				return animation_config.dunk_contact_frame_row_16
+		return animation_config.get_dunk_contact_frame(row_index)
 	return int(DEFAULT_DUNK_CONTACT_FRAME_BY_ROW.get(row_index, -1))
 
 

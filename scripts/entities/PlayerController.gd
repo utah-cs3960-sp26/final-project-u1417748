@@ -216,6 +216,10 @@ func get_debug_frame_number() -> int:
 	return _visual.get_debug_frame_number() if _visual != null else -1
 
 
+func get_debug_frame_progress() -> float:
+	return _visual.get_debug_frame_progress() if _visual != null else 0.0
+
+
 func get_debug_release_after_frame() -> int:
 	return _visual.get_debug_release_after_frame() if _visual != null else -1
 
