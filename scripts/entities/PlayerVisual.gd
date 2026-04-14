@@ -122,6 +122,7 @@ func apply_state(request, delta: float) -> void:
 	var next_rows: Array = FAMILY_ROWS.get(next_family, [1])
 	var next_variant: int = clampi(request.variant_index, 0, maxi(next_rows.size() - 1, 0))
 	var next_row: int = int(next_rows[next_variant])
+	var next_start_frame: int = max(int(request.start_frame_override), 1)
 	var should_restart: bool = request.force_restart \
 		or next_family != _animation_family \
 		or next_variant != _variant_index \
@@ -138,9 +139,12 @@ func apply_state(request, delta: float) -> void:
 	_world_ball_release_ready_this_tick = false
 	var start_hold_on_entry: bool = false
 	if should_restart:
-		_frame_index = 0
+		var frame_count: int = _get_frame_count_for_row(_current_row_index)
+		var clamped_start_frame: int = clampi(next_start_frame, 1, frame_count)
+		_frame_index = clamped_start_frame - 1
 		_frame_elapsed = 0.0
-		_animation_elapsed = 0.0
+		var fps: float = float(FAMILY_FPS.get(_animation_family, 6.0))
+		_animation_elapsed = float(_frame_index) / maxf(fps, 0.001)
 		_animation_completed = false
 		_reset_dunk_contact_hold()
 	elif _should_use_dunk_contact_hold() and not _dunk_contact_hold_finished and not _dunk_contact_hold_active \

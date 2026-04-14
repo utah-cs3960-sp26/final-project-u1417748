@@ -1153,7 +1153,8 @@ func get_debug_snapshot() -> Dictionary:
 	var intercept_corridor: PackedVector2Array = PackedVector2Array()
 	var raw_corridor: PackedVector2Array = pass_controller.get_intercept_corridor()
 	if raw_corridor.size() == 2:
-		intercept_corridor = court_projection.project_polyline([raw_corridor[0], raw_corridor[1]])
+		var corridor_points: Array[Vector2] = [raw_corridor[0], raw_corridor[1]]
+		intercept_corridor = court_projection.project_polyline(corridor_points)
 	var pass_snapshot: Dictionary = pass_controller.get_active_pass_snapshot()
 	var pass_target_marker: Vector2 = Vector2.INF
 	var pass_chase_marker: Vector2 = Vector2.INF
@@ -1179,6 +1180,26 @@ func get_debug_snapshot() -> Dictionary:
 	var rebound_zone: PackedVector2Array = PackedVector2Array()
 	if context.current_state == GameState.State.REBOUND_LIVE:
 		rebound_zone = court_projection.project_circle(active_rebound_zone, rebound_config.rebound_zone_radius, 0.0, 28)
+	var finish_radius_rings: Array[Dictionary] = []
+	var finish_radius_center: Vector2 = Vector2.INF
+	if court_projection != null and court_config != null and player_animation_config != null:
+		var finish_center_world: Vector2 = get_finish_logic_center_world()
+		finish_radius_center = court_projection.world_to_screen_ground(finish_center_world)
+		var radius_specs: Array[Dictionary] = [
+			{"name": "close_finish", "radius": player_animation_config.close_finish_radius},
+			{"name": "dunk_max", "radius": player_animation_config.dunk_finish_radius},
+			{"name": "dunk_medium", "radius": player_animation_config.dunk_smart_start_medium_distance},
+			{"name": "dunk_short", "radius": player_animation_config.dunk_smart_start_short_distance},
+		]
+		for radius_spec in radius_specs:
+			var radius_value: float = maxf(float(radius_spec.get("radius", 0.0)), 0.0)
+			if radius_value <= 0.0:
+				continue
+			finish_radius_rings.append({
+				"name": str(radius_spec.get("name", "")),
+				"radius": radius_value,
+				"points": court_projection.project_circle(finish_center_world, radius_value, 0.0, 72),
+			})
 	return {
 		"state_name": GameState.state_name(context.current_state),
 		"clock_text": _format_clock_text(context.match_time_remaining),
@@ -1201,7 +1222,17 @@ func get_debug_snapshot() -> Dictionary:
 		"pass_outcome": last_pass_resolution_outcome,
 		"rebound_zone": rebound_zone,
 		"shot_preview": current_preview_points,
+		"finish_radius_rings": finish_radius_rings,
+		"finish_radius_center": finish_radius_center,
 	}
+
+
+func get_finish_logic_center_world() -> Vector2:
+	if court_config == null:
+		return Vector2.ZERO
+	if court_projection != null and hoop_node != null and hoop_node.has_method("get_debug_finish_radius_center_screen"):
+		return court_projection.screen_to_world_ground(hoop_node.call("get_debug_finish_radius_center_screen"))
+	return court_config.hoop_position
 
 
 func begin_test_mode(seed: int) -> void:
@@ -1772,18 +1803,23 @@ func _build_player_visual_request(player: PlayerController):
 	var locked_shot_visual: Dictionary = _get_locked_shot_visual(player)
 	var variant_index: int = 0
 	var mirror_west: bool = bool(memory.get("mirror_west", false))
+	var start_frame_override: int = int(memory.get("start_frame_override", 1))
 	if not locked_shot_visual.is_empty():
 		variant_index = int(locked_shot_visual.get("variant_index", 0))
 		mirror_west = bool(locked_shot_visual.get("mirror_west", false))
+		start_frame_override = int(locked_shot_visual.get("start_frame_override", 1))
 	else:
 		variant_index = _resolve_variant_index_for_family(player, family, memory)
 		var action_vector: Vector2 = _resolve_player_action_vector(player, family)
 		mirror_west = _resolve_family_mirror_west(family, action_vector, mirror_west)
+		start_frame_override = 1
 	var force_restart: bool = str(memory.get("family", "")) != family or int(memory.get("variant_index", -1)) != variant_index
+	force_restart = force_restart or int(memory.get("start_frame_override", 1)) != start_frame_override
 	player_visual_memory[player] = {
 		"family": family,
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
+		"start_frame_override": start_frame_override,
 	}
 	return PLAYER_VISUAL_REQUEST_SCRIPT.new(
 		family,
@@ -1791,7 +1827,8 @@ func _build_player_visual_request(player: PlayerController):
 		mirror_west,
 		player.is_controlled,
 		force_restart,
-		_should_allow_dunk_contact_hold(player, family)
+		_should_allow_dunk_contact_hold(player, family),
+		start_frame_override
 	)
 
 
@@ -1840,16 +1877,16 @@ func _resolve_defender_animation_family(previous_family: String, speed: float) -
 func _resolve_player_action_vector(player: PlayerController, family: String) -> Vector2:
 	match family:
 		"shot_aim":
-			return court_config.hoop_position - player.world_position
+			return get_finish_logic_center_world() - player.world_position
 		"set_shot_release", "jumper_release", "close_finish_layup", "close_finish_dunk", "close_finish_side_dunk":
 			return _resolve_shot_release_action_vector(player)
 		"ball_move_small", "ball_move_run", "off_ball_run":
 			return _resolve_player_motion_vector(player)
 		"ball_idle_open", "ball_idle_pressured":
-			return court_config.hoop_position - player.world_position
+			return get_finish_logic_center_world() - player.world_position
 		"ball_hold_secure":
 			if player.is_offense:
-				return court_config.hoop_position - player.world_position
+				return get_finish_logic_center_world() - player.world_position
 			return _get_defender_assignment_vector(player)
 		"guard_run":
 			return _get_defender_guard_target(player) - player.world_position
@@ -1879,6 +1916,7 @@ func _get_locked_shot_visual(player: PlayerController) -> Dictionary:
 			"family": str(active_shot_sequence.get("family", "jumper_release")),
 			"variant_index": int(active_shot_sequence.get("variant_index", 0)),
 			"mirror_west": bool(active_shot_sequence.get("mirror_west", false)),
+			"start_frame_override": int(active_shot_sequence.get("approach_start_frame", 1)),
 		}
 	if player.shot_pose_timer <= 0.0:
 		return {}
@@ -2024,6 +2062,61 @@ func _get_dunk_contact_end_frame_for_row(row_index: int) -> int:
 	return -1
 
 
+func _get_dunk_jump_start_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_jump_start_frame(row_index)
+	return max(_get_dunk_run_end_frame_for_row(row_index) + 1, 1)
+
+
+func _get_dunk_medium_start_frame_for_row(row_index: int) -> int:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_medium_start_frame(row_index)
+	return max(_get_dunk_run_end_frame_for_row(row_index) - 2, 1)
+
+
+func _get_dunk_smart_start_short_distance() -> float:
+	if player_animation_config != null:
+		return maxf(player_animation_config.dunk_smart_start_short_distance, 0.0)
+	return 90.0
+
+
+func _get_dunk_smart_start_medium_distance() -> float:
+	if player_animation_config != null:
+		return maxf(player_animation_config.dunk_smart_start_medium_distance, _get_dunk_smart_start_short_distance())
+	return 120.0
+
+
+func _resolve_dunk_approach_bucket(distance_to_hoop: float) -> String:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_approach_bucket(distance_to_hoop)
+	if distance_to_hoop <= _get_dunk_smart_start_short_distance() + PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON:
+		return "short"
+	if distance_to_hoop < _get_dunk_smart_start_medium_distance() - PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON:
+		return "medium"
+	return "max"
+
+
+func _resolve_dunk_approach_start_frame(row_index: int, distance_to_hoop: float) -> int:
+	if player_animation_config != null:
+		return player_animation_config.resolve_dunk_approach_start_frame(row_index, distance_to_hoop)
+	var jump_start_frame: int = clampi(_get_dunk_jump_start_frame_for_row(row_index), 1, maxi(_get_dunk_contact_frame_for_row(row_index) - 1, 1))
+	var medium_start_frame: int = clampi(_get_dunk_medium_start_frame_for_row(row_index), 1, jump_start_frame)
+	var short_distance: float = _get_dunk_smart_start_short_distance()
+	var medium_distance: float = _get_dunk_smart_start_medium_distance()
+	var dunk_finish_radius: float = 135.0
+	if distance_to_hoop >= dunk_finish_radius - PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON:
+		return 1
+	if distance_to_hoop <= short_distance + PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON:
+		return jump_start_frame
+	if distance_to_hoop < medium_distance - PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON:
+		var medium_alpha: float = inverse_lerp(short_distance, medium_distance, clampf(distance_to_hoop, short_distance, medium_distance))
+		return clampi(ceili(lerpf(float(jump_start_frame), float(medium_start_frame), medium_alpha)), 1, jump_start_frame)
+	if distance_to_hoop <= dunk_finish_radius + PlayerAnimationConfig.DUNK_SMART_START_DISTANCE_EPSILON and dunk_finish_radius > medium_distance:
+		var max_alpha: float = inverse_lerp(medium_distance, dunk_finish_radius, clampf(distance_to_hoop, medium_distance, dunk_finish_radius))
+		return clampi(ceili(lerpf(float(medium_start_frame), 1.0, max_alpha)), 1, medium_start_frame)
+	return 1
+
+
 func _get_dunk_landing_ease_power() -> float:
 	if player_animation_config != null:
 		return maxf(player_animation_config.dunk_landing_ease_power, 0.01)
@@ -2091,21 +2184,38 @@ func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
 	var total_frames: int = PlayerVisual.ROW_FRAME_COUNTS[row_index - 1] if row_index >= 1 and row_index <= PlayerVisual.ROW_FRAME_COUNTS.size() else 0
 	if contact_start_frame <= 1 or total_frames <= 0:
 		return
+	var approach_start_frame: int = clampi(int(active_shot_sequence.get("approach_start_frame", 1)), 1, contact_start_frame - 1)
 	var run_end_frame: int = clampi(_get_dunk_run_end_frame_for_row(row_index), 1, contact_start_frame - 1)
 	var jump_end_frame: int = clampi(_get_dunk_jump_end_frame_for_row(row_index), run_end_frame, contact_start_frame - 1)
 	var contact_end_frame: int = clampi(_get_dunk_contact_end_frame_for_row(row_index), contact_start_frame, total_frames)
+	var jump_start_frame: int = clampi(max(approach_start_frame, _get_dunk_jump_start_frame_for_row(row_index)), 1, contact_start_frame - 1)
+	var visible_run_frame_count: int = max(run_end_frame - approach_start_frame + 1, 0) if approach_start_frame <= run_end_frame else 0
+	var visible_jump_frame_count: int = max(contact_start_frame - jump_start_frame, 0)
 	var release_start_world_position: Vector2 = shooter.world_position
 	var contact_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_contact_anchor_offset_for_row(row_index)
 	var landing_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_landing_anchor_offset_for_row(row_index)
-	var run_fraction: float = clampf(float(run_end_frame) / maxf(float(contact_start_frame - 1), 1.0), 0.0, 1.0)
+	var visible_approach_frame_count: int = visible_run_frame_count + visible_jump_frame_count
+	var run_fraction: float = (
+		clampf(float(visible_run_frame_count) / maxf(float(visible_approach_frame_count), 1.0), 0.0, 1.0)
+		if visible_run_frame_count > 0
+		else 0.0
+	)
 	var run_end_world_position: Vector2 = release_start_world_position.lerp(contact_anchor_world_position, run_fraction)
+	var approach_distance_to_hoop: float = float(active_shot_sequence.get("approach_distance_to_hoop", release_start_world_position.distance_to(get_finish_logic_center_world())))
+	var approach_bucket: String = str(active_shot_sequence.get("approach_bucket", _resolve_dunk_approach_bucket(approach_distance_to_hoop)))
 	active_dunk_root_motion = {
 		"player": shooter,
 		"row_index": row_index,
+		"approach_start_frame": approach_start_frame,
+		"approach_distance_to_hoop": approach_distance_to_hoop,
+		"approach_bucket": approach_bucket,
 		"release_start_world_position": release_start_world_position,
 		"contact_anchor_world_position": contact_anchor_world_position,
 		"landing_anchor_world_position": landing_anchor_world_position,
 		"run_end_world_position": run_end_world_position,
+		"jump_start_frame": jump_start_frame,
+		"visible_run_frame_count": visible_run_frame_count,
+		"visible_jump_frame_count": visible_jump_frame_count,
 		"run_end_frame": run_end_frame,
 		"jump_end_frame": jump_end_frame,
 		"contact_start_frame": contact_start_frame,
@@ -2114,13 +2224,17 @@ func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
 		"last_applied_frame": 0,
 		"last_phase": "",
 	}
+	var start_phase: String = _resolve_dunk_root_motion_phase(approach_start_frame, active_dunk_root_motion)
 	log_writer.log_event(
 		"dunk_root_motion_started",
 		{
 			"player": shooter.get_display_name(),
 			"row": row_index,
-			"phase": "run",
-			"frame": 1,
+			"phase": start_phase,
+			"frame": approach_start_frame,
+			"distance_to_hoop": approach_distance_to_hoop,
+			"approach_start_frame": approach_start_frame,
+			"approach_bucket": approach_bucket,
 			"release_start": _vector2_payload(release_start_world_position),
 			"contact_anchor": _vector2_payload(contact_anchor_world_position),
 			"landing_anchor": _vector2_payload(landing_anchor_world_position),
@@ -2166,6 +2280,9 @@ func _advance_active_dunk_root_motion(delta: float) -> void:
 					"row": int(active_dunk_root_motion.get("row_index", shooter.get_debug_row_index())),
 					"phase": phase,
 					"frame": current_frame,
+					"distance_to_hoop": active_dunk_root_motion.get("approach_distance_to_hoop", 0.0),
+					"approach_start_frame": int(active_dunk_root_motion.get("approach_start_frame", 1)),
+					"approach_bucket": str(active_dunk_root_motion.get("approach_bucket", "max")),
 					"release_start": _vector2_payload(active_dunk_root_motion.get("release_start_world_position", Vector2.ZERO)),
 					"contact_anchor": _vector2_payload(active_dunk_root_motion.get("contact_anchor_world_position", Vector2.ZERO)),
 					"landing_anchor": _vector2_payload(active_dunk_root_motion.get("landing_anchor_world_position", Vector2.ZERO)),
@@ -2176,10 +2293,13 @@ func _advance_active_dunk_root_motion(delta: float) -> void:
 
 
 func _resolve_dunk_root_motion_phase(frame_number: int, motion_snapshot: Dictionary) -> String:
+	var approach_start_frame: int = int(motion_snapshot.get("approach_start_frame", 1))
 	var run_end_frame: int = int(motion_snapshot.get("run_end_frame", 0))
 	var jump_end_frame: int = int(motion_snapshot.get("jump_end_frame", run_end_frame))
 	var contact_end_frame: int = int(motion_snapshot.get("contact_end_frame", jump_end_frame))
-	if frame_number <= run_end_frame:
+	if frame_number < approach_start_frame:
+		return "run"
+	if int(motion_snapshot.get("visible_run_frame_count", 0)) > 0 and frame_number <= run_end_frame:
 		return "run"
 	if frame_number <= jump_end_frame:
 		return "jump"
@@ -2193,17 +2313,24 @@ func _resolve_dunk_root_motion_world_position(frame_progress: float, motion_snap
 	var run_end_world_position: Vector2 = motion_snapshot.get("run_end_world_position", release_start_world_position)
 	var contact_anchor_world_position: Vector2 = motion_snapshot.get("contact_anchor_world_position", release_start_world_position)
 	var landing_anchor_world_position: Vector2 = motion_snapshot.get("landing_anchor_world_position", contact_anchor_world_position)
+	var approach_start_frame: int = int(motion_snapshot.get("approach_start_frame", 1))
+	var jump_start_frame: int = int(motion_snapshot.get("jump_start_frame", 1))
+	var visible_run_frame_count: int = int(motion_snapshot.get("visible_run_frame_count", 0))
 	var run_end_frame: int = int(motion_snapshot.get("run_end_frame", 0))
 	var contact_start_frame: int = int(motion_snapshot.get("contact_start_frame", run_end_frame + 1))
 	var contact_end_frame: int = int(motion_snapshot.get("contact_end_frame", contact_start_frame))
 	var total_frames: int = int(motion_snapshot.get("total_frames", contact_end_frame))
-	var resolved_progress: float = clampf(frame_progress, 1.0, float(total_frames))
-	if resolved_progress <= float(run_end_frame):
-		var run_alpha: float = clampf(resolved_progress / maxf(float(run_end_frame), 1.0), 0.0, 1.0)
+	var resolved_progress: float = clampf(frame_progress, float(approach_start_frame), float(total_frames))
+	if visible_run_frame_count > 0 and resolved_progress <= float(run_end_frame):
+		var run_alpha: float = clampf(
+			(resolved_progress - float(approach_start_frame) + 1.0) / maxf(float(visible_run_frame_count), 1.0),
+			0.0,
+			1.0
+		)
 		return release_start_world_position.lerp(run_end_world_position, run_alpha)
 	if resolved_progress < float(contact_start_frame):
 		var jump_alpha: float = clampf(
-			(resolved_progress - float(run_end_frame)) / maxf(float(contact_start_frame - run_end_frame), 1.0),
+			(resolved_progress - float(jump_start_frame) + 1.0) / maxf(float(contact_start_frame - jump_start_frame + 1), 1.0),
 			0.0,
 			1.0
 		)
@@ -2249,9 +2376,10 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 	var defender_distance: float = defender_distance_override
 	if defender_distance < 0.0:
 		defender_distance = _get_primary_defender_distance(player)
-	var to_hoop: Vector2 = court_config.hoop_position - player.world_position
+	var finish_center_world: Vector2 = get_finish_logic_center_world()
+	var to_hoop: Vector2 = finish_center_world - player.world_position
 	var distance_to_hoop: float = to_hoop.length()
-	var lateral_offset: float = absf(player.world_position.x - court_config.hoop_position.x)
+	var lateral_offset: float = absf(player.world_position.x - finish_center_world.x)
 	var player_data: PlayerData = player.get_player_data() if player != null else null
 	var dunk_rating: int = player_data.dunk if player_data != null else 0
 	var force_no_defenders_dunk: bool = not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
@@ -2303,7 +2431,7 @@ func _resolve_shot_release_action_vector(player: PlayerController, motion_vector
 		motion_vector = _resolve_player_motion_vector(player)
 	if motion_vector.length_squared() > 0.001:
 		return motion_vector
-	return court_config.hoop_position - player.world_position
+	return get_finish_logic_center_world() - player.world_position
 
 
 func _get_primary_defender_distance(player: PlayerController) -> float:
@@ -2363,12 +2491,25 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 	var action_vector: Vector2 = _resolve_shot_release_action_vector(shooter, motion_vector)
 	var mirror_west: bool = _resolve_family_mirror_west(shot_family, action_vector, false)
 	var timing_profile: Dictionary = PlayerVisual.build_timing_profile_for_family_variant(shot_family, variant_index)
+	var selected_row: int = int(timing_profile.get("row_index", _get_row_index_for_family_variant(shot_family, variant_index)))
+	var approach_distance_to_hoop: float = float(shot_visual_decision.get("distance_to_hoop", INF))
+	var approach_start_frame: int = 1
+	var approach_bucket: String = "max"
+	if _is_dunk_family(shot_family):
+		approach_bucket = _resolve_dunk_approach_bucket(approach_distance_to_hoop)
+		approach_start_frame = _resolve_dunk_approach_start_frame(selected_row, approach_distance_to_hoop)
+		shot_visual_decision["approach_start_frame"] = approach_start_frame
+		shot_visual_decision["approach_distance_to_hoop"] = approach_distance_to_hoop
+		shot_visual_decision["approach_bucket"] = approach_bucket
 	active_shot_sequence = {
 		"player": shooter,
 		"family": shot_family,
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
 		"timing_profile": timing_profile,
+		"approach_start_frame": approach_start_frame,
+		"approach_distance_to_hoop": approach_distance_to_hoop,
+		"approach_bucket": approach_bucket,
 		"committed": false,
 		"launched": false,
 		"timing_result": "",
@@ -2378,6 +2519,7 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 		"family": shot_family,
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
+		"start_frame_override": approach_start_frame,
 	}
 	log_writer.log_event(
 		"shot_finish_selected",
@@ -2393,6 +2535,10 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 			"dunk_eligible": shot_visual_decision.get("dunk_eligible", false),
 			"force_no_defenders_dunk": shot_visual_decision.get("force_no_defenders_dunk", false),
 			"selected_family": shot_family,
+			"selected_row": selected_row,
+			"approach_start_frame": approach_start_frame,
+			"approach_distance_to_hoop": approach_distance_to_hoop,
+			"approach_bucket": approach_bucket,
 		}
 	)
 	shot_owner = shooter

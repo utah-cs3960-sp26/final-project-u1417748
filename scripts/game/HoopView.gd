@@ -104,6 +104,14 @@ func get_visual_top_screen_y() -> float:
 	return global_position.y + min_local_y
 
 
+func get_debug_finish_radius_center_screen() -> Vector2:
+	if _backboard_sprite == null:
+		return global_position
+	var body_scale: float = hoop_body_scale * _get_visual_scale_multiplier()
+	var pole_bottom_y: float = global_position.y + _backboard_sprite.position.y + hoop_body_region.size.y * body_scale
+	return Vector2(global_position.x, pole_bottom_y)
+
+
 func get_ball_render_phase(
 	world_position: Vector2,
 	z_value: float,

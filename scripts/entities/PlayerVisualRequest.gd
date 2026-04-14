@@ -7,6 +7,7 @@ var mirror_west: bool = false
 var show_outline: bool = false
 var force_restart: bool = false
 var allow_dunk_contact_hold: bool = false
+var start_frame_override: int = 1
 
 
 func _init(
@@ -15,7 +16,8 @@ func _init(
 	p_mirror_west: bool = false,
 	p_show_outline: bool = false,
 	p_force_restart: bool = false,
-	p_allow_dunk_contact_hold: bool = false
+	p_allow_dunk_contact_hold: bool = false,
+	p_start_frame_override: int = 1
 ) -> void:
 	animation_family = p_animation_family
 	variant_index = p_variant_index
@@ -23,3 +25,4 @@ func _init(
 	show_outline = p_show_outline
 	force_restart = p_force_restart
 	allow_dunk_contact_hold = p_allow_dunk_contact_hold
+	start_frame_override = max(p_start_frame_override, 1)

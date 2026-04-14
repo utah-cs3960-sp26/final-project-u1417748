@@ -2,6 +2,35 @@
 
 ## 2026-04-13
 
+### Close-finish and dunk distance logic now use the same lowered hoop-base anchor as the debug rings
+
+- moved the real close-finish / dunk-distance center off the raw rim world point and onto the rendered hoop-base debug anchor, so the visible radius guides now match the actual layup and dunk eligibility checks instead of only approximating them
+- added a coordinator helper that converts the hoop view's lower screen-space anchor back into world space, then routed finish-selection vectors and dunk smart-start distance checks through that shared anchor while leaving the authored dunk contact / landing anchors relative to the hoop config
+- updated smoke coverage that stages players near the hoop so test setups use the same lowered finish center as runtime selection, then reran parse/load plus the full headless suite after the alignment pass: Pure logic `1576`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Debug overlay is now enabled by default during local runs
+
+- changed `data/config/DebugConfig.tres` so the `F3` debug overlay starts visible by default instead of hidden, which makes the new finish-radius guides and the existing coordinator diagnostics show up immediately during tuning
+
+### Finish-radius debug rings now anchor to the rendered hoop base instead of the rim center
+
+- added a hoop-view debug anchor at the bottom of the pole/body sprite and shifted the projected finish-radius rings to that lower screen-space center so the guides line up with the visible hoop art instead of the world rim center
+- added smoke coverage that compares the snapshot ring center to the hoop view's debug anchor so future hoop-art tweaks do not silently move the radius guides back out of alignment
+
+### Debug overlay now draws bright finish and dunk-start radius rings
+
+- added a `show_finish_radii` debug toggle and projected four bright overlay rings from the hoop center: close-finish radius, max dunk radius, medium smart-start distance, and short smart-start distance
+- routed the ring geometry through `GameCoordinator.get_debug_snapshot()` so the circles stay in the same projected camera space as the rest of the debug overlay and remain readable under close-camera tracking
+- gave each ring a high-contrast outline plus a distinct vibrant color in `DebugOverlay` and added smoke coverage proving the snapshot exposes all four named radius guides
+
+### Dunk starts now choose the visible approach frames from live hoop distance
+
+- added shared smart-start thresholds to `PlayerAnimationConfig` so dunk rows now resolve their visible starting frame from the shooter's current `distance_to_hoop`: `90.0` starts directly on the jump frames, `120.0` preserves exactly three run frames, and the outer dunk edge still keeps the full authored run-up
+- extended the active dunk metadata and locked visual request path to carry `approach_start_frame`, `approach_distance_to_hoop`, and `approach_bucket`, then taught `PlayerVisual` to restart a dunk row at that authored start frame without renumbering the absolute release/contact gates
+- rewrote coordinator dunk root motion to use only the visible approach span from the chosen start frame to contact, so late-start dunks skip hidden ground frames, short-distance dunks jump immediately, and all variants still land on the same configured contact and landing anchors
+- added a small shared threshold epsilon around the smart-start distance comparisons so side-dunk geometry that should land exactly on the `90` or `120` cutoffs does not drift into the wrong bucket because of floating-point rounding
+- extended deterministic coverage for max, medium-threshold, and short starts across rows `13`, `15`, and `16`, and reran parse/load plus the full headless suite after the smart-start pass: Pure logic `1572`, Scenarios `13`, Balance `4`, Failures `0`
+
 ### Frame-locked dunk root motion now carries the player into and out of the hold anchor
 
 - kept the dunk contact anchors for rows `13`, `15`, and `16` as the single freeze-frame source of truth, and added authored per-row run/jump/contact-end windows plus per-row landing anchors in `PlayerAnimationConfig`

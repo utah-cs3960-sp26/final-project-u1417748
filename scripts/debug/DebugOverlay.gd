@@ -1,6 +1,13 @@
 class_name DebugOverlay
 extends Control
 
+const FINISH_RADIUS_COLORS: Dictionary = {
+	"close_finish": Color(0.08, 0.95, 1.0, 0.92),
+	"dunk_max": Color(1.0, 0.18, 0.84, 0.94),
+	"dunk_medium": Color(1.0, 0.77, 0.14, 0.94),
+	"dunk_short": Color(0.45, 1.0, 0.14, 0.95),
+}
+
 var coordinator: Node
 var debug_config: DebugConfig
 var _label: Label
@@ -56,6 +63,8 @@ func _process(_delta: float) -> void:
 	var pass_outcome: String = str(snapshot.get("pass_outcome", ""))
 	if pass_outcome != "":
 		_label.text += "\nLast Pass: %s" % pass_outcome
+	if debug_config.show_finish_radii:
+		_label.text += "\nRings: cyan close | pink dunk | gold medium | lime short"
 	queue_redraw()
 
 
@@ -97,3 +106,16 @@ func _draw() -> void:
 	if debug_config.show_shot_preview_data:
 		for point in snapshot.get("shot_preview", []):
 			draw_circle(point.get("screen_position", point["position"] + Vector2(0.0, -point["z"] * 0.14)), 4.0, Color(0.4, 1.0, 0.5, 0.6))
+	if debug_config.show_finish_radii:
+		for ring in snapshot.get("finish_radius_rings", []):
+			var points: PackedVector2Array = ring.get("points", PackedVector2Array())
+			if points.size() == 0:
+				continue
+			var ring_name: String = str(ring.get("name", ""))
+			var ring_color: Color = FINISH_RADIUS_COLORS.get(ring_name, Color(1.0, 1.0, 1.0, 0.9))
+			draw_polyline(points, Color(0.02, 0.02, 0.03, 0.92), 7.0)
+			draw_polyline(points, ring_color, 4.0)
+		var finish_radius_center: Vector2 = snapshot.get("finish_radius_center", Vector2.INF)
+		if finish_radius_center != Vector2.INF:
+			draw_circle(finish_radius_center, 8.0, Color(0.02, 0.02, 0.03, 0.95))
+			draw_circle(finish_radius_center, 5.0, Color(1.0, 1.0, 1.0, 0.96))

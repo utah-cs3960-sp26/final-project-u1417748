@@ -131,6 +131,8 @@ func _run_pure_logic() -> void:
 	_assert_true(animation_config.dunk_contact_end_frame_row_13 == 10, "row 13 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_13))
 	_assert_true(animation_config.dunk_contact_end_frame_row_15 == 11, "row 15 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_15))
 	_assert_true(animation_config.dunk_contact_end_frame_row_16 == 12, "row 16 contact-end frame metadata", str(animation_config.dunk_contact_end_frame_row_16))
+	_assert_true(absf(animation_config.dunk_smart_start_short_distance - 90.0) < 0.001, "dunk smart short distance metadata", str(animation_config.dunk_smart_start_short_distance))
+	_assert_true(absf(animation_config.dunk_smart_start_medium_distance - 120.0) < 0.001, "dunk smart medium distance metadata", str(animation_config.dunk_smart_start_medium_distance))
 	_assert_true(absf(animation_config.dunk_contact_hold_seconds - 0.5) < 0.001, "dunk contact hold duration metadata", str(animation_config.dunk_contact_hold_seconds))
 	_assert_true(animation_config.dunk_contact_anchor_offset_row_13.distance_to(Vector2(-20.0, 172.0)) < 0.001, "row 13 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_13))
 	_assert_true(animation_config.dunk_contact_anchor_offset_row_15.distance_to(Vector2(-30.0, 162.0)) < 0.001, "row 15 contact anchor metadata", str(animation_config.dunk_contact_anchor_offset_row_15))
@@ -139,6 +141,16 @@ func _run_pure_logic() -> void:
 	_assert_true(animation_config.dunk_landing_anchor_offset_row_15.distance_to(Vector2(-30.0, 258.0)) < 0.001, "row 15 landing anchor metadata", str(animation_config.dunk_landing_anchor_offset_row_15))
 	_assert_true(animation_config.dunk_landing_anchor_offset_row_16.distance_to(Vector2(-42.0, 256.0)) < 0.001, "row 16 landing anchor metadata", str(animation_config.dunk_landing_anchor_offset_row_16))
 	_assert_true(absf(animation_config.dunk_landing_ease_power - 1.8) < 0.001, "dunk landing ease metadata", str(animation_config.dunk_landing_ease_power))
+	_assert_true(animation_config.get_dunk_jump_start_frame(13) == 8, "row 13 jump-start frame metadata", str(animation_config.get_dunk_jump_start_frame(13)))
+	_assert_true(animation_config.get_dunk_medium_start_frame(13) == 5, "row 13 medium-start frame metadata", str(animation_config.get_dunk_medium_start_frame(13)))
+	_assert_true(animation_config.get_dunk_approach_bucket(84.0) == "short", "dunk short bucket resolver", animation_config.get_dunk_approach_bucket(84.0))
+	_assert_true(animation_config.get_dunk_approach_bucket(105.0) == "medium", "dunk medium bucket resolver", animation_config.get_dunk_approach_bucket(105.0))
+	_assert_true(animation_config.get_dunk_approach_bucket(130.0) == "max", "dunk max bucket resolver", animation_config.get_dunk_approach_bucket(130.0))
+	_assert_true(animation_config.resolve_dunk_approach_start_frame(13, 90.0) == 8, "dunk short distance resolves to jump start", str(animation_config.resolve_dunk_approach_start_frame(13, 90.0)))
+	_assert_true(animation_config.resolve_dunk_approach_start_frame(13, 105.0) == 7, "dunk medium blend resolves later than frame 5", str(animation_config.resolve_dunk_approach_start_frame(13, 105.0)))
+	_assert_true(animation_config.resolve_dunk_approach_start_frame(13, 120.0) == 5, "dunk medium edge resolves to frame 5", str(animation_config.resolve_dunk_approach_start_frame(13, 120.0)))
+	_assert_true(animation_config.resolve_dunk_approach_start_frame(13, 127.5) == 3, "dunk max blend resolves earlier than frame 5", str(animation_config.resolve_dunk_approach_start_frame(13, 127.5)))
+	_assert_true(animation_config.resolve_dunk_approach_start_frame(13, animation_config.dunk_finish_radius) == 1, "dunk max edge resolves to frame 1", str(animation_config.resolve_dunk_approach_start_frame(13, animation_config.dunk_finish_radius)))
 	var home_team_data: TeamData = load("res://data/teams/HOM.tres") as TeamData
 	var away_team_data: TeamData = load("res://data/teams/AWY.tres") as TeamData
 	var expected_dunk_ratings: Dictionary = {
@@ -203,6 +215,14 @@ func _run_pure_logic() -> void:
 	dunk_contact_visual.apply_state(dunk_hold_continue_request, animation_config.dunk_contact_hold_seconds * 0.5)
 	_assert_true(dunk_contact_visual.is_world_ball_release_ready(), "row 13 world-ball release waits for hold completion", "")
 	dunk_contact_visual.free()
+	var dunk_smart_start_visual: PlayerVisual = PlayerVisual.new()
+	dunk_smart_start_visual.set_animation_config(animation_config)
+	var dunk_smart_start_request: PlayerVisualRequest = PlayerVisualRequest.new("close_finish_dunk", 0, false, true, true, false, 5)
+	dunk_smart_start_visual.apply_state(dunk_smart_start_request, 0.0)
+	_assert_true(dunk_smart_start_visual.get_debug_frame_number() == 5, "smart dunk start frame override applies on restart", str(dunk_smart_start_visual.get_debug_frame_number()))
+	dunk_smart_start_visual.apply_state(PlayerVisualRequest.new("close_finish_dunk", 0, false, true, false, false, 5), 1.0 / 15.0)
+	_assert_true(dunk_smart_start_visual.get_debug_frame_number() == 6, "smart dunk start frame keeps animating forward", str(dunk_smart_start_visual.get_debug_frame_number()))
+	dunk_smart_start_visual.free()
 
 	var projection_screen_rect: Rect2 = Rect2(90.0, 208.0, 900.0, 1600.0)
 	var projection_viewport_rect: Rect2 = Rect2(0.0, 0.0, 1080.0, 1920.0)
@@ -825,8 +845,28 @@ func _run_pure_logic() -> void:
 				break
 	_assert_true(home_visual_ok, "player art smoke", "")
 	if smoke_coordinator != null and smoke_coordinator.debug_overlay != null and smoke_coordinator.debug_config != null:
-		_assert_true(not smoke_coordinator.debug_overlay.visible, "debug overlay defaults off in normal play", str(smoke_coordinator.debug_overlay.visible))
+		_assert_true(smoke_coordinator.debug_overlay.visible, "debug overlay defaults on in normal play", str(smoke_coordinator.debug_overlay.visible))
 		_assert_true(not smoke_coordinator.debug_config.show_catch_radii, "default teammate catch rings stay hidden", str(smoke_coordinator.debug_config.show_catch_radii))
+		_assert_true(smoke_coordinator.debug_config.show_finish_radii, "finish radius debug rings default on when overlay is shown", str(smoke_coordinator.debug_config.show_finish_radii))
+		var finish_ring_snapshot: Dictionary = smoke_coordinator.get_debug_snapshot()
+		var finish_radius_rings: Array = finish_ring_snapshot.get("finish_radius_rings", [])
+		var finish_ring_names: PackedStringArray = PackedStringArray()
+		for finish_ring in finish_radius_rings:
+			finish_ring_names.append(str(finish_ring.get("name", "")))
+		_assert_true(finish_radius_rings.size() == 4, "debug snapshot exposes four finish radius rings", JSON.stringify(finish_ring_names))
+		_assert_true(
+			finish_ring_names.has("close_finish") and finish_ring_names.has("dunk_max") and finish_ring_names.has("dunk_medium") and finish_ring_names.has("dunk_short"),
+			"debug snapshot names all finish radius rings",
+			JSON.stringify(finish_ring_names)
+		)
+		if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_debug_finish_radius_center_screen"):
+			var finish_radius_center: Vector2 = finish_ring_snapshot.get("finish_radius_center", Vector2.INF)
+			var expected_finish_center: Vector2 = smoke_coordinator.hoop_node.call("get_debug_finish_radius_center_screen")
+			_assert_true(
+				finish_radius_center.distance_to(expected_finish_center) < 0.01,
+				"finish radius center aligns to hoop debug anchor",
+				"%s %s" % [finish_radius_center, expected_finish_center]
+			)
 	if smoke_coordinator != null and smoke_coordinator.court_projection != null and smoke_coordinator.court_config != null:
 		var smoke_layout: Dictionary = smoke_coordinator.get_layout_metrics_snapshot()
 		var smoke_court_rect: Rect2 = smoke_layout.get("court_screen_rect", Rect2())
@@ -854,7 +894,8 @@ func _run_pure_logic() -> void:
 		_assert_true(hidden_defenders, "disabled defenders are removed from view", str(hidden_defenders))
 		var no_defender_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
 		if no_defender_pg != null:
-			no_defender_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(20.0, 118.0)
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			no_defender_pg.world_position = finish_center_world + Vector2(20.0, 118.0)
 			var no_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(no_defender_pg, Vector2.ZERO, INF)
 			_assert_true(str(no_defender_finish.get("family", "")) == "close_finish_dunk", "no defenders force a close-range dunk", JSON.stringify(no_defender_finish))
 			_assert_true(bool(no_defender_finish.get("force_no_defenders_dunk", false)), "no defenders mark the forced dunk override", JSON.stringify(no_defender_finish))
@@ -1095,17 +1136,18 @@ func _run_pure_logic() -> void:
 		_reset_visual_test_state(smoke_coordinator, "LC")
 		var visual_lc_preview: PlayerController = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc_preview != null:
-			visual_lc_preview.world_position = smoke_coordinator.court_config.hoop_position + Vector2(20.0, 130.0)
-			visual_lc_preview.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc_preview.world_position).normalized() * 180.0
-			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_lc_preview.world_position).normalized()
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc_preview.world_position = finish_center_world + Vector2(20.0, 130.0)
+			visual_lc_preview.velocity = (finish_center_world - visual_lc_preview.world_position).normalized() * 180.0
+			smoke_coordinator.current_move_direction = (finish_center_world - visual_lc_preview.world_position).normalized()
 			smoke_coordinator.current_move_magnitude = 1.0
 			visual_lc_preview.trigger_shot_pose(0.28)
 			smoke_coordinator.player_visual_memory.erase(visual_lc_preview)
 			smoke_coordinator._sync_projection_visuals(0.0)
 			_assert_player_visual(visual_lc_preview, "close_finish_dunk", 15, true, true, "straight dunk")
-			visual_lc_preview.world_position = smoke_coordinator.court_config.hoop_position + Vector2(80.0, 80.0)
-			visual_lc_preview.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc_preview.world_position).normalized() * 190.0
-			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_lc_preview.world_position).normalized()
+			visual_lc_preview.world_position = finish_center_world + Vector2(80.0, 80.0)
+			visual_lc_preview.velocity = (finish_center_world - visual_lc_preview.world_position).normalized() * 190.0
+			smoke_coordinator.current_move_direction = (finish_center_world - visual_lc_preview.world_position).normalized()
 			smoke_coordinator.current_move_magnitude = 1.0
 			visual_lc_preview.trigger_shot_pose(0.28)
 			smoke_coordinator.player_visual_memory.erase(visual_lc_preview)
@@ -1241,8 +1283,9 @@ func _run_pure_logic() -> void:
 		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
 		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
 		if visual_pg != null and visual_pg_defender != null:
-			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(18.0, 170.0)
-			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 150.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_pg.world_position = finish_center_world + Vector2(18.0, 170.0)
+			visual_pg.velocity = (finish_center_world - visual_pg.world_position).normalized() * 150.0
 			await _begin_release_test_shot(smoke_coordinator, visual_pg)
 			_assert_player_visual(visual_pg, "close_finish_layup", 14, false, true, "straight layup release")
 			_assert_release_profile(visual_pg, 9, "straight layup")
@@ -1250,32 +1293,36 @@ func _run_pure_logic() -> void:
 		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
 		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
 		if visual_pg != null and visual_pg_defender != null:
-			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(86.0, 164.0)
-			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 150.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_pg.world_position = finish_center_world + Vector2(86.0, 164.0)
+			visual_pg.velocity = (finish_center_world - visual_pg.world_position).normalized() * 150.0
 			await _begin_release_test_shot(smoke_coordinator, visual_pg)
 			_assert_player_visual(visual_pg, "close_finish_layup", 17, true, true, "side layup release")
 			_assert_release_profile(visual_pg, 11, "side layup")
 		_reset_visual_test_state(smoke_coordinator, "PG", 2422)
 		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
 		if visual_pg != null:
-			visual_pg.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
-			visual_pg.velocity = (smoke_coordinator.court_config.hoop_position - visual_pg.world_position).normalized() * 190.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_pg.world_position = finish_center_world + Vector2(22.0, 118.0)
+			visual_pg.velocity = (finish_center_world - visual_pg.world_position).normalized() * 190.0
 			await _begin_release_test_shot(smoke_coordinator, visual_pg)
 			_assert_player_visual(visual_pg, "close_finish_layup", 14, true, true, "low dunk rating falls back to layup")
 			_assert_release_profile(visual_pg, 9, "low dunk straight layup")
 		_reset_visual_test_state(smoke_coordinator, "LC", 2423)
 		var visual_lc: PlayerController = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
-			visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 80.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 80.0
 			await _begin_release_test_shot(smoke_coordinator, visual_lc)
 			_assert_player_visual(visual_lc, "close_finish_layup", 14, true, true, "insufficient dunk speed falls back to layup")
 			_assert_release_profile(visual_lc, 9, "slow straight layup")
 		_reset_visual_test_state(smoke_coordinator, "LC", 2424)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
-			var dunk_motion: Vector2 = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
+			var dunk_motion: Vector2 = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 			var far_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 260.0)
 			var near_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 12.0)
 			_assert_true(str(far_defender_finish.get("family", "")) == "close_finish_dunk", "high dunk player in dunk radius chooses dunk", JSON.stringify(far_defender_finish))
@@ -1288,8 +1335,9 @@ func _run_pure_logic() -> void:
 			_reset_visual_test_state(smoke_coordinator, "LC", straight_dunk_seed)
 			visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 			if visual_lc != null:
-				visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
-				visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
+				var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+				visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
+				visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 				await _begin_release_test_shot(smoke_coordinator, visual_lc)
 				var committed_family: String = str(smoke_coordinator.active_shot_sequence.get("family", ""))
 				var committed_variant: int = int(smoke_coordinator.active_shot_sequence.get("variant_index", 0))
@@ -1306,8 +1354,27 @@ func _run_pure_logic() -> void:
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(90.0, 80.0)
-			visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(0.0, 90.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
+			await _begin_release_test_shot(smoke_coordinator, visual_lc)
+			_assert_true(int(smoke_coordinator.active_shot_sequence.get("approach_start_frame", -1)) == 8, "short straight dunk starts at jump frames", JSON.stringify(smoke_coordinator.active_shot_sequence))
+			_assert_true(str(smoke_coordinator.active_shot_sequence.get("approach_bucket", "")) == "short", "short straight dunk bucket", JSON.stringify(smoke_coordinator.active_shot_sequence))
+		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
+		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
+		if visual_lc != null:
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(0.0, 120.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
+			await _begin_release_test_shot(smoke_coordinator, visual_lc)
+			_assert_true(int(smoke_coordinator.active_shot_sequence.get("approach_start_frame", -1)) == 5, "medium straight dunk starts with three run frames", JSON.stringify(smoke_coordinator.active_shot_sequence))
+			_assert_true(str(smoke_coordinator.active_shot_sequence.get("approach_bucket", "")) == "max", "medium straight dunk threshold bucket", JSON.stringify(smoke_coordinator.active_shot_sequence))
+		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
+		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
+		if visual_lc != null:
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(80.0, 108.7428)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 			await _begin_release_test_shot(smoke_coordinator, visual_lc)
 			var side_dunk_family: String = str(smoke_coordinator.active_shot_sequence.get("family", ""))
 			var side_dunk_variant: int = int(smoke_coordinator.active_shot_sequence.get("variant_index", 0))
@@ -1317,17 +1384,26 @@ func _run_pure_logic() -> void:
 			_assert_true(side_dunk_row == 16, "side dunk row", str(side_dunk_row))
 			_assert_true(bool(smoke_coordinator.active_shot_sequence.get("mirror_west", false)), "side dunk flip", str(smoke_coordinator.active_shot_sequence.get("mirror_west", false)))
 			_assert_true(int(side_dunk_timing_profile.get("release_after_frame", -1)) == 11, "side dunk release frame", str(side_dunk_timing_profile.get("release_after_frame", -1)))
-		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 13 dunk hold")
-		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 15 dunk hold")
-		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(90.0, 80.0), Vector2(104.0, 92.0)], "row 16 dunk hold")
-		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 13 root motion")
-		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(22.0, 118.0), Vector2(28.0, 126.0)], "row 15 root motion")
-		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(90.0, 80.0), Vector2(104.0, 92.0)], "row 16 root motion")
+			_assert_true(int(smoke_coordinator.active_shot_sequence.get("approach_start_frame", -1)) == 1, "max side dunk keeps full approach", JSON.stringify(smoke_coordinator.active_shot_sequence))
+			_assert_true(str(smoke_coordinator.active_shot_sequence.get("approach_bucket", "")) == "max", "max side dunk bucket", JSON.stringify(smoke_coordinator.active_shot_sequence))
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 135.0), Vector2(0.0, 120.0), Vector2(0.0, 90.0)], "row 13 dunk hold")
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 135.0), Vector2(0.0, 120.0), Vector2(0.0, 90.0)], "row 15 dunk hold")
+		await _assert_dunk_hold_anchor_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(80.0, 108.7428), Vector2(80.0, 89.4427), Vector2(80.0, 41.2311)], "row 16 dunk hold")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 135.0)], "row 13 max root motion", 1, "max", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 120.0)], "row 13 medium root motion", 5, "max", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 13, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 90.0)], "row 13 short root motion", 8, "short", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 135.0)], "row 15 max root motion", 1, "max", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 120.0)], "row 15 medium root motion", 5, "max", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 15, "LC", [2425, 2426, 2427, 2428, 2429, 2430, 2431, 2432, 2433, 2434], [Vector2(0.0, 90.0)], "row 15 short root motion", 8, "short", 2)
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(80.0, 108.7428)], "row 16 max root motion", 1, "max")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(80.0, 89.4427)], "row 16 medium root motion", 5, "max")
+		await _assert_dunk_root_motion_trace_consistency(smoke_coordinator, 16, "LC", [2426, 2427, 2428], [Vector2(80.0, 41.2311)], "row 16 short root motion", 8, "short")
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(90.0, 80.0)
-			visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(78.0, 110.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 			_arm_test_shot(smoke_coordinator)
 			await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "side dunk skips shot aim and stages release immediately", smoke_coordinator.get_state_name())
@@ -1372,8 +1448,9 @@ func _run_pure_logic() -> void:
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(22.0, 118.0)
-			visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 			_arm_test_shot(smoke_coordinator)
 			await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "straight dunk also skips shot aim and stages release immediately", smoke_coordinator.get_state_name())
@@ -1414,9 +1491,10 @@ func _run_pure_logic() -> void:
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		var visual_lc_defender: PlayerController = smoke_coordinator.get_defense_player_by_role("LC")
 		if visual_lc != null and visual_lc_defender != null:
-			visual_lc.world_position = smoke_coordinator.court_config.hoop_position + Vector2(90.0, 80.0)
-			visual_lc.velocity = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized() * 190.0
-			smoke_coordinator.current_move_direction = (smoke_coordinator.court_config.hoop_position - visual_lc.world_position).normalized()
+			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+			visual_lc.world_position = finish_center_world + Vector2(90.0, 80.0)
+			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
+			smoke_coordinator.current_move_direction = (finish_center_world - visual_lc.world_position).normalized()
 			smoke_coordinator.current_move_magnitude = 1.0
 			smoke_coordinator._begin_active_shot_sequence(visual_lc)
 			var blocked_dunk_action: Dictionary = smoke_coordinator.shot_controller.build_action_for_quality(
@@ -1623,6 +1701,14 @@ func _assert_release_profile(player: PlayerController, expected_release_after_fr
 	_assert_true(absf(float(timing_profile.get("full_animation_duration_seconds", 0.0)) - float(total_frames) / expected_fps) < 0.001, "%s full duration seconds" % name_prefix, str(timing_profile.get("full_animation_duration_seconds", 0.0)))
 
 
+func _get_finish_logic_center_world(coordinator: GameCoordinator) -> Vector2:
+	if coordinator == null:
+		return Vector2.ZERO
+	if coordinator.has_method("get_finish_logic_center_world"):
+		return coordinator.call("get_finish_logic_center_world")
+	return coordinator.court_config.hoop_position if coordinator.court_config != null else Vector2.ZERO
+
+
 func _collect_dunk_hold_snapshot(
 	coordinator: GameCoordinator,
 	ballhandler_role: String,
@@ -1633,8 +1719,9 @@ func _collect_dunk_hold_snapshot(
 	var shooter: PlayerController = coordinator.get_offense_player_by_role(ballhandler_role)
 	if shooter == null:
 		return {}
-	var motion_vector: Vector2 = (coordinator.court_config.hoop_position - (coordinator.court_config.hoop_position + start_offset)).normalized() * 190.0
-	shooter.world_position = coordinator.court_config.hoop_position + start_offset
+	var finish_center_world: Vector2 = _get_finish_logic_center_world(coordinator)
+	var motion_vector: Vector2 = (finish_center_world - (finish_center_world + start_offset)).normalized() * 190.0
+	shooter.world_position = finish_center_world + start_offset
 	shooter.velocity = motion_vector
 	coordinator.current_move_direction = motion_vector.normalized()
 	coordinator.current_move_magnitude = 1.0
@@ -1699,8 +1786,9 @@ func _collect_dunk_motion_trace(
 	var shooter: PlayerController = coordinator.get_offense_player_by_role(ballhandler_role)
 	if shooter == null:
 		return {}
-	var motion_vector: Vector2 = (coordinator.court_config.hoop_position - (coordinator.court_config.hoop_position + start_offset)).normalized() * 190.0
-	shooter.world_position = coordinator.court_config.hoop_position + start_offset
+	var finish_center_world: Vector2 = _get_finish_logic_center_world(coordinator)
+	var motion_vector: Vector2 = (finish_center_world - (finish_center_world + start_offset)).normalized() * 190.0
+	shooter.world_position = finish_center_world + start_offset
 	shooter.velocity = motion_vector
 	coordinator.current_move_direction = motion_vector.normalized()
 	coordinator.current_move_magnitude = 1.0
@@ -1709,6 +1797,9 @@ func _collect_dunk_motion_trace(
 	var samples: Array[Dictionary] = []
 	var resolved_row: int = -1
 	var started: bool = false
+	var approach_start_frame: int = 1
+	var approach_bucket: String = "max"
+	var approach_distance_to_hoop: float = INF
 	for _frame in 360:
 		await get_tree().process_frame
 		var root_motion_active: bool = not coordinator.active_dunk_root_motion.is_empty()
@@ -1717,8 +1808,14 @@ func _collect_dunk_motion_trace(
 				str(coordinator.active_shot_sequence.get("family", "")),
 				int(coordinator.active_shot_sequence.get("variant_index", 0))
 			)
+			approach_start_frame = int(coordinator.active_shot_sequence.get("approach_start_frame", approach_start_frame))
+			approach_bucket = str(coordinator.active_shot_sequence.get("approach_bucket", approach_bucket))
+			approach_distance_to_hoop = float(coordinator.active_shot_sequence.get("approach_distance_to_hoop", approach_distance_to_hoop))
 		elif root_motion_active:
 			resolved_row = int(coordinator.active_dunk_root_motion.get("row_index", resolved_row))
+			approach_start_frame = int(coordinator.active_dunk_root_motion.get("approach_start_frame", approach_start_frame))
+			approach_bucket = str(coordinator.active_dunk_root_motion.get("approach_bucket", approach_bucket))
+			approach_distance_to_hoop = float(coordinator.active_dunk_root_motion.get("approach_distance_to_hoop", approach_distance_to_hoop))
 		elif resolved_row <= 0:
 			resolved_row = shooter.get_debug_row_index()
 		var in_dunk_sequence: bool = root_motion_active \
@@ -1756,7 +1853,14 @@ func _collect_dunk_motion_trace(
 			break
 		if not root_motion_active and outside_release_states:
 			break
-	return {"row": resolved_row, "frames": frames, "samples": samples}
+	return {
+		"row": resolved_row,
+		"approach_start_frame": approach_start_frame,
+		"approach_bucket": approach_bucket,
+		"approach_distance_to_hoop": approach_distance_to_hoop,
+		"frames": frames,
+		"samples": samples,
+	}
 
 
 func _collect_matching_dunk_motion_traces(
@@ -1765,7 +1869,8 @@ func _collect_matching_dunk_motion_traces(
 	ballhandler_role: String,
 	seeds: Array,
 	start_offsets: Array[Vector2],
-	required_count: int = 2
+	required_count: int = 2,
+	expected_start_frame: int = -1
 ) -> Array[Dictionary]:
 	var traces: Array[Dictionary] = []
 	var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(expected_row)
@@ -1773,6 +1878,8 @@ func _collect_matching_dunk_motion_traces(
 		for seed in seeds:
 			var trace: Dictionary = await _collect_dunk_motion_trace(coordinator, ballhandler_role, int(seed), start_offset)
 			if trace.is_empty() or int(trace.get("row", -1)) != expected_row:
+				continue
+			if expected_start_frame > 0 and int(trace.get("approach_start_frame", -1)) != expected_start_frame:
 				continue
 			var trace_samples: Array = trace.get("samples", [])
 			if trace_samples.is_empty():
@@ -1799,22 +1906,28 @@ func _assert_dunk_root_motion_trace_consistency(
 	ballhandler_role: String,
 	seeds: Array,
 	start_offsets: Array[Vector2],
-	name_prefix: String
+	name_prefix: String,
+	expected_start_frame: int,
+	expected_bucket: String,
+	required_trace_count: int = 1
 ) -> void:
 	var traces: Array[Dictionary] = await _collect_matching_dunk_motion_traces(
 		coordinator,
 		expected_row,
 		ballhandler_role,
 		seeds,
-		start_offsets
+		start_offsets,
+		required_trace_count,
+		expected_start_frame
 	)
-	_assert_true(traces.size() >= 1, "%s traces reachable" % name_prefix, JSON.stringify(traces))
+	_assert_true(traces.size() >= required_trace_count, "%s traces reachable" % name_prefix, JSON.stringify(traces))
 	if traces.is_empty():
 		return
 	var contact_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_contact_anchor_offset_for_row(expected_row)
 	var landing_anchor_world: Vector2 = coordinator.court_config.hoop_position + coordinator.get_dunk_landing_anchor_offset_for_row(expected_row)
 	var run_end_frame: int = coordinator.player_animation_config.get_dunk_run_end_frame(expected_row)
 	var jump_end_frame: int = coordinator.player_animation_config.get_dunk_jump_end_frame(expected_row)
+	var jump_start_frame: int = coordinator.player_animation_config.get_dunk_jump_start_frame(expected_row)
 	var contact_start_frame: int = coordinator.player_animation_config.get_dunk_contact_frame(expected_row)
 	var contact_end_frame: int = coordinator.player_animation_config.get_dunk_contact_end_frame(expected_row)
 	var first_trace_frames: Array = traces[0].get("frames", [])
@@ -1825,27 +1938,37 @@ func _assert_dunk_root_motion_trace_consistency(
 		var trace_frames: Array = trace.get("frames", [])
 		var trace_samples: Array = trace.get("samples", [])
 		_assert_true(not trace_samples.is_empty(), "%s captured root-motion samples" % name_prefix, JSON.stringify(trace))
+		_assert_true(int(trace.get("approach_start_frame", -1)) == expected_start_frame, "%s uses expected smart start frame" % name_prefix, JSON.stringify(trace))
+		_assert_true(str(trace.get("approach_bucket", "")) == expected_bucket, "%s uses expected approach bucket" % name_prefix, JSON.stringify(trace))
+		var first_visible_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, expected_start_frame)
+		_assert_true(not first_visible_snapshot.is_empty(), "%s start frame %d exists" % [name_prefix, expected_start_frame], JSON.stringify(trace_frames))
+		if expected_start_frame > 1:
+			_assert_true(_find_dunk_motion_frame_snapshot(trace_frames, expected_start_frame - 1).is_empty(), "%s skips earlier pre-start frame" % name_prefix, JSON.stringify(trace_frames))
 		var previous_distance_to_contact: float = INF
 		var previous_world_position: Vector2 = Vector2.INF
-		for frame_number in range(1, run_end_frame + 1):
+		for frame_number in range(expected_start_frame, run_end_frame + 1):
 			var run_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, frame_number)
 			_assert_true(not run_snapshot.is_empty(), "%s run frame %d exists" % [name_prefix, frame_number], JSON.stringify(trace_frames))
 			if run_snapshot.is_empty():
 				continue
 			var run_world: Vector2 = run_snapshot.get("world_position", Vector2.INF)
-			if frame_number > 1:
+			if previous_world_position != Vector2.INF:
 				_assert_true(run_world.distance_to(previous_world_position) > 0.01, "%s run frame %d keeps moving" % [name_prefix, frame_number], "%s %s" % [run_world, previous_world_position])
 			var run_distance_to_contact: float = run_world.distance_to(contact_anchor_world)
 			_assert_true(run_distance_to_contact <= previous_distance_to_contact + 0.01, "%s run frame %d moves toward contact" % [name_prefix, frame_number], "%0.3f %0.3f" % [run_distance_to_contact, previous_distance_to_contact])
 			previous_distance_to_contact = run_distance_to_contact
 			previous_world_position = run_world
-		for frame_number in range(run_end_frame + 1, jump_end_frame + 1):
+		if expected_start_frame >= jump_start_frame:
+			for skipped_run_frame in range(1, run_end_frame + 1):
+				_assert_true(_find_dunk_motion_frame_snapshot(trace_frames, skipped_run_frame).is_empty(), "%s short start skips run frame %d" % [name_prefix, skipped_run_frame], JSON.stringify(trace_frames))
+		for frame_number in range(max(expected_start_frame, jump_start_frame), jump_end_frame + 1):
 			var jump_snapshot: Dictionary = _find_dunk_motion_frame_snapshot(trace_frames, frame_number)
 			_assert_true(not jump_snapshot.is_empty(), "%s jump frame %d exists" % [name_prefix, frame_number], JSON.stringify(trace_frames))
 			if jump_snapshot.is_empty():
 				continue
 			var jump_world: Vector2 = jump_snapshot.get("world_position", Vector2.INF)
-			_assert_true(jump_world.distance_to(previous_world_position) > 0.01, "%s jump frame %d keeps moving" % [name_prefix, frame_number], "%s %s" % [jump_world, previous_world_position])
+			if previous_world_position != Vector2.INF:
+				_assert_true(jump_world.distance_to(previous_world_position) > 0.01, "%s jump frame %d keeps moving" % [name_prefix, frame_number], "%s %s" % [jump_world, previous_world_position])
 			var jump_distance_to_contact: float = jump_world.distance_to(contact_anchor_world)
 			_assert_true(jump_distance_to_contact <= previous_distance_to_contact + 0.01, "%s jump frame %d keeps moving toward contact" % [name_prefix, frame_number], "%0.3f %0.3f" % [jump_distance_to_contact, previous_distance_to_contact])
 			previous_distance_to_contact = jump_distance_to_contact

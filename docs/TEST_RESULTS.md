@@ -24,16 +24,16 @@ Automated suite:
 
 Final headless suite status: pass
 
-- Pure logic: 1041 / 1041
+- Pure logic: 1576 / 1576
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.84`, normal `1.06`, hard `1.24`
+- `difficulty_order`: easy `0.88`, normal `1.08`, hard `1.30`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.27`, defense `0.73`
+- `rebound_distribution`: offense `0.29`, defense `0.71`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -57,6 +57,9 @@ Passed scenarios:
 ## Smoke Result
 
 - parse/load validation and the full headless suite both completed without script/runtime failures
+- the `F3` debug overlay now starts enabled by default in the local debug config and can still be toggled on or off at runtime with `F3`
+- the visible finish-radius guides and the real close-finish / dunk-distance logic now share the same lowered hoop-base anchor, so being inside a debug ring means the distance gate is checking that same center
+- the debug overlay now projects four bright finish guides from a lower hoop-base anchor aligned to the bottom of the rendered pole/body art when enabled: cyan `close_finish`, pink `dunk_max`, gold `dunk_medium`, and lime `dunk_short`
 - headless validation kept the gameplay scene stable after the close-camera projection refactor and the control-scheme swap
 - opening possession now centers the controlled ballhandler on the visible viewport midpoint and shows a persistent light-blue pass marker on the coordinator-ranked default receiver
 - empty-space taps now pass to that marked teammate, while direct teammate taps override the marker and still preserve live ball flight, catch transfer, held-ball hiding, and ball-tracking camera handoff
@@ -71,6 +74,8 @@ Passed scenarios:
 - the pause overlay now exposes a `No Defenders` toggle that hides all live defenders, strips them from on-court defense logic, and forces close-range shots into dunk families while it is active
 - dunk rows `13`, `15`, and `16` now freeze on their authored rim-contact frame for about `0.5` seconds with the world ball still hidden before release, and each hold row now snaps to one configured root anchor instead of composing a shared snap with a second sprite-only contact offset
 - dunk rows `13`, `15`, and `16` now also use coordinator-owned frame-locked root motion so the run-up moves only along the floor, the jump frames continue toward the rim, the contact frame window pins exactly to the configured contact anchor, and the landing frames carry the player back down to the configured floor anchor after launch
+- dunk rows `13`, `15`, and `16` now also choose a smart visible start frame from live `distance_to_hoop`, blending between full run-up, three remaining run frames, or jump-only starts while still preserving the same authored release/contact timing and the same contact / landing anchors
+- smart-start threshold checks now use a tiny epsilon so side-dunk geometry that is authored exactly on the `90` and `120` cutoffs does not slip into the wrong bucket or start frame because of floating-point rounding
 - the current user-authored contact anchors remain the manual tuning knobs in `PlayerAnimationConfig.tres`: row `13` `Vector2(-20, 172)`, row `15` `Vector2(-30, 162)`, row `16` `Vector2(-42, 160)`
 - the current user-authored landing anchors remain manually tunable in the same config: row `13` `Vector2(-20, 268)`, row `15` `Vector2(-30, 258)`, row `16` `Vector2(-42, 256)`
 - deterministic smoke coverage now proves rows `13`, `15`, and `16` snap to their configured world anchor and projected screen anchor in the seeded hold/root-motion cases exercised by the suite
@@ -78,7 +83,7 @@ Passed scenarios:
 - live straight and side dunks now go straight from swipe entry into staged release, keep the meter hidden, and always finish through the make-drop guided descent for this phase
 - blocked close-finish attempts still bypass the dunk contact-hold path and resolve through the existing block flow
 - the live hoop, rim, backboard, and pole now all sit farther back above the court together at a real `Vector2(540, -50)` hoop anchor, and negative hoop depth now renders correctly because projection no longer clamps above-court world Y to the court top
-- the retuned `840` three-point radius plus the larger `550` layup radius and `485` dunk radius keep shot-value classification and close-finish access stable after the hoop geometry moved behind the court
+- the current `840` three-point radius plus the tighter `200` close-finish radius and `135` dunk radius keep shot-value classification and close-finish access aligned with the present hoop and dunk-tuning setup
 - pass flight and launched-shot flight now hand camera ownership to the rendered live ball on the first visible frame and keep that ball centered across subsequent smoke frames
 - controlled-player floor feedback now renders as a white outlined oval under the feet, and player ground shadows stay disabled without affecting the live ball shadow
 - the responsive HUD still stays inside the banner while the court, hoop, players, preview dots, and live ball move underneath the projection-layer camera transform
@@ -100,6 +105,7 @@ Additional pure-logic coverage now includes:
 - dunk per-row landing-anchor metadata plus shared landing-ease tuning
 - dunk world-ball release gating after the authored rim-contact hold
 - dunk frame-progress reporting from `PlayerVisual` into coordinator-owned root motion
+- distance-resolved dunk smart-start thresholds, bucket selection, and start-frame blending for rows `13`, `15`, and `16`
 - dunk make release profiles starting directly in guided descent from the rim
 - dunk miss release profiles starting at the rim and moving upward and away
 - relocated hoop anchor, backboard plane, and preserved three-point arc geometry
@@ -137,6 +143,8 @@ Additional pure-logic coverage now includes:
 - player ground shadows disabled in presentation
 - controlled-player floor marker outline style
 - controlled-player floor marker oval geometry and feet-centered offset
+- projected debug finish-radius ring exposure for close-finish, max-dunk, medium-start, and short-start guides
+- debug finish-radius center alignment to the hoop view's rendered pole-base anchor
 - projected lower-zone gesture mapping
 - projection-aware shot-mode arming input
 - gameplay boot scene selection

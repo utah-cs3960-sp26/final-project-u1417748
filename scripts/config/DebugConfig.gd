@@ -9,3 +9,4 @@ extends Resource
 @export var show_intercept_corridor: bool = false
 @export var show_rebound_zone: bool = false
 @export var show_shot_preview_data: bool = true
+@export var show_finish_radii: bool = true
