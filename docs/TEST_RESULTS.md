@@ -2,16 +2,16 @@
 
 ## Environment
 
-- Date: 2026-04-13
+- Date: 2026-04-14
 - Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
 - Engine used for validation: Godot 4.6.1 stable
 
 ## Commands Run
 
-Parse / load:
+Gameplay boot smoke:
 
 ```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . res://scenes/GameRoot.tscn --quit-after 3
 ```
 
 Automated suite:
@@ -24,16 +24,16 @@ Automated suite:
 
 Final headless suite status: pass
 
-- Pure logic: 1576 / 1576
+- Pure logic: 1583 / 1583
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.88`, normal `1.08`, hard `1.30`
+- `difficulty_order`: easy `0.89`, normal `1.05`, hard `1.32`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.29`, defense `0.71`
+- `rebound_distribution`: offense `0.30`, defense `0.70`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -56,9 +56,15 @@ Passed scenarios:
 
 ## Smoke Result
 
-- parse/load validation and the full headless suite both completed without script/runtime failures
+- the standalone `GameRoot` boot smoke and the full headless suite both completed without script/runtime failures
+- off-ball offense now resolves a dedicated slow-move family on row `19`, matching the same authored shuffle row used by defense, while off-ball run still stays on row `20`
 - the `F3` debug overlay now starts enabled by default in the local debug config and can still be toggled on or off at runtime with `F3`
 - the visible finish-radius guides and the real close-finish / dunk-distance logic now share the same lowered hoop-base anchor, so being inside a debug ring means the distance gate is checking that same center
+- dunk contact and landing anchors now resolve by facing, with separate east and west config values for rows `13`, `15`, and `16`; the shipped west-facing defaults are mirrored from the east-facing values and can now be tuned independently
+- dunk contact hold timing is now `0.18` seconds, which reduces the visible rim pause to a brief contact beat before the follow-through continues
+- the live HUD now uses the cropped `assets/Decor/scoreboard.png` board art instead of a flat banner, with the scoreboard anchored to the top safe area, centered in the viewport, and scaled down to two-thirds of the prior board size while the court still centers below it
+- smoke coverage now validates that the home score, timer, pause control, and away score all stay inside the textured scoreboard, that the scoreboard itself stays horizontally centered in the viewport, that the pause control remains below the center clock, and that the left/right score ordering stays correct
+- the trimmed scoreboard texture now loads at `1098x248`, matching the art crop used for layout scaling, and the HUD is back on the imported texture path without raw-image export warnings
 - the debug overlay now projects four bright finish guides from a lower hoop-base anchor aligned to the bottom of the rendered pole/body art when enabled: cyan `close_finish`, pink `dunk_max`, gold `dunk_medium`, and lime `dunk_short`
 - headless validation kept the gameplay scene stable after the close-camera projection refactor and the control-scheme swap
 - opening possession now centers the controlled ballhandler on the visible viewport midpoint and shows a persistent light-blue pass marker on the coordinator-ranked default receiver

@@ -39,6 +39,7 @@ const FAMILY_ROWS: Dictionary = {
 	"guard_idle": [18, 21],
 	"guard_shuffle": [19],
 	"guard_run": [20],
+	"off_ball_shuffle": [19],
 	"off_ball_run": [20],
 	"jump_contest": [22],
 }
@@ -59,6 +60,7 @@ const FAMILY_FPS: Dictionary = {
 	"guard_idle": 5.0,
 	"guard_shuffle": 8.0,
 	"guard_run": 10.0,
+	"off_ball_shuffle": 8.0,
 	"off_ball_run": 10.0,
 	"jump_contest": 14.0,
 }

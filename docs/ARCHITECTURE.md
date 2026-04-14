@@ -53,7 +53,7 @@
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
   - also renders transient touch feedback like the movement anchor, the gameplay-only light-blue pass-preview ring, the shot meter, and trajectory dots
 - `HUD`
-  - builds the top banner from responsive containers instead of fixed coordinates, applies safe-area-aware sizing through `apply_layout()`, and exposes a layout snapshot used by smoke tests to verify score, timer, and pause controls stay inside the banner
+  - renders a cropped textured scoreboard anchored to the top safe area, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
 - `ShotController`
   - one-way shot-mode timing, decision-duration-vs-full-animation timing separation, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`

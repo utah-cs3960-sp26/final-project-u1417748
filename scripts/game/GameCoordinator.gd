@@ -9,6 +9,8 @@ const PLAYER_VISUAL_REQUEST_SCRIPT = preload("res://scripts/entities/PlayerVisua
 const INPUT_CONFIG_SCRIPT = preload("res://scripts/config/InputConfig.gd")
 const COURT_PROJECTION_SCRIPT = preload("res://scripts/game/CourtProjection.gd")
 const BASE_PRESENTATION_SIZE: Vector2 = Vector2(1080.0, 1920.0)
+const SCOREBOARD_ART_SIZE: Vector2 = Vector2(1098.0, 248.0)
+const SCOREBOARD_SCALE: float = 2.0 / 3.0
 
 enum BallVisualMode {
 	HIDDEN_WHILE_OWNED,
@@ -182,10 +184,13 @@ func _build_layout_metrics() -> Dictionary:
 	var viewport_rect: Rect2 = get_viewport().get_visible_rect()
 	var safe_rect: Rect2 = _resolve_safe_rect(viewport_rect)
 	var ui_scale: float = clampf(safe_rect.size.x / BASE_PRESENTATION_SIZE.x, 0.82, 1.0)
-	var banner_height: float = minf(safe_rect.size.y, maxf(104.0, roundf(128.0 * ui_scale)))
-	var banner_rect: Rect2 = Rect2(safe_rect.position, Vector2(safe_rect.size.x, banner_height))
+	var board_width: float = maxf((safe_rect.size.x - 24.0 * ui_scale) * SCOREBOARD_SCALE, 1.0)
+	var board_height: float = board_width * SCOREBOARD_ART_SIZE.y / SCOREBOARD_ART_SIZE.x
+	var board_x: float = viewport_rect.get_center().x - board_width * 0.5
+	var board_y: float = safe_rect.position.y + 8.0 * ui_scale
+	var banner_rect: Rect2 = Rect2(Vector2(board_x, board_y), Vector2(board_width, board_height))
+	var play_top: float = banner_rect.end.y + 12.0 * ui_scale
 	var play_inset: float = 12.0 * ui_scale
-	var play_top: float = banner_rect.end.y + play_inset
 	var play_bottom: float = maxf(safe_rect.end.y - play_inset, play_top)
 	var available_play_rect: Rect2 = Rect2(
 		Vector2(safe_rect.position.x, play_top),
@@ -1857,8 +1862,10 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 		return "ball_idle_open"
 	if not player.is_offense:
 		return _resolve_defender_animation_family(previous_family, speed)
-	if _should_use_move_family(previous_family, speed):
+	if _should_use_run_family(previous_family, speed):
 		return "off_ball_run"
+	if _should_use_move_family(previous_family, speed):
+		return "off_ball_shuffle"
 	return "no_ball_idle"
 
 
@@ -1880,7 +1887,7 @@ func _resolve_player_action_vector(player: PlayerController, family: String) -> 
 			return get_finish_logic_center_world() - player.world_position
 		"set_shot_release", "jumper_release", "close_finish_layup", "close_finish_dunk", "close_finish_side_dunk":
 			return _resolve_shot_release_action_vector(player)
-		"ball_move_small", "ball_move_run", "off_ball_run":
+		"ball_move_small", "ball_move_run", "off_ball_shuffle", "off_ball_run":
 			return _resolve_player_motion_vector(player)
 		"ball_idle_open", "ball_idle_pressured":
 			return get_finish_logic_center_world() - player.world_position
@@ -1942,11 +1949,11 @@ func _should_use_run_family(previous_family: String, speed: float) -> bool:
 
 
 func _is_move_family(family: String) -> bool:
-	return family == "ball_move_small" or family == "guard_shuffle" or family == "off_ball_run"
+	return family == "ball_move_small" or family == "guard_shuffle" or family == "off_ball_shuffle"
 
 
 func _is_run_family(family: String) -> bool:
-	return family == "ball_move_run" or family == "guard_run"
+	return family == "ball_move_run" or family == "guard_run" or family == "off_ball_run"
 
 
 func _resolve_variant_index_for_family(player: PlayerController, family: String, memory: Dictionary) -> int:
@@ -1986,6 +1993,7 @@ func _resolve_family_mirror_west(family: String, action_vector: Vector2, current
 func _should_apply_facing_hysteresis(family: String) -> bool:
 	return family == "ball_move_small" \
 		or family == "ball_move_run" \
+		or family == "off_ball_shuffle" \
 		or family == "off_ball_run" \
 		or family == "guard_run" \
 		or family == "guard_shuffle" \
@@ -2006,16 +2014,33 @@ func _should_allow_dunk_contact_hold(player: PlayerController, family: String) -
 	return pending_shot_release.get("player", null) == player and bool(pending_shot_release.get("use_dunk_contact_hold", false))
 
 
-func get_dunk_contact_anchor_offset_for_row(row_index: int) -> Vector2:
-	if player_animation_config != null:
-		return player_animation_config.get_dunk_contact_anchor_offset(row_index)
-	return Vector2(0.0, 40.0)
+func _resolve_dunk_anchor_mirror_west(shooter: PlayerController) -> bool:
+	if shooter == null:
+		return false
+	if _has_active_shot_sequence_for_player(shooter):
+		return bool(active_shot_sequence.get("mirror_west", false))
+	if not active_dunk_root_motion.is_empty() and active_dunk_root_motion.get("player", null) == shooter:
+		return bool(active_dunk_root_motion.get("mirror_west", false))
+	var locked_shot_visual: Dictionary = _get_locked_shot_visual(shooter)
+	if not locked_shot_visual.is_empty():
+		return bool(locked_shot_visual.get("mirror_west", false))
+	var memory: Dictionary = player_visual_memory.get(shooter, {})
+	if memory.has("mirror_west"):
+		return bool(memory.get("mirror_west", false))
+	return shooter.get_debug_flip_h()
 
 
-func get_dunk_landing_anchor_offset_for_row(row_index: int) -> Vector2:
+func get_dunk_contact_anchor_offset_for_row(row_index: int, mirror_west: bool = false) -> Vector2:
 	if player_animation_config != null:
-		return player_animation_config.get_dunk_landing_anchor_offset(row_index)
-	return get_dunk_contact_anchor_offset_for_row(row_index) + Vector2(0.0, 96.0)
+		return player_animation_config.get_dunk_contact_anchor_offset(row_index, mirror_west)
+	var default_offset: Vector2 = Vector2(0.0, 40.0)
+	return Vector2(-default_offset.x, default_offset.y) if mirror_west else default_offset
+
+
+func get_dunk_landing_anchor_offset_for_row(row_index: int, mirror_west: bool = false) -> Vector2:
+	if player_animation_config != null:
+		return player_animation_config.get_dunk_landing_anchor_offset(row_index, mirror_west)
+	return get_dunk_contact_anchor_offset_for_row(row_index, mirror_west) + Vector2(0.0, 96.0)
 
 
 func _get_dunk_contact_frame_for_row(row_index: int) -> int:
@@ -2158,7 +2183,8 @@ func _build_dunk_contact_snap_snapshot(shooter: PlayerController) -> Dictionary:
 	if shooter == null:
 		return {}
 	var row_index: int = _resolve_dunk_contact_row_index(shooter)
-	var anchor_offset: Vector2 = get_dunk_contact_anchor_offset_for_row(row_index)
+	var mirror_west: bool = _resolve_dunk_anchor_mirror_west(shooter)
+	var anchor_offset: Vector2 = get_dunk_contact_anchor_offset_for_row(row_index, mirror_west)
 	var snapped_world_position: Vector2 = court_config.hoop_position + anchor_offset
 	var ground_screen: Vector2 = (
 		court_projection.world_to_screen_ground(snapped_world_position)
@@ -2167,6 +2193,7 @@ func _build_dunk_contact_snap_snapshot(shooter: PlayerController) -> Dictionary:
 	)
 	return {
 		"row_index": row_index,
+		"mirror_west": mirror_west,
 		"anchor_offset": anchor_offset,
 		"world_position": snapped_world_position,
 		"ground_screen": ground_screen,
@@ -2192,8 +2219,9 @@ func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
 	var visible_run_frame_count: int = max(run_end_frame - approach_start_frame + 1, 0) if approach_start_frame <= run_end_frame else 0
 	var visible_jump_frame_count: int = max(contact_start_frame - jump_start_frame, 0)
 	var release_start_world_position: Vector2 = shooter.world_position
-	var contact_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_contact_anchor_offset_for_row(row_index)
-	var landing_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_landing_anchor_offset_for_row(row_index)
+	var mirror_west: bool = _resolve_dunk_anchor_mirror_west(shooter)
+	var contact_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_contact_anchor_offset_for_row(row_index, mirror_west)
+	var landing_anchor_world_position: Vector2 = court_config.hoop_position + get_dunk_landing_anchor_offset_for_row(row_index, mirror_west)
 	var visible_approach_frame_count: int = visible_run_frame_count + visible_jump_frame_count
 	var run_fraction: float = (
 		clampf(float(visible_run_frame_count) / maxf(float(visible_approach_frame_count), 1.0), 0.0, 1.0)
@@ -2206,6 +2234,7 @@ func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
 	active_dunk_root_motion = {
 		"player": shooter,
 		"row_index": row_index,
+		"mirror_west": mirror_west,
 		"approach_start_frame": approach_start_frame,
 		"approach_distance_to_hoop": approach_distance_to_hoop,
 		"approach_bucket": approach_bucket,
@@ -2228,10 +2257,11 @@ func _begin_active_dunk_root_motion(shooter: PlayerController) -> void:
 	log_writer.log_event(
 		"dunk_root_motion_started",
 		{
-			"player": shooter.get_display_name(),
-			"row": row_index,
-			"phase": start_phase,
-			"frame": approach_start_frame,
+				"player": shooter.get_display_name(),
+				"row": row_index,
+				"mirror_west": mirror_west,
+				"phase": start_phase,
+				"frame": approach_start_frame,
 			"distance_to_hoop": approach_distance_to_hoop,
 			"approach_start_frame": approach_start_frame,
 			"approach_bucket": approach_bucket,
@@ -2278,6 +2308,7 @@ func _advance_active_dunk_root_motion(delta: float) -> void:
 				{
 					"player": shooter.get_display_name(),
 					"row": int(active_dunk_root_motion.get("row_index", shooter.get_debug_row_index())),
+					"mirror_west": bool(active_dunk_root_motion.get("mirror_west", false)),
 					"phase": phase,
 					"frame": current_frame,
 					"distance_to_hoop": active_dunk_root_motion.get("approach_distance_to_hoop", 0.0),

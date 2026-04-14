@@ -1,6 +1,36 @@
 # Worklog
 
+## 2026-04-14
+
+### Off-ball offense slow movement now reuses the defense shuffle row
+
+- split off-ball offense movement presentation into a true slow-move family plus the existing run family, instead of treating every non-idle off-ball motion as the run row
+- mapped the new off-ball slow family to row `19`, which is the same authored shuffle row already used by `guard_shuffle`, so off-ball offense now matches the defense's readable slow-move animation while the ballhandler path stays unchanged
+- extended the deterministic visual smoke checks to cover off-ball offense idle, shuffle, run, and threshold hysteresis transitions separately
+- reran the full headless suite after the off-ball shuffle fix: Pure logic `1583`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Textured scoreboard HUD now uses the authored decor board art
+
+- cropped `assets/Decor/scoreboard.png` down to the measured board bounds (`1098x248`) so the live HUD no longer carries the empty transparent margin that came with the source art
+- replaced the old flat top banner with a textured scoreboard layout that anchors to the top safe area, renders only the numeric home and away scores under the art's built-in `HOME` / `GUEST` headings, keeps the game clock in the center inset, and places the pause control on the lower center shelf
+- adjusted the scoreboard placement to center against the visible viewport midpoint horizontally instead of only centering inside the safe rect math, so the board now reads visually centered on screen
+- reduced the centered scoreboard footprint to two-thirds of its previous on-screen size while keeping the same authored score, clock, and pause zones, so the board reads less dominant and opens more vertical space for play
+- changed the responsive layout contract so `banner_rect` now describes the scaled scoreboard art bounds instead of a fixed-height strip, updated HUD smoke coverage to assert scoreboard containment, viewport-center alignment, left/center/right ordering, pause-under-clock placement, and the trimmed scoreboard texture dimensions, and switched the HUD back onto the imported `Texture2D` path now that the cropped board has import metadata
+- reran the full headless suite after the scoreboard HUD, centering, and two-thirds scale pass: Pure logic `1571`, Scenarios `13`, Balance `4`, Failures `0`
+
 ## 2026-04-13
+
+### Dunk contact hold was shortened for a more fluid finish
+
+- reduced `dunk_contact_hold_seconds` from `0.5` to `0.18` in the shared animation config so dunk contact still reads, but no longer lingers long enough to feel like a freeze frame
+- kept the authored contact frame and root-motion anchors unchanged, which means the player still reaches the same dunk pose and landing path, but launches back into the follow-through much sooner
+- updated deterministic and smoke expectations for the shorter hold window and reran parse/load plus the full headless suite after the timing pass: Pure logic `1565`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Dunk hold and landing anchors are now authored separately for east and west facing finishes
+
+- replaced the old one-sided dunk contact / landing anchor contract with explicit east-facing and west-facing anchors for rows `13`, `15`, and `16`, then seeded the west values as `x`-mirrored copies of the existing east values so mirrored dunks attach to the correct side of the rim by default
+- updated `GameCoordinator` to resolve the active dunk's `mirror_west` flag and use the facing-specific contact and landing anchors for the hold snap, root-motion approach, and post-release landing path instead of always snapping to the east-tuned offsets
+- extended deterministic dunk coverage so anchor metadata, hold snapshots, and root-motion traces all assert the correct facing-specific anchor selection and remain deterministic across repeated seeds, then reran parse/load plus the full headless suite after the facing-aware anchor pass: Pure logic `1605`, Scenarios `13`, Balance `4`, Failures `0`
 
 ### Close-finish and dunk distance logic now use the same lowered hoop-base anchor as the debug rings
 
