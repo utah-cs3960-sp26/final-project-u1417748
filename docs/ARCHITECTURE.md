@@ -29,7 +29,8 @@
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
 - owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim takes over
-- owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
+- owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `control_panel_rect`, `control_zone_rects`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
+- defines `banner_rect` as the compact scoreboard-card bounds anchored above the control panel's left `SHOOT` half rather than as a top banner strip
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - resolves the active close-camera target each frame, following the controlled ballhandler during owned possession and the rendered live ball during passes, shots, rebounds, and score follow-through
 - commits any staged shot release before final projection sync so the first visible launched-ball frame already hands camera ownership from the player to the live ball
@@ -43,7 +44,7 @@
 ## Core Systems
 
 - `InputController`
-  - lower-zone invisible-stick movement, directional pass-preview selection, release-to-pass arbitration, quick-tap shot classification, shot-mode arm requests, tap-to-time input, UI-safe unhandled touch routing, and debug mouse/keyboard support
+  - visible-panel live-offense input with center-lane movement drags, direct left/right focused-pass button taps, direct top-left `SHOOT` taps, direct top-right `DUNK` taps, release classification for drag-based actions, second-finger action-button taps during movement, short-lived pressed-zone highlight feedback for direct taps, tap-to-time input, UI-safe unhandled touch routing, and debug mouse/keyboard support
 - `CourtProjection`
   - render-only world/screen mapping with a two-stage projection: a stable base court layout plus a close-camera zoom/translation transform that hard-centers the tracked subject on the visible viewport midpoint
   - removes the same camera transform before inverse ground-plane mapping so touch, bot gestures, and other screen-driven input still round-trip back into unchanged world coordinates
@@ -51,9 +52,11 @@
   - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
-  - also renders transient touch feedback like the movement anchor, the gameplay-only light-blue pass-preview ring, the shot meter, and trajectory dots
+  - also renders gameplay-only overlays like the light-blue focused-pass ring and trajectory dots while leaving joystick art and shot-meter rendering to the dedicated control panel
 - `HUD`
-  - renders a cropped textured scoreboard anchored to the top safe area, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
+  - renders the cropped textured scoreboard as a compact bottom-left card above the `SHOOT` half of the control panel, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
+- `ControlPanel`
+  - renders the visible bottom-third control panel, keeping every button on a shared dark neutral idle base until the active drag or a direct press swaps that zone into its action color, while also drawing the joystick art, pass badges, and the widened shot meter that spans the combined `SHOOT | DUNK` top row during `SHOT_AIM`
 - `ShotController`
   - one-way shot-mode timing, decision-duration-vs-full-animation timing separation, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`

@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/CourtView.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/GameCoordinator.gd" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/FeedbackText.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/debug/DebugOverlay.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/input/InputController.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ControlPanel.tscn" id="9"]
 
 [node name="GameRoot" type="Node2D"]
 
@@ -24,6 +25,8 @@ script = ExtResource("8")
 [node name="UIRoot" type="CanvasLayer" parent="."]
 
 [node name="HUD" parent="UIRoot" instance=ExtResource("3")]
+
+[node name="ControlPanel" parent="UIRoot" instance=ExtResource("9")]
 
 [node name="PauseOverlay" parent="UIRoot" instance=ExtResource("4")]
 

@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-04-14
+
+### The visible control panel now uses a split `SHOOT | DUNK` top row and the scoreboard lives above it
+
+The first visible-panel pass replaced the old open-screen gestures, but its three-row layout still made `DUNK` travel farther than `SHOOT` and kept the scoreboard occupying the top edge of the screen. The current contract keeps the same bottom-third overlay and the same bottom `PASS | MOVE | PASS` row, but collapses the action row into a single exact `50/50` top split: top-left `SHOOT`, top-right `DUNK`. The removed bottom dunk strip does not keep any hitbox of its own; that reclaimed height goes into the new top row so both finish buttons read larger and faster to hit. The responsive HUD contract also changes here: `banner_rect` now means a compact scoreboard card anchored just above the left `SHOOT` half, not a full-width top banner. `Show Controls` remains presentation-only and hides only the panel art, not the relocated scoreboard. This was chosen to reduce thumb travel, keep shot and dunk options visually paired, and return the upper screen to gameplay instead of HUD chrome.
+
+### The control panel now biases space toward movement instead of the action buttons
+
+After the top-split pass, the action buttons still consumed too much of the bottom-third overlay relative to how often the player needs to steer. The current tuning trims the `SHOOT | DUNK` row down to two-thirds of its previous height, gives that reclaimed height to the bottom `PASS | MOVE | PASS` row, and also narrows each `PASS` lane to two-thirds of its previous width so the center `MOVE` lane inherits the freed width. This keeps the control scheme unchanged while making movement the largest touch target in the panel, which better matches actual play frequency and reduces accidental pass or finish selection during thumb repositioning.
+
+### Action buttons now work as direct taps, including with a second finger during movement
+
+The panel originally still required the primary movement gesture for every live-offense action, which made the visible buttons read like labels more than real controls. The current contract keeps drag-release actions intact, but also lets `PASS`, `SHOOT`, and `DUNK` fire as direct button taps even when no move drag is active. Because that tap path is independent from the movement pointer, a second finger can press any action button while the first finger keeps dragging in `MOVE`. The shot meter was widened at the same time so it spans the full top `SHOOT | DUNK` row instead of only the `SHOOT` half. This was chosen to make the visible panel behave like an actual touch control surface, improve readability, and reduce the amount of thumb travel needed to trigger shot timing.
+
+### Control-panel buttons now stay neutral until hovered or pressed
+
+The earlier visible-panel art still baked the action colors into every button all the time, which made the interface feel busy and reduced the value of the active-zone highlight. The current contract changes every visible button zone to the same dark neutral idle base `#1b1d3a`, then swaps only the active zone into its authored action color while a live drag is hovering over it or while that button is being pressed directly. Direct taps now also carry a short-lived pressed highlight so the button visibly flashes even when the action fires immediately. This was chosen to make active intent easier to read at a glance without changing the underlying control mapping.
+
 ## 2026-04-13
 
 ### Dunk rows now start from a distance-resolved visible frame instead of always restarting at frame 1

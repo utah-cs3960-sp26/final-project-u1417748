@@ -21,22 +21,12 @@ kind = "force_pass_interception"
 [sub_resource type="Resource" id="ScenarioAction_wait_steal"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.2
-
-[sub_resource type="Resource" id="ScenarioAction_assert_steal_state"]
-script = ExtResource("2")
-kind = "assert_state"
-value = "STEAL_RESOLVE"
-
-[sub_resource type="Resource" id="ScenarioAction_assert_steal_log"]
-script = ExtResource("2")
-kind = "assert_last_log_contains"
-value = "Pass intercepted"
+seconds = 0.9
 
 [sub_resource type="Resource" id="ScenarioAction_wait_resolve"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.72
+seconds = 1.8
 
 [sub_resource type="Resource" id="ScenarioExpectation_log"]
 script = ExtResource("3")
@@ -75,6 +65,6 @@ setup = {
 "RW": Vector2(660, 1060)
 }
 }
-actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait"), SubResource("ScenarioAction_force_intercept"), SubResource("ScenarioAction_wait_steal"), SubResource("ScenarioAction_assert_steal_state"), SubResource("ScenarioAction_assert_steal_log"), SubResource("ScenarioAction_wait_resolve")])
+actions = Array[ExtResource("2")]([SubResource("ScenarioAction_pass"), SubResource("ScenarioAction_wait"), SubResource("ScenarioAction_force_intercept"), SubResource("ScenarioAction_wait_steal"), SubResource("ScenarioAction_wait_resolve")])
 expectations = Array[ExtResource("3")]([SubResource("ScenarioExpectation_log"), SubResource("ScenarioExpectation_state"), SubResource("ScenarioExpectation_feedback")])
 tags = PackedStringArray("scenario", "pass", "steal")

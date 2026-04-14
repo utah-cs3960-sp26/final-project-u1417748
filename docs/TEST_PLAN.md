@@ -6,17 +6,25 @@
 
 Covered by `tests/TestRunner.gd`:
 
-- invisible movement-zone dead-zone behavior
-- invisible-stick direction and magnitude normalization
-- quick pass-tap qualification by duration and movement
-- quick empty tap pass requests outside the movement zone
-- quick empty tap pass requests inside the movement zone when no real drag occurred
-- direct teammate tap hit testing and explicit pass-target selection
-- upward swipe shot qualification only when the release finishes in the top half
-- upward swipe rejection when the release stays in the lower half
-- downward swipe rejection for shot entry
-- qualifying upward swipe from the movement zone winning over normal movement release
-- extra touches ignored while dragging
+- visible `MOVE`-zone dead-zone behavior
+- visible-panel joystick direction and magnitude normalization
+- left/right `PASS` release classification
+- direct `PASS` button taps without movement
+- top-left `SHOOT` release classification into `shot_layout`
+- top-right `DUNK` release classification into `dunk`
+- direct `SHOOT` / `DUNK` button taps without movement
+- idle control-panel buttons sharing the neutral dark base color `#1b1d3a`
+- hovered / pressed action buttons swapping from the neutral base into their authored action color
+- `MOVE`-lane release cancellation
+- short-drag rejection for panel actions
+- removed bottom dunk-strip rejection
+- open-court release rejection outside the control panel
+- both pass lanes routing to the single focused pass target
+- second-finger action-button taps during an active move drag
+- hidden-controls mode preserving the same active hitboxes
+- teammate screen coordinates no longer bypassing the focused pass lanes
+- old open-screen pass / shot gestures no longer firing in `LIVE_OFFENSE`
+- non-action extra touches not stealing the live move pointer while dragging
 - default pass-target ranking by commit chance, distance, and hoop proximity
 - meter green-window sizing stays fixed under contest and ratings
 - red/yellow/green timing classification on the one-way shot bar
@@ -141,26 +149,34 @@ Smoke game scene:
 ## Manual Smoke Checklist
 
 - run the project and confirm live gameplay appears immediately
-- move the ballhandler by dragging in the lower touch zone and confirm no visible joystick is present
-- confirm a faint thumb anchor appears on touch-down and disappears cleanly on release
+- confirm the bottom-third control panel is visible on match start with a shorter `SHOOT | DUNK` row above a larger `PASS | MOVE | PASS` row
+- confirm the center `MOVE` lane is visibly wider than either `PASS` lane
+- confirm the scoreboard card sits at the bottom left just above the `SHOOT` half instead of spanning the top edge
+- move the ballhandler by dragging inside the center `MOVE` zone and confirm the visible joystick knob tracks the thumb
 - confirm tiny thumb movements inside the dead zone do not move the ballhandler
 - confirm a persistent light-blue ring marks the default pass target during `LIVE_OFFENSE`
-- tap empty gameplay space and confirm the marked teammate receives the pass
-- tap a different teammate directly and confirm the pass goes to that teammate instead of the marked default target
-- quick tap inside the lower touch zone without turning it into a real drag and confirm it still passes
+- tap either `PASS` button without moving first and confirm the marked teammate receives the pass
+- release from `MOVE` into either `PASS` lane and confirm the marked teammate receives the pass
+- confirm both `PASS` lanes route to the same highlighted receiver
+- start moving in `MOVE`, then tap a `PASS`, `SHOOT`, or `DUNK` button with a second finger and confirm the action still fires
+- confirm every control button is dark by default and only changes into its action color while hovered by the drag or pressed directly
 - confirm a clean pass transfers control only after the live ball reaches the receiver
 - confirm a safe short pass usually reaches the target even if a defender was lane-eligible
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the possession jump-cut
-- swipe clearly upward into the top half of the screen and confirm shot mode arms at normal speed with a bottom red/green meter + visible preview dots
-- start an upward swipe from the lower touch zone and confirm it still arms shot mode once the release reaches the top half
-- swipe upward without reaching the top half and confirm it does not arm shot mode
-- swipe downward and confirm it does not arm shot mode
-- drag non-vertically in the lower touch zone and confirm it behaves as movement instead of arming a shot
+- release from `MOVE` into the top-left `SHOOT` half and confirm shot mode arms at normal speed with the timing meter spanning the full top row plus visible preview dots on court
+- release from `MOVE` into the top-right `DUNK` half near the rim and confirm an eligible dunk skips the timing meter and enters the dunk finish flow
+- release from `MOVE` into the top-right `DUNK` half near the rim with a non-dunk finisher and confirm it falls back to a layup instead of a jumper
+- release from `MOVE` into the top-right `DUNK` half far from the rim and confirm it does not arm a shot
+- tap `SHOOT` directly and confirm shot mode arms without needing a movement drag first
+- tap `DUNK` directly near the rim and confirm it behaves the same as the release-based dunk input
+- release toward the old bottom-center dunk-strip area and confirm it no longer triggers dunk intent
+- release back into `MOVE` after dragging and confirm it cancels instead of arming a shot
 - confirm the committed shot row starts playing immediately during armed shot mode and the meter advances in one direction only
 - confirm committed shot rows keep a stable 15 FPS cadence instead of visibly speeding up between aim and release
 - confirm the tail-end green window ends exactly on the authored release frame for the selected row
 - confirm tapping anywhere locks shot quality immediately while the animation continues to the release frame before launch
+- confirm the live timing meter spans across both the `SHOOT` and `DUNK` buttons so it is wider than the `SHOOT` half alone
 - confirm failing to tap before the bar ends produces a late miss
 - confirm the standalone ball is hidden while a player sprite owns possession and only appears on pass start or once a shot animation reaches its authored release frame
 - tap once in green and confirm the ball visibly climbs into a dramatic arc and finishes through the hoop
@@ -176,6 +192,9 @@ Smoke game scene:
 - confirm a stationary ballhandler can show open dribble or pressured dribble idles while off-ball teammates stay on the no-ball idle/run rows
 - confirm a stationary ballhandler with clear defender space can use the row-4 set shot, while non-set jumpers use the randomized row-8/row-10 release rows
 - confirm close shots near the rim can show straight layups, side layups, straight dunks, or side dunks depending on approach and momentum
+- pause the match and confirm `Show Controls` hides the panel art while movement/pass/shoot/dunk hitboxes still work after resuming
+- confirm `Show Controls` does not hide the relocated scoreboard card
+- confirm `Show Controls` is runtime-only and starts visible again on a fresh match
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases
 - on a physical mobile device, confirm pass-lock and green-timing haptics fire when supported

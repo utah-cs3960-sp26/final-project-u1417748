@@ -85,8 +85,6 @@ func _draw() -> void:
 		draw_circle(screen_position, radius, dot_color)
 		if apex_weight > 0.05:
 			draw_circle(screen_position, radius * 0.4, Color(1.0, 1.0, 1.0, clampf(apex_weight * 0.35, 0.0, 0.24)))
-	if bool(shot_meter.get("visible", false)):
-		_draw_shot_meter()
 
 
 func has_textured_court() -> bool:
@@ -164,56 +162,6 @@ func _draw_input_feedback() -> void:
 		var pass_radius: float = float(input_feedback.get("pass_target_radius", 28.0))
 		draw_circle(pass_target_screen, pass_radius, PASS_PREVIEW_FILL_COLOR)
 		draw_arc(pass_target_screen, pass_radius, 0.0, TAU, 28, PASS_PREVIEW_RING_COLOR, 3.0)
-	if not bool(input_feedback.get("anchor_visible", false)):
-		return
-	var anchor_screen: Vector2 = input_feedback.get("anchor_screen", Vector2.ZERO)
-	var current_screen: Vector2 = input_feedback.get("current_screen", anchor_screen)
-	var anchor_radius: float = float(input_feedback.get("anchor_radius", 54.0))
-	var knob_radius: float = float(input_feedback.get("knob_radius", 28.0))
-	var anchor_alpha: float = float(input_feedback.get("anchor_alpha", 0.2))
-	draw_circle(anchor_screen, anchor_radius, Color(0.0, 0.0, 0.0, anchor_alpha))
-	draw_circle(anchor_screen, anchor_radius - 8.0, Color(0.16, 0.18, 0.24, anchor_alpha * 2.3))
-	draw_arc(anchor_screen, anchor_radius, 0.0, TAU, 28, Color(0.96, 0.95, 0.86, clampf(anchor_alpha * 3.4, 0.0, 0.76)), 2.0)
-	var knob_position: Vector2 = current_screen
-	if current_screen.distance_to(anchor_screen) > anchor_radius:
-		knob_position = anchor_screen + (current_screen - anchor_screen).limit_length(anchor_radius)
-	draw_circle(knob_position, knob_radius, Color(0.93, 0.74, 0.28, clampf(anchor_alpha * 4.0, 0.0, 0.95)))
-
-
-func _draw_shot_meter() -> void:
-	var viewport_size: Vector2 = _get_viewport_size()
-	var meter_width: float = float(shot_meter.get("width", 560.0))
-	var meter_height: float = float(shot_meter.get("height", 42.0))
-	var bottom_margin: float = float(shot_meter.get("bottom_margin", 164.0))
-	var marker_width: float = float(shot_meter.get("marker_width", 20.0))
-	var bar_rect: Rect2 = Rect2(
-		Vector2((viewport_size.x - meter_width) * 0.5, viewport_size.y - bottom_margin - meter_height),
-		Vector2(meter_width, meter_height)
-	)
-	var green_start: float = float(shot_meter.get("green_start", 0.6))
-	var green_end: float = float(shot_meter.get("green_end", 0.78))
-	var yellow_start: float = float(shot_meter.get("yellow_start", 0.32))
-	var yellow_end: float = float(shot_meter.get("yellow_end", green_start))
-	var progress: float = float(shot_meter.get("progress", 0.0))
-	draw_rect(bar_rect.grow(12.0), Color(0.04, 0.04, 0.06, 0.76))
-	draw_rect(bar_rect, Color(0.74, 0.16, 0.16, 0.96))
-	var yellow_rect: Rect2 = Rect2(
-		Vector2(bar_rect.position.x + bar_rect.size.x * yellow_start, bar_rect.position.y),
-		Vector2(bar_rect.size.x * maxf(yellow_end - yellow_start, 0.0), bar_rect.size.y)
-	)
-	if yellow_rect.size.x > 0.0:
-		draw_rect(yellow_rect, Color(1.0, 0.84, 0.28, 0.98))
-	var green_rect: Rect2 = Rect2(
-		Vector2(bar_rect.position.x + bar_rect.size.x * green_start, bar_rect.position.y),
-		Vector2(bar_rect.size.x * maxf(green_end - green_start, 0.0), bar_rect.size.y)
-	)
-	if green_rect.size.x > 0.0:
-		draw_rect(green_rect, Color(0.22, 0.86, 0.34, 1.0))
-	draw_rect(bar_rect, Color(0.98, 0.95, 0.86, 0.92), false, 4.0)
-	var marker_x: float = bar_rect.position.x + bar_rect.size.x * progress - marker_width * 0.5
-	var marker_rect: Rect2 = Rect2(Vector2(marker_x, bar_rect.position.y - 8.0), Vector2(marker_width, bar_rect.size.y + 16.0))
-	draw_rect(marker_rect, Color(0.98, 0.96, 0.9))
-	draw_rect(marker_rect.grow(-4.0), Color(0.08, 0.09, 0.1, 0.92))
 
 
 func _get_viewport_size() -> Vector2:

@@ -223,12 +223,11 @@ func _execute_swipe_shot(direction: Vector2 = Vector2.UP) -> void:
 	if swipe_direction.length_squared() <= 0.001:
 		swipe_direction = Vector2.UP
 	var swipe_start: Vector2 = _get_shot_swipe_start_position()
-	var swipe_end: Vector2 = swipe_start + swipe_direction * _get_shot_swipe_distance()
-	if swipe_direction.y < -0.001:
-		var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
-		var release_limit_ratio: float = float(coordinator.input_config.shot_swipe_max_release_y_ratio)
-		var top_half_limit_y: float = viewport_size.y * release_limit_ratio
-		swipe_end = Vector2(swipe_start.x, minf(swipe_end.y, top_half_limit_y - 24.0))
+	var swipe_end: Vector2 = _get_control_zone_center("shoot")
+	if swipe_direction.y > 0.001:
+		swipe_end = _get_control_zone_center("dunk")
+	elif absf(swipe_direction.x) > absf(swipe_direction.y):
+		swipe_end = swipe_start + Vector2(maxf(float(coordinator.input_config.control_action_min_distance_pixels) + 24.0, float(coordinator.input_config.deadzone) + 12.0), 0.0)
 	input_controller.swipe_test_shot_arm(
 		swipe_start,
 		swipe_end,
@@ -238,7 +237,7 @@ func _execute_swipe_shot(direction: Vector2 = Vector2.UP) -> void:
 
 func _execute_release_center() -> void:
 	var anchor: Vector2 = _get_lower_zone_anchor()
-	var drag_distance: float = maxf(float(coordinator.input_config.pass_tap_max_movement_pixels) + 24.0, float(coordinator.input_config.deadzone) + 12.0)
+	var drag_distance: float = maxf(float(coordinator.input_config.control_action_min_distance_pixels) + 24.0, float(coordinator.input_config.deadzone) + 12.0)
 	var drag_screen: Vector2 = anchor + Vector2(drag_distance, 0.0)
 	input_controller.begin_test_live_gesture(anchor)
 	input_controller.update_test_live_gesture(drag_screen)
@@ -246,13 +245,11 @@ func _execute_release_center() -> void:
 
 
 func _get_lower_zone_anchor() -> Vector2:
-	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
-	return Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
+	return _get_control_zone_center("move")
 
 
 func _get_upper_pass_tap_position() -> Vector2:
-	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
-	return Vector2(viewport_size.x * 0.5, viewport_size.y * 0.56)
+	return _get_control_zone_center("pass_right")
 
 
 func _get_shot_swipe_start_position() -> Vector2:
@@ -260,7 +257,17 @@ func _get_shot_swipe_start_position() -> Vector2:
 
 
 func _get_shot_swipe_distance() -> float:
-	return maxf(float(coordinator.input_config.shot_swipe_min_distance_pixels) + 48.0, 140.0)
+	return maxf(float(coordinator.input_config.control_action_min_distance_pixels) + 48.0, 140.0)
+
+
+func _get_control_zone_center(zone_name: String) -> Vector2:
+	var control_layout: Dictionary = input_controller.get_control_layout_snapshot()
+	var zone_rects: Dictionary = control_layout.get("control_zone_rects", {})
+	var zone_rect: Rect2 = zone_rects.get(zone_name, Rect2())
+	if zone_rect.size.x <= 0.0 or zone_rect.size.y <= 0.0:
+		var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
+		return viewport_size * 0.5
+	return zone_rect.get_center()
 
 
 func _set_meter_quality(quality: String) -> void:

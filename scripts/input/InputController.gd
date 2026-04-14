@@ -9,10 +9,21 @@ signal shot_mode_requested(details: Dictionary)
 signal shot_timing_tapped(screen_position: Vector2)
 signal pause_requested()
 
+const DEFAULT_VIEWPORT_SIZE: Vector2 = Vector2(1080.0, 1920.0)
+
 enum InteractionMode {
 	DISABLED,
 	LIVE_OFFENSE,
 	SHOT_TIMING,
+}
+
+enum ControlZone {
+	NONE,
+	SHOOT,
+	PASS_LEFT,
+	MOVE,
+	PASS_RIGHT,
+	DUNK,
 }
 
 var input_config
@@ -23,6 +34,9 @@ var interaction_mode: int = InteractionMode.DISABLED
 var allow_keyboard_debug: bool = true
 var allow_mouse_emulation: bool = true
 
+var control_panel_rect: Rect2 = Rect2()
+var control_zone_rects: Dictionary = {}
+
 var gameplay_touch_index: int = -1
 var gesture_anchor_screen: Vector2 = Vector2.ZERO
 var gesture_current_screen: Vector2 = Vector2.ZERO
@@ -30,15 +44,9 @@ var gesture_anchor_world: Vector2 = Vector2.ZERO
 var gesture_current_world: Vector2 = Vector2.ZERO
 var gesture_start_time: float = 0.0
 var gesture_max_excursion: float = 0.0
-var tap_candidate_touch_index: int = -1
-var tap_candidate_start_screen: Vector2 = Vector2.ZERO
-var tap_candidate_current_screen: Vector2 = Vector2.ZERO
-var tap_candidate_start_world: Vector2 = Vector2.ZERO
-var tap_candidate_current_world: Vector2 = Vector2.ZERO
-var tap_candidate_start_time: float = 0.0
-var tap_candidate_max_distance: float = 0.0
-var tap_candidate_started_in_movement_zone: bool = false
 var timing_tap_consumed: bool = false
+var transient_highlight_zone: String = ""
+var transient_highlight_until: float = 0.0
 
 
 func _ready() -> void:
@@ -63,6 +71,19 @@ func set_projection(projection_value) -> void:
 	projection = projection_value
 
 
+func set_control_layout(layout_metrics: Dictionary) -> void:
+	control_panel_rect = layout_metrics.get("control_panel_rect", Rect2())
+	control_zone_rects = Dictionary(layout_metrics.get("control_zone_rects", {})).duplicate(true)
+
+
+func get_control_layout_snapshot() -> Dictionary:
+	var layout: Dictionary = _resolve_control_layout()
+	return {
+		"control_panel_rect": layout.get("control_panel_rect", Rect2()),
+		"control_zone_rects": Dictionary(layout.get("control_zone_rects", {})).duplicate(true),
+	}
+
+
 func set_ballhandler(player: PlayerController) -> void:
 	ballhandler = player
 
@@ -76,7 +97,6 @@ func set_interaction_mode(mode_value: int) -> void:
 		return
 	if interaction_mode == InteractionMode.LIVE_OFFENSE and mode_value != InteractionMode.LIVE_OFFENSE:
 		_cancel_live_gesture("mode_change")
-		_clear_gameplay_tap_candidate_state()
 	interaction_mode = mode_value
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		movement_updated.emit(Vector2.ZERO, 0.0)
@@ -102,7 +122,6 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_game"):
 		pause_requested.emit()
-		return
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -125,17 +144,14 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
 	if event.pressed:
-		if _has_active_pointer():
+		if _handle_direct_action_press(event.index, event.position):
 			return
-		if _is_in_movement_zone(event.position):
-			_begin_live_gesture(event.index, event.position)
-		else:
-			_begin_gameplay_tap_candidate(event.index, event.position, false)
+		if _has_active_pointer() or not _is_in_move_zone(event.position):
+			return
+		_begin_live_gesture(event.index, event.position)
 		return
 	if event.index == gameplay_touch_index:
 		_finish_live_gesture(event.position)
-	elif event.index == tap_candidate_touch_index:
-		_finish_gameplay_tap_candidate(event.position)
 
 
 func _handle_screen_drag(event: InputEventScreenDrag) -> void:
@@ -143,8 +159,6 @@ func _handle_screen_drag(event: InputEventScreenDrag) -> void:
 		return
 	if event.index == gameplay_touch_index:
 		_update_live_gesture(event.position)
-	elif event.index == tap_candidate_touch_index:
-		_update_gameplay_tap_candidate(event.position)
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
@@ -158,17 +172,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
 	if event.pressed:
-		if _has_active_pointer():
+		if _handle_direct_action_press(-3, event.position):
 			return
-		if _is_in_movement_zone(event.position):
-			_begin_live_gesture(-2, event.position)
-		else:
-			_begin_gameplay_tap_candidate(-2, event.position, false)
+		if _has_active_pointer() or not _is_in_move_zone(event.position):
+			return
+		_begin_live_gesture(-2, event.position)
 		return
 	if gameplay_touch_index == -2:
 		_finish_live_gesture(event.position)
-	elif tap_candidate_touch_index == -2:
-		_finish_gameplay_tap_candidate(event.position)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
@@ -176,8 +187,6 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 		return
 	if gameplay_touch_index == -2:
 		_update_live_gesture(event.position)
-	elif tap_candidate_touch_index == -2:
-		_update_gameplay_tap_candidate(event.position)
 
 
 func _begin_live_gesture(pointer_index: int, screen_position: Vector2) -> void:
@@ -208,8 +217,7 @@ func _finish_live_gesture(release_screen: Vector2) -> void:
 	var elapsed: float = maxf(_now_seconds() - gesture_start_time, 0.0)
 	var release_world: Vector2 = gesture_current_world
 	var max_touch_distance: float = maxf(gesture_max_excursion, release_screen.distance_to(gesture_anchor_screen))
-	var pass_tap_classification: Dictionary = classify_pass_tap(elapsed, max_touch_distance)
-	var swipe_classification: Dictionary = classify_vertical_shot_swipe(gesture_anchor_screen, release_screen)
+	var release_classification: Dictionary = classify_control_release(gesture_anchor_screen, release_screen)
 	var release_details: Dictionary = _build_gameplay_action_details(
 		gesture_anchor_screen,
 		release_screen,
@@ -219,32 +227,18 @@ func _finish_live_gesture(release_screen: Vector2) -> void:
 		max_touch_distance,
 		true
 	)
+	release_details.merge(release_classification, true)
+	var release_reason: String = str(release_classification.get("release_reason", "move_release"))
 	movement_updated.emit(Vector2.ZERO, 0.0)
-	if bool(pass_tap_classification.get("qualifies", false)):
-		var pass_target: PlayerController = find_tapped_teammate(release_screen)
-		release_details["release_reason"] = "direct_tap_pass" if pass_target != null else "default_tap_pass"
-		release_details["pass_target"] = pass_target
-		release_details["pass_target_role"] = pass_target.get_position_role() if pass_target != null else ""
-		release_details["pass_target_source"] = "direct_tap" if pass_target != null else "default_marker"
-		movement_zone_ended.emit(release_screen, release_world, elapsed, str(release_details["release_reason"]), release_details)
-		_clear_live_gesture_state()
-		pass_requested.emit(pass_target, release_details)
-		return
-	if bool(swipe_classification.get("qualifies", false)):
-		release_details["arm_reason"] = "swipe"
-		release_details["release_reason"] = "shot_swipe"
-		release_details["swipe_direction"] = str(swipe_classification.get("swipe_direction", "up"))
-		release_details["swipe_angle_error_rad"] = float(swipe_classification.get("angle_error_rad", 0.0))
-		release_details["ends_in_top_half"] = bool(swipe_classification.get("ends_in_top_half", false))
-		release_details["top_half_limit_y"] = float(swipe_classification.get("top_half_limit_y", 0.0))
-		movement_zone_ended.emit(release_screen, release_world, elapsed, "shot_swipe", release_details)
-		_clear_live_gesture_state()
-		shot_mode_requested.emit(release_details)
-		return
-	var release_reason: String = "center_cancel" if float(release_details.get("release_distance", 0.0)) <= float(input_config.deadzone if input_config != null else 22.0) else "move_release"
-	release_details["release_reason"] = release_reason
 	movement_zone_ended.emit(release_screen, release_world, elapsed, release_reason, release_details)
 	_clear_live_gesture_state()
+	if not bool(release_classification.get("qualifies", false)):
+		return
+	match str(release_classification.get("action_type", "")):
+		"pass":
+			pass_requested.emit(null, release_details)
+		"shot":
+			shot_mode_requested.emit(release_details)
 
 
 func _cancel_live_gesture(reason: String) -> void:
@@ -264,9 +258,64 @@ func _cancel_live_gesture(reason: String) -> void:
 		true
 	)
 	release_details["release_reason"] = reason
+	release_details["release_zone"] = _control_zone_name(_get_control_zone_for_screen(release_screen))
 	movement_updated.emit(Vector2.ZERO, 0.0)
 	movement_zone_ended.emit(release_screen, release_world, elapsed, reason, release_details)
 	_clear_live_gesture_state()
+
+
+func _handle_direct_action_press(pointer_index: int, screen_position: Vector2, tap_duration: float = 0.0) -> bool:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE:
+		return false
+	var zone: int = _get_control_zone_for_screen(screen_position)
+	match zone:
+		ControlZone.PASS_LEFT, ControlZone.PASS_RIGHT, ControlZone.SHOOT, ControlZone.DUNK:
+			_set_transient_highlight(_control_zone_name(zone))
+			var details: Dictionary = _build_direct_action_details(pointer_index, screen_position, zone, tap_duration)
+			if zone == ControlZone.PASS_LEFT or zone == ControlZone.PASS_RIGHT:
+				pass_requested.emit(null, details)
+			else:
+				shot_mode_requested.emit(details)
+			return true
+	return false
+
+
+func _build_direct_action_details(pointer_index: int, screen_position: Vector2, zone: int, tap_duration: float) -> Dictionary:
+	var world_position: Vector2 = _screen_to_world_ground(screen_position)
+	var zone_name: String = _control_zone_name(zone)
+	var details: Dictionary = _build_gameplay_action_details(
+		screen_position,
+		screen_position,
+		world_position,
+		world_position,
+		maxf(tap_duration, 0.0),
+		0.0,
+		false
+	)
+	var action_type: String = "pass" if zone == ControlZone.PASS_LEFT or zone == ControlZone.PASS_RIGHT else "shot"
+	var control_intent: String = ""
+	var release_reason: String = "%s_button_tap" % zone_name
+	if zone == ControlZone.SHOOT:
+		control_intent = "shot_layout"
+	elif zone == ControlZone.DUNK:
+		control_intent = "dunk"
+	details.merge(
+		{
+			"tap_pointer_index": pointer_index,
+			"direct_button_tap": true,
+			"arm_reason": "direct_button_tap" if action_type == "shot" else "",
+			"release_zone": zone_name,
+			"action_zone": zone_name,
+			"qualifies": true,
+			"action_distance_met": true,
+			"action_type": action_type,
+			"control_intent": control_intent,
+			"release_reason": release_reason,
+			"pass_target_source": "focused_target",
+		},
+		true
+	)
+	return details
 
 
 func _clear_live_gesture_state() -> void:
@@ -277,85 +326,6 @@ func _clear_live_gesture_state() -> void:
 	gesture_current_world = Vector2.ZERO
 	gesture_start_time = 0.0
 	gesture_max_excursion = 0.0
-
-
-func _begin_gameplay_tap_candidate(pointer_index: int, screen_position: Vector2, started_in_movement_zone: bool) -> void:
-	tap_candidate_touch_index = pointer_index
-	tap_candidate_start_screen = screen_position
-	tap_candidate_current_screen = screen_position
-	tap_candidate_start_world = _screen_to_world_ground(screen_position)
-	tap_candidate_current_world = tap_candidate_start_world
-	tap_candidate_start_time = _now_seconds()
-	tap_candidate_max_distance = 0.0
-	tap_candidate_started_in_movement_zone = started_in_movement_zone
-
-
-func _update_gameplay_tap_candidate(screen_position: Vector2) -> void:
-	if tap_candidate_touch_index == -1:
-		return
-	tap_candidate_current_screen = screen_position
-	tap_candidate_current_world = _screen_to_world_ground(screen_position)
-	tap_candidate_max_distance = maxf(tap_candidate_max_distance, screen_position.distance_to(tap_candidate_start_screen))
-
-
-func _finish_gameplay_tap_candidate(release_screen: Vector2) -> void:
-	if tap_candidate_touch_index == -1:
-		return
-	tap_candidate_current_screen = release_screen
-	tap_candidate_current_world = _screen_to_world_ground(release_screen)
-	var elapsed: float = maxf(_now_seconds() - tap_candidate_start_time, 0.0)
-	var max_touch_distance: float = maxf(tap_candidate_max_distance, release_screen.distance_to(tap_candidate_start_screen))
-	var pass_tap_classification: Dictionary = classify_pass_tap(elapsed, max_touch_distance)
-	var swipe_classification: Dictionary = classify_vertical_shot_swipe(tap_candidate_start_screen, release_screen)
-	if bool(pass_tap_classification.get("qualifies", false)):
-		var pass_target: PlayerController = find_tapped_teammate(release_screen)
-		var tap_details: Dictionary = _build_gameplay_action_details(
-			tap_candidate_start_screen,
-			release_screen,
-			tap_candidate_start_world,
-			tap_candidate_current_world,
-			elapsed,
-			max_touch_distance,
-			tap_candidate_started_in_movement_zone
-		)
-		tap_details["release_reason"] = "direct_tap_pass" if pass_target != null else "default_tap_pass"
-		tap_details["pass_target"] = pass_target
-		tap_details["pass_target_role"] = pass_target.get_position_role() if pass_target != null else ""
-		tap_details["pass_target_source"] = "direct_tap" if pass_target != null else "default_marker"
-		_clear_gameplay_tap_candidate_state()
-		pass_requested.emit(pass_target, tap_details)
-		return
-	if bool(swipe_classification.get("qualifies", false)):
-		var swipe_details: Dictionary = _build_gameplay_action_details(
-			tap_candidate_start_screen,
-			release_screen,
-			tap_candidate_start_world,
-			tap_candidate_current_world,
-			elapsed,
-			max_touch_distance,
-			tap_candidate_started_in_movement_zone
-		)
-		swipe_details["arm_reason"] = "swipe"
-		swipe_details["release_reason"] = "shot_swipe"
-		swipe_details["swipe_direction"] = str(swipe_classification.get("swipe_direction", "up"))
-		swipe_details["swipe_angle_error_rad"] = float(swipe_classification.get("angle_error_rad", 0.0))
-		swipe_details["ends_in_top_half"] = bool(swipe_classification.get("ends_in_top_half", false))
-		swipe_details["top_half_limit_y"] = float(swipe_classification.get("top_half_limit_y", 0.0))
-		_clear_gameplay_tap_candidate_state()
-		shot_mode_requested.emit(swipe_details)
-		return
-	_clear_gameplay_tap_candidate_state()
-
-
-func _clear_gameplay_tap_candidate_state() -> void:
-	tap_candidate_touch_index = -1
-	tap_candidate_start_screen = Vector2.ZERO
-	tap_candidate_current_screen = Vector2.ZERO
-	tap_candidate_start_world = Vector2.ZERO
-	tap_candidate_current_world = Vector2.ZERO
-	tap_candidate_start_time = 0.0
-	tap_candidate_max_distance = 0.0
-	tap_candidate_started_in_movement_zone = false
 
 
 func _build_gameplay_action_details(
@@ -381,20 +351,42 @@ func _build_gameplay_action_details(
 
 
 func get_touch_feedback_snapshot() -> Dictionary:
+	var active: bool = gameplay_touch_index != -1 and interaction_mode == InteractionMode.LIVE_OFFENSE
+	var transient_zone: String = _get_transient_highlight_zone()
+	var highlight_zone: String = ""
+	var current_zone: String = ""
+	var action_distance_met: bool = false
+	if active:
+		var release_classification: Dictionary = classify_control_release(gesture_anchor_screen, gesture_current_screen)
+		current_zone = str(release_classification.get("release_zone", ""))
+		action_distance_met = bool(release_classification.get("action_distance_met", false))
+		highlight_zone = current_zone if current_zone != "" else "move"
+		if highlight_zone == "none":
+			highlight_zone = ""
+	elif transient_zone != "":
+		current_zone = transient_zone
+		highlight_zone = transient_zone
+		action_distance_met = true
 	return {
-		"anchor_visible": gameplay_touch_index != -1 and interaction_mode == InteractionMode.LIVE_OFFENSE,
+		"anchor_visible": active,
 		"anchor_screen": gesture_anchor_screen,
 		"current_screen": gesture_current_screen,
 		"anchor_radius": input_config.anchor_visual_radius if input_config != null else 54.0,
 		"knob_radius": input_config.anchor_knob_radius if input_config != null else 28.0,
 		"anchor_alpha": input_config.anchor_visual_alpha if input_config != null else 0.2,
+		"current_zone": current_zone,
+		"highlight_zone": highlight_zone,
+		"action_distance_met": action_distance_met,
 	}
 
 
-func begin_test_live_gesture(screen_position: Vector2, pointer_index: int = -99) -> void:
+func begin_test_live_gesture(screen_position: Vector2 = Vector2.ZERO, pointer_index: int = -99) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE or _has_active_pointer():
 		return
-	_begin_live_gesture(pointer_index, screen_position)
+	var anchor: Vector2 = screen_position if screen_position != Vector2.ZERO else _get_zone_center("move")
+	if not _is_in_move_zone(anchor):
+		anchor = _get_zone_center("move")
+	_begin_live_gesture(pointer_index, anchor)
 
 
 func update_test_live_gesture(screen_position: Vector2) -> void:
@@ -403,10 +395,11 @@ func update_test_live_gesture(screen_position: Vector2) -> void:
 	_update_live_gesture(screen_position)
 
 
-func end_test_live_gesture(screen_position: Vector2) -> void:
+func end_test_live_gesture(screen_position: Vector2 = Vector2.ZERO) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE or gameplay_touch_index == -1:
 		return
-	_finish_live_gesture(screen_position)
+	var release_screen: Vector2 = screen_position if screen_position != Vector2.ZERO else gesture_current_screen
+	_finish_live_gesture(release_screen)
 
 
 func tap_test_shot_timing(screen_position: Vector2 = Vector2.ZERO) -> void:
@@ -416,18 +409,23 @@ func tap_test_shot_timing(screen_position: Vector2 = Vector2.ZERO) -> void:
 	shot_timing_tapped.emit(screen_position)
 
 
+func tap_test_control_button(zone_name: String, duration: float = 0.05, pointer_index: int = -96) -> void:
+	if interaction_mode != InteractionMode.LIVE_OFFENSE:
+		return
+	var resolved_zone: String = zone_name
+	if resolved_zone not in ["pass_left", "pass_right", "shoot", "dunk"]:
+		return
+	_handle_direct_action_press(pointer_index, _get_zone_center(resolved_zone), duration)
+
+
 func tap_test_pass(screen_position: Vector2 = Vector2.ZERO, duration: float = 0.05) -> void:
-	if interaction_mode != InteractionMode.LIVE_OFFENSE or _has_active_pointer():
+	if interaction_mode != InteractionMode.LIVE_OFFENSE:
 		return
-	var touch_duration: float = maxf(duration, 0.0)
-	if _is_in_movement_zone(screen_position):
-		_begin_live_gesture(-97, screen_position)
-		gesture_start_time = _now_seconds() - touch_duration
-		_finish_live_gesture(screen_position)
-		return
-	_begin_gameplay_tap_candidate(-98, screen_position, false)
-	tap_candidate_start_time = _now_seconds() - touch_duration
-	_finish_gameplay_tap_candidate(screen_position)
+	var release_zone: String = "pass_left" if screen_position.x > 0.0 and screen_position.x < _get_viewport_size().x * 0.5 else "pass_right"
+	var authored_zone: String = _control_zone_name(_get_control_zone_for_screen(screen_position))
+	if authored_zone == "pass_left" or authored_zone == "pass_right":
+		release_zone = authored_zone
+	tap_test_control_button(release_zone, duration, -97)
 
 
 func swipe_test_shot_arm(
@@ -437,28 +435,39 @@ func swipe_test_shot_arm(
 ) -> void:
 	if interaction_mode != InteractionMode.LIVE_OFFENSE or _has_active_pointer():
 		return
-	var swipe_duration: float = maxf(duration, 0.0)
-	var resolved_end_screen: Vector2 = end_screen
-	if resolved_end_screen == Vector2.ZERO:
-		var viewport: Viewport = get_viewport()
-		var viewport_size: Vector2 = viewport.get_visible_rect().size if viewport != null else Vector2(1080.0, 1920.0)
-		var swipe_distance: float = maxf(float(input_config.shot_swipe_min_distance_pixels) + 48.0, 132.0) if input_config != null else 132.0
-		var top_half_limit_y: float = viewport_size.y * (input_config.shot_swipe_max_release_y_ratio if input_config != null else 0.5)
-		resolved_end_screen = Vector2(start_screen.x, minf(start_screen.y - swipe_distance, top_half_limit_y - 24.0))
-	if _is_in_movement_zone(start_screen):
-		_begin_live_gesture(-97, start_screen)
-		gesture_start_time = _now_seconds() - swipe_duration
-		_update_live_gesture(resolved_end_screen)
-		_finish_live_gesture(resolved_end_screen)
-		return
-	_begin_gameplay_tap_candidate(-98, start_screen, false)
-	tap_candidate_start_time = _now_seconds() - swipe_duration
-	_update_gameplay_tap_candidate(resolved_end_screen)
-	_finish_gameplay_tap_candidate(resolved_end_screen)
+	var start_position: Vector2 = start_screen if start_screen != Vector2.ZERO else _get_zone_center("move")
+	if not _is_in_move_zone(start_position):
+		start_position = _get_zone_center("move")
+	var release_zone: String = "shoot"
+	if end_screen != Vector2.ZERO:
+		var authored_zone: String = _control_zone_name(_get_control_zone_for_screen(end_screen))
+		if authored_zone == "shoot" or authored_zone == "dunk" or authored_zone == "move":
+			release_zone = authored_zone
+		else:
+			var swipe_vector: Vector2 = end_screen - start_position
+			if absf(swipe_vector.x) > absf(swipe_vector.y):
+				release_zone = "move"
+			elif swipe_vector.y > 0.0:
+				release_zone = "dunk"
+	elif end_screen.y > start_position.y:
+		release_zone = "dunk"
+	var release_screen: Vector2 = _get_zone_center(release_zone)
+	_begin_live_gesture(-98, start_position)
+	gesture_start_time = _now_seconds() - maxf(duration, 0.0)
+	_update_live_gesture(release_screen)
+	_finish_live_gesture(release_screen)
+
+
+func swipe_test_dunk_arm(duration: float = 0.12) -> void:
+	swipe_test_shot_arm(_get_zone_center("move"), _get_zone_center("dunk"), duration)
 
 
 func tap_test_shot_arm(screen_position: Vector2 = Vector2.ZERO, duration: float = 0.05) -> void:
-	swipe_test_shot_arm(screen_position, Vector2.ZERO, duration)
+	tap_test_control_button("shoot", duration, -98)
+
+
+func tap_test_dunk_button(duration: float = 0.05) -> void:
+	tap_test_control_button("dunk", duration, -95)
 
 
 func compute_movement_snapshot(anchor_screen: Vector2, current_screen: Vector2) -> Dictionary:
@@ -480,71 +489,152 @@ func compute_movement_snapshot(anchor_screen: Vector2, current_screen: Vector2) 
 	}
 
 
-func classify_pass_tap(touch_duration: float, max_touch_excursion: float) -> Dictionary:
-	var max_duration: float = input_config.pass_tap_max_duration_seconds if input_config != null else 0.18
-	var max_movement: float = input_config.pass_tap_max_movement_pixels if input_config != null else 20.0
-	return {
-		"qualifies": touch_duration <= max_duration and max_touch_excursion <= max_movement,
-		"tap_duration": touch_duration,
-		"tap_max_distance": max_touch_excursion,
-	}
-
-
-func classify_vertical_shot_swipe(anchor_screen: Vector2, release_screen: Vector2) -> Dictionary:
+func classify_control_release(anchor_screen: Vector2, release_screen: Vector2) -> Dictionary:
 	var release_offset_screen: Vector2 = release_screen - anchor_screen
 	var release_distance: float = release_offset_screen.length()
-	var min_distance: float = input_config.shot_swipe_min_distance_pixels if input_config != null else 88.0
-	var viewport: Viewport = get_viewport()
-	var viewport_size: Vector2 = viewport.get_visible_rect().size if viewport != null else Vector2(1080.0, 1920.0)
-	var top_half_limit_y: float = viewport_size.y * (input_config.shot_swipe_max_release_y_ratio if input_config != null else 0.5)
-	var ends_in_top_half: bool = release_screen.y <= top_half_limit_y
-	if release_distance < min_distance:
-		return {
-			"release_offset_screen": release_offset_screen,
-			"release_distance": release_distance,
-			"qualifies": false,
-			"swipe_direction": "",
-			"angle_error_rad": INF,
-			"ends_in_top_half": ends_in_top_half,
-			"top_half_limit_y": top_half_limit_y,
-		}
-	var swipe_direction: Vector2 = release_offset_screen.normalized()
-	var angle_to_up: float = absf(swipe_direction.angle_to(Vector2.UP))
-	var angle_to_down: float = absf(swipe_direction.angle_to(Vector2.DOWN))
-	var angle_error: float = angle_to_up
-	var cone_limit: float = deg_to_rad(input_config.shot_swipe_vertical_cone_half_angle_degrees if input_config != null else 30.0)
+	var min_distance: float = input_config.control_action_min_distance_pixels if input_config != null else 52.0
+	var zone: int = _get_control_zone_for_screen(release_screen)
+	var zone_name: String = _control_zone_name(zone)
+	var action_distance_met: bool = release_distance >= min_distance
+	var action_type: String = ""
+	var control_intent: String = ""
+	var release_reason: String = "center_cancel" if release_distance <= float(input_config.deadzone if input_config != null else 22.0) else "move_release"
+	var qualifies: bool = false
+	match zone:
+		ControlZone.PASS_LEFT, ControlZone.PASS_RIGHT:
+			qualifies = action_distance_met
+			action_type = "pass" if qualifies else ""
+			release_reason = "pass_left_release" if zone == ControlZone.PASS_LEFT and qualifies else "pass_right_release" if zone == ControlZone.PASS_RIGHT and qualifies else release_reason
+		ControlZone.SHOOT:
+			qualifies = action_distance_met
+			action_type = "shot" if qualifies else ""
+			control_intent = "shot_layout" if qualifies else ""
+			release_reason = "shoot_release" if qualifies else release_reason
+		ControlZone.DUNK:
+			qualifies = action_distance_met
+			action_type = "shot" if qualifies else ""
+			control_intent = "dunk" if qualifies else ""
+			release_reason = "dunk_release" if qualifies else release_reason
+		ControlZone.MOVE:
+			release_reason = "center_cancel" if release_distance <= float(input_config.deadzone if input_config != null else 22.0) else "move_release"
+		_:
+			release_reason = "move_release"
 	return {
 		"release_offset_screen": release_offset_screen,
 		"release_distance": release_distance,
-		"qualifies": angle_error <= cone_limit and ends_in_top_half,
-		"swipe_direction": "up" if release_offset_screen.y < 0.0 else "down",
-		"angle_error_rad": angle_error,
-		"ends_in_top_half": ends_in_top_half,
-		"top_half_limit_y": top_half_limit_y,
+		"release_zone": zone_name,
+		"action_zone": zone_name if qualifies else "",
+		"qualifies": qualifies,
+		"action_distance_met": action_distance_met,
+		"action_type": action_type,
+		"control_intent": control_intent,
+		"release_reason": release_reason,
+		"pass_target_source": "focused_target",
 	}
 
 
-func find_tapped_teammate(screen_position: Vector2) -> PlayerController:
-	var best_target: PlayerController
-	var best_distance: float = INF
-	for teammate in offense_players:
-		if teammate == null or teammate == ballhandler:
-			continue
-		var hit_radius: float = teammate.get_input_hit_radius()
-		var teammate_distance: float = teammate.get_screen_anchor().distance_to(screen_position)
-		if teammate_distance > hit_radius:
-			continue
-		if teammate_distance < best_distance:
-			best_distance = teammate_distance
-			best_target = teammate
-	return best_target
+func _control_zone_name(zone: int) -> String:
+	match zone:
+		ControlZone.SHOOT:
+			return "shoot"
+		ControlZone.PASS_LEFT:
+			return "pass_left"
+		ControlZone.MOVE:
+			return "move"
+		ControlZone.PASS_RIGHT:
+			return "pass_right"
+		ControlZone.DUNK:
+			return "dunk"
+	return "none"
 
 
-func _is_in_movement_zone(screen_position: Vector2) -> bool:
-	var viewport: Viewport = get_viewport()
-	var viewport_size: Vector2 = viewport.get_visible_rect().size if viewport != null else Vector2(1080.0, 1920.0)
-	var movement_ratio: float = input_config.movement_zone_height_ratio if input_config != null else 0.35
-	return screen_position.y >= viewport_size.y * (1.0 - movement_ratio)
+func _is_in_move_zone(screen_position: Vector2) -> bool:
+	return _get_zone_rect("move").has_point(screen_position)
+
+
+func _get_control_zone_for_screen(screen_position: Vector2) -> int:
+	for zone_name in ["shoot", "pass_left", "move", "pass_right", "dunk"]:
+		if _get_zone_rect(zone_name).has_point(screen_position):
+			match zone_name:
+				"shoot":
+					return ControlZone.SHOOT
+				"pass_left":
+					return ControlZone.PASS_LEFT
+				"move":
+					return ControlZone.MOVE
+				"pass_right":
+					return ControlZone.PASS_RIGHT
+				"dunk":
+					return ControlZone.DUNK
+	return ControlZone.NONE
+
+
+func _get_zone_rect(zone_name: String) -> Rect2:
+	var layout: Dictionary = _resolve_control_layout()
+	var zone_rects: Dictionary = layout.get("control_zone_rects", {})
+	return zone_rects.get(zone_name, Rect2())
+
+
+func _get_zone_center(zone_name: String) -> Vector2:
+	var zone_rect: Rect2 = _get_zone_rect(zone_name)
+	if zone_rect.size.x <= 0.0 or zone_rect.size.y <= 0.0:
+		return _get_viewport_size() * 0.5
+	return zone_rect.get_center()
+
+
+func _resolve_control_layout() -> Dictionary:
+	if control_panel_rect.size.x > 0.0 and control_panel_rect.size.y > 0.0 and not control_zone_rects.is_empty():
+		return {
+			"control_panel_rect": control_panel_rect,
+			"control_zone_rects": control_zone_rects,
+		}
+	return _build_default_control_layout()
+
+
+func _build_default_control_layout() -> Dictionary:
+	var viewport_size: Vector2 = _get_viewport_size()
+	var viewport_rect: Rect2 = Rect2(Vector2.ZERO, viewport_size)
+	var ui_scale: float = clampf(viewport_size.x / DEFAULT_VIEWPORT_SIZE.x, 0.82, 1.0)
+	var horizontal_margin: float = (input_config.control_panel_horizontal_margin if input_config != null else 12.0) * ui_scale
+	var bottom_margin: float = (input_config.control_panel_bottom_margin if input_config != null else 16.0) * ui_scale
+	var panel_height: float = viewport_rect.size.y * (input_config.control_panel_height_ratio if input_config != null else 0.33)
+	var panel_rect: Rect2 = Rect2(
+		Vector2(viewport_rect.position.x + horizontal_margin, viewport_rect.end.y - panel_height - bottom_margin),
+		Vector2(viewport_rect.size.x - horizontal_margin * 2.0, panel_height)
+	)
+	return {
+		"control_panel_rect": panel_rect,
+		"control_zone_rects": _build_control_zone_rects(panel_rect, ui_scale),
+	}
+
+
+func _build_control_zone_rects(panel_rect: Rect2, ui_scale: float) -> Dictionary:
+	var gutter: float = (input_config.control_panel_gutter if input_config != null else 10.0) * ui_scale
+	var top_row_ratio: float = clampf(input_config.control_panel_top_row_height_ratio if input_config != null else 0.45, 0.3, 0.7)
+	var top_row_height: float = maxf((panel_rect.size.y - gutter) * top_row_ratio, 1.0)
+	var middle_height: float = maxf(panel_rect.size.y - top_row_height - gutter, 1.0)
+	var top_row_rect: Rect2 = Rect2(panel_rect.position, Vector2(panel_rect.size.x, top_row_height))
+	var middle_rect: Rect2 = Rect2(Vector2(panel_rect.position.x, top_row_rect.end.y + gutter), Vector2(panel_rect.size.x, middle_height))
+	var top_half_width: float = maxf(top_row_rect.size.x * 0.5, 1.0)
+	var shoot_rect: Rect2 = Rect2(top_row_rect.position, Vector2(top_half_width, top_row_rect.size.y))
+	var dunk_rect: Rect2 = Rect2(
+		Vector2(top_row_rect.position.x + top_half_width, top_row_rect.position.y),
+		Vector2(maxf(top_row_rect.size.x - top_half_width, 1.0), top_row_rect.size.y)
+	)
+	var side_ratio: float = clampf(input_config.control_panel_side_zone_width_ratio if input_config != null else 0.25, 0.15, 0.4)
+	var available_middle_width: float = maxf(middle_rect.size.x - gutter * 2.0, 1.0)
+	var side_width: float = available_middle_width * side_ratio
+	var move_width: float = maxf(available_middle_width - side_width * 2.0, 1.0)
+	var pass_left_rect: Rect2 = Rect2(middle_rect.position, Vector2(side_width, middle_rect.size.y))
+	var move_rect: Rect2 = Rect2(Vector2(pass_left_rect.end.x + gutter, middle_rect.position.y), Vector2(move_width, middle_rect.size.y))
+	var pass_right_rect: Rect2 = Rect2(Vector2(move_rect.end.x + gutter, middle_rect.position.y), Vector2(side_width, middle_rect.size.y))
+	return {
+		"shoot": shoot_rect,
+		"pass_left": pass_left_rect,
+		"move": move_rect,
+		"pass_right": pass_right_rect,
+		"dunk": dunk_rect,
+	}
 
 
 func _screen_to_world_ground(screen_position: Vector2) -> Vector2:
@@ -554,8 +644,35 @@ func _screen_to_world_ground(screen_position: Vector2) -> Vector2:
 
 
 func _has_active_pointer() -> bool:
-	return gameplay_touch_index != -1 or tap_candidate_touch_index != -1
+	return gameplay_touch_index != -1
+
+
+func _get_viewport_size() -> Vector2:
+	var viewport: Viewport = get_viewport()
+	return viewport.get_visible_rect().size if viewport != null else DEFAULT_VIEWPORT_SIZE
 
 
 func _now_seconds() -> float:
 	return float(Time.get_ticks_usec()) / 1000000.0
+
+
+func _set_transient_highlight(zone_name: String) -> void:
+	if zone_name == "" or zone_name == "none":
+		transient_highlight_zone = ""
+		transient_highlight_until = 0.0
+		return
+	transient_highlight_zone = zone_name
+	transient_highlight_until = _now_seconds() + maxf(
+		float(input_config.control_button_press_highlight_seconds if input_config != null else 0.12),
+		0.0
+	)
+
+
+func _get_transient_highlight_zone() -> String:
+	if transient_highlight_zone == "":
+		return ""
+	if _now_seconds() > transient_highlight_until:
+		transient_highlight_zone = ""
+		transient_highlight_until = 0.0
+		return ""
+	return transient_highlight_zone

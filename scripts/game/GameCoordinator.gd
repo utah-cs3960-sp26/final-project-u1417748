@@ -10,7 +10,6 @@ const INPUT_CONFIG_SCRIPT = preload("res://scripts/config/InputConfig.gd")
 const COURT_PROJECTION_SCRIPT = preload("res://scripts/game/CourtProjection.gd")
 const BASE_PRESENTATION_SIZE: Vector2 = Vector2(1080.0, 1920.0)
 const SCOREBOARD_ART_SIZE: Vector2 = Vector2(1098.0, 248.0)
-const SCOREBOARD_SCALE: float = 2.0 / 3.0
 
 enum BallVisualMode {
 	HIDDEN_WHILE_OWNED,
@@ -56,6 +55,7 @@ var systems_node: Node
 var ui_root: CanvasLayer
 var input_controller: InputController
 var hud: HUD
+var control_panel: Control
 var pause_overlay: PauseOverlay
 var game_over_overlay: GameOverOverlay
 var feedback_text: FeedbackText
@@ -99,6 +99,7 @@ var default_pass_target_details: Dictionary = {}
 var layout_metrics: Dictionary = {}
 var camera_tracking_signature: String = ""
 var defenders_disabled: bool = false
+var controls_visible: bool = true
 
 
 func _ready() -> void:
@@ -119,6 +120,7 @@ func _resolve_nodes() -> void:
 	systems_node = root.get_node("Systems")
 	ui_root = root.get_node("UIRoot") as CanvasLayer
 	hud = ui_root.get_node("HUD") as HUD
+	control_panel = ui_root.get_node("ControlPanel") as Control
 	pause_overlay = ui_root.get_node("PauseOverlay") as PauseOverlay
 	game_over_overlay = ui_root.get_node("GameOverOverlay") as GameOverOverlay
 	feedback_text = ui_root.get_node("FeedbackText") as FeedbackText
@@ -172,6 +174,10 @@ func _apply_responsive_layout(sync_visuals: bool = true) -> void:
 		court_view.apply_layout(layout_metrics)
 	if hud != null:
 		hud.apply_layout(layout_metrics)
+	if control_panel != null:
+		control_panel.apply_layout(layout_metrics)
+	if input_controller != null:
+		input_controller.set_control_layout(layout_metrics)
 	if sync_visuals:
 		_sync_projection_visuals()
 	elif court_view != null:
@@ -184,13 +190,19 @@ func _build_layout_metrics() -> Dictionary:
 	var viewport_rect: Rect2 = get_viewport().get_visible_rect()
 	var safe_rect: Rect2 = _resolve_safe_rect(viewport_rect)
 	var ui_scale: float = clampf(safe_rect.size.x / BASE_PRESENTATION_SIZE.x, 0.82, 1.0)
-	var board_width: float = maxf((safe_rect.size.x - 24.0 * ui_scale) * SCOREBOARD_SCALE, 1.0)
+	var control_panel_rect: Rect2 = _build_control_panel_rect(safe_rect, ui_scale)
+	var control_zone_rects: Dictionary = _build_control_zone_rects(control_panel_rect, ui_scale)
+	var shoot_rect: Rect2 = control_zone_rects.get("shoot", Rect2())
+	var board_width: float = maxf(shoot_rect.size.x, 1.0)
 	var board_height: float = board_width * SCOREBOARD_ART_SIZE.y / SCOREBOARD_ART_SIZE.x
-	var board_x: float = viewport_rect.get_center().x - board_width * 0.5
-	var board_y: float = safe_rect.position.y + 8.0 * ui_scale
+	var board_x: float = shoot_rect.position.x if shoot_rect.size.x > 0.0 else safe_rect.position.x + 12.0 * ui_scale
+	var board_y: float = maxf(
+		safe_rect.position.y + 8.0 * ui_scale,
+		control_panel_rect.position.y - 12.0 * ui_scale - board_height
+	)
 	var banner_rect: Rect2 = Rect2(Vector2(board_x, board_y), Vector2(board_width, board_height))
-	var play_top: float = banner_rect.end.y + 12.0 * ui_scale
 	var play_inset: float = 12.0 * ui_scale
+	var play_top: float = safe_rect.position.y + play_inset
 	var play_bottom: float = maxf(safe_rect.end.y - play_inset, play_top)
 	var available_play_rect: Rect2 = Rect2(
 		Vector2(safe_rect.position.x, play_top),
@@ -204,8 +216,52 @@ func _build_layout_metrics() -> Dictionary:
 		"banner_rect": banner_rect,
 		"available_play_rect": available_play_rect,
 		"court_screen_rect": court_screen_rect,
+		"control_panel_rect": control_panel_rect,
+		"control_zone_rects": control_zone_rects,
 		"presentation_scale": presentation_scale,
 		"ui_scale": ui_scale,
+	}
+
+
+func _build_control_panel_rect(safe_rect: Rect2, ui_scale: float) -> Rect2:
+	var horizontal_margin: float = float(input_config.control_panel_horizontal_margin if input_config != null else 12.0) * ui_scale
+	var bottom_margin: float = float(input_config.control_panel_bottom_margin if input_config != null else 16.0) * ui_scale
+	var panel_height: float = safe_rect.size.y * float(input_config.control_panel_height_ratio if input_config != null else 0.33)
+	return Rect2(
+		Vector2(safe_rect.position.x + horizontal_margin, safe_rect.end.y - panel_height - bottom_margin),
+		Vector2(maxf(safe_rect.size.x - horizontal_margin * 2.0, 1.0), maxf(panel_height, 1.0))
+	)
+
+
+func _build_control_zone_rects(control_panel_rect: Rect2, ui_scale: float) -> Dictionary:
+	var gutter: float = float(input_config.control_panel_gutter if input_config != null else 10.0) * ui_scale
+	var top_row_ratio: float = clampf(float(input_config.control_panel_top_row_height_ratio if input_config != null else 0.45), 0.3, 0.7)
+	var top_row_height: float = maxf((control_panel_rect.size.y - gutter) * top_row_ratio, 1.0)
+	var middle_height: float = maxf(control_panel_rect.size.y - top_row_height - gutter, 1.0)
+	var top_row_rect: Rect2 = Rect2(control_panel_rect.position, Vector2(control_panel_rect.size.x, top_row_height))
+	var middle_rect: Rect2 = Rect2(
+		Vector2(control_panel_rect.position.x, top_row_rect.end.y + gutter),
+		Vector2(control_panel_rect.size.x, middle_height)
+	)
+	var top_half_width: float = maxf(top_row_rect.size.x * 0.5, 1.0)
+	var shoot_rect: Rect2 = Rect2(top_row_rect.position, Vector2(top_half_width, top_row_rect.size.y))
+	var dunk_rect: Rect2 = Rect2(
+		Vector2(top_row_rect.position.x + top_half_width, top_row_rect.position.y),
+		Vector2(maxf(top_row_rect.size.x - top_half_width, 1.0), top_row_rect.size.y)
+	)
+	var side_ratio: float = clampf(float(input_config.control_panel_side_zone_width_ratio if input_config != null else 0.25), 0.15, 0.4)
+	var available_middle_width: float = maxf(middle_rect.size.x - gutter * 2.0, 1.0)
+	var side_width: float = available_middle_width * side_ratio
+	var move_width: float = maxf(available_middle_width - side_width * 2.0, 1.0)
+	var pass_left_rect: Rect2 = Rect2(middle_rect.position, Vector2(side_width, middle_rect.size.y))
+	var move_rect: Rect2 = Rect2(Vector2(pass_left_rect.end.x + gutter, middle_rect.position.y), Vector2(move_width, middle_rect.size.y))
+	var pass_right_rect: Rect2 = Rect2(Vector2(move_rect.end.x + gutter, middle_rect.position.y), Vector2(side_width, middle_rect.size.y))
+	return {
+		"shoot": shoot_rect,
+		"pass_left": pass_left_rect,
+		"move": move_rect,
+		"pass_right": pass_right_rect,
+		"dunk": dunk_rect,
 	}
 
 
@@ -287,6 +343,7 @@ func _spawn_entities() -> void:
 
 func _wire_input_and_ui() -> void:
 	input_controller.setup(input_config, court_projection, game_config.input_debug_keyboard_enabled, game_config.allow_mouse_emulation)
+	input_controller.set_control_layout(layout_metrics)
 	input_controller.set_interaction_mode(InputController.InteractionMode.LIVE_OFFENSE)
 	input_controller.movement_zone_started.connect(_on_movement_zone_started)
 	input_controller.movement_zone_ended.connect(_on_movement_zone_ended)
@@ -297,16 +354,19 @@ func _wire_input_and_ui() -> void:
 	input_controller.pause_requested.connect(_toggle_pause)
 	hud.pause_pressed.connect(_toggle_pause)
 	pause_overlay.resume_pressed.connect(_resume_from_pause)
+	pause_overlay.show_controls_toggled.connect(_on_pause_overlay_show_controls_toggled)
 	pause_overlay.no_defenders_toggled.connect(_on_pause_overlay_no_defenders_toggled)
 	pause_overlay.restart_pressed.connect(_start_new_match)
 	pause_overlay.quit_pressed.connect(_quit_game)
 	pause_overlay.set_no_defenders_enabled(defenders_disabled)
+	pause_overlay.set_controls_visible_enabled(controls_visible)
 	game_over_overlay.restart_pressed.connect(_start_new_match)
 	game_over_overlay.quit_pressed.connect(_quit_game)
 
 
 func _start_new_match() -> void:
 	context.reset(game_config.match_length_seconds, game_config.default_seed)
+	controls_visible = game_config.show_controls_by_default
 	rng.reseed(context.current_seed)
 	_reseed_visual_rng(context.current_seed)
 	if court_projection != null:
@@ -342,6 +402,7 @@ func _start_new_match() -> void:
 	_update_hud()
 	pause_overlay.visible = false
 	pause_overlay.set_no_defenders_enabled(defenders_disabled)
+	pause_overlay.set_controls_visible_enabled(controls_visible)
 	game_over_overlay.visible = false
 
 
@@ -764,6 +825,7 @@ func _begin_pass_to_target(target: PlayerController, details: Dictionary = {}) -
 func _build_shot_arm_log_payload(details: Dictionary) -> Dictionary:
 	return {
 		"arm_reason": str(details.get("arm_reason", "")),
+		"control_intent": str(details.get("control_intent", "")),
 		"tap_start_screen": _vector2_payload(details.get("tap_start_screen", details.get("anchor_screen", Vector2.ZERO))),
 		"tap_end_screen": _vector2_payload(details.get("tap_end_screen", details.get("release_screen", Vector2.ZERO))),
 		"tap_start_world": _vector2_payload(details.get("tap_start_world", details.get("anchor_world", current_ballhandler.world_position))),
@@ -801,9 +863,19 @@ func _on_shot_mode_requested(details: Dictionary) -> void:
 		return
 	if current_ballhandler == null:
 		return
+	var control_intent: String = str(details.get("control_intent", "shot_layout"))
 	default_pass_target = null
 	default_pass_target_details.clear()
-	_begin_active_shot_sequence(current_ballhandler)
+	if not _begin_active_shot_sequence(current_ballhandler, control_intent):
+		log_writer.log_event(
+			"shot_mode_ignored",
+			{
+				"player": current_ballhandler.get_display_name(),
+				"control_intent": control_intent,
+				"release_reason": str(details.get("release_reason", "")),
+			}
+		)
+		return
 	current_move_direction = Vector2.ZERO
 	current_move_magnitude = 0.0
 	context.gameplay_time_scale = 1.0
@@ -885,6 +957,7 @@ func _toggle_pause() -> void:
 	context.previous_state = context.current_state
 	_change_state(GameState.State.PAUSED)
 	pause_overlay.set_no_defenders_enabled(defenders_disabled)
+	pause_overlay.set_controls_visible_enabled(controls_visible)
 	pause_overlay.visible = true
 	log_writer.log_match("Paused")
 
@@ -1351,12 +1424,20 @@ func are_defenders_disabled() -> bool:
 	return defenders_disabled
 
 
+func are_controls_visible() -> bool:
+	return controls_visible
+
+
 func test_toggle_pause() -> void:
 	_toggle_pause()
 
 
 func test_set_defenders_disabled(enabled: bool) -> void:
 	_set_defenders_disabled(enabled)
+
+
+func test_set_controls_visible(enabled: bool) -> void:
+	_set_controls_visible(enabled)
 
 
 func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
@@ -1508,6 +1589,8 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 	_sync_ball_visuals()
 	if court_view != null and input_controller != null:
 		court_view.set_input_feedback(_build_court_input_feedback())
+	if control_panel != null and input_controller != null:
+		control_panel.set_panel_state(_build_control_panel_state())
 
 
 func _update_camera_tracking(delta: float) -> void:
@@ -1784,7 +1867,7 @@ func _update_default_pass_target() -> void:
 
 
 func _build_court_input_feedback() -> Dictionary:
-	var feedback: Dictionary = input_controller.get_touch_feedback_snapshot() if input_controller != null else {}
+	var feedback: Dictionary = {}
 	if context.current_state == GameState.State.LIVE_OFFENSE and default_pass_target != null:
 		feedback["pass_target_screen"] = court_projection.world_to_screen_ground(default_pass_target.world_position)
 		feedback["pass_target_radius"] = maxf(22.0 * default_pass_target.projected_scale, 16.0)
@@ -1793,6 +1876,27 @@ func _build_court_input_feedback() -> Dictionary:
 		feedback["pass_target_screen"] = Vector2.INF
 		feedback.erase("pass_target_style")
 	return feedback
+
+
+func _build_control_panel_state() -> Dictionary:
+	var panel_state: Dictionary = input_controller.get_touch_feedback_snapshot() if input_controller != null else {}
+	panel_state["controls_visible"] = controls_visible
+	panel_state["pass_available"] = context.current_state == GameState.State.LIVE_OFFENSE and default_pass_target != null
+	panel_state["pass_target_role"] = default_pass_target.get_position_role() if default_pass_target != null else ""
+	panel_state["pass_target_name"] = default_pass_target.get_display_name() if default_pass_target != null else ""
+	panel_state["interactive"] = context.current_state == GameState.State.LIVE_OFFENSE
+	panel_state["shot_meter"] = _get_current_shot_meter_snapshot()
+	return panel_state
+
+
+func _get_current_shot_meter_snapshot() -> Dictionary:
+	if context.current_state != GameState.State.SHOT_AIM or active_shot_sequence.is_empty() or not shot_controller.is_aiming:
+		return {}
+	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
+	if shooter == null or shooter.get_player_data() == null:
+		return {}
+	var contested: bool = defense_controller.is_contested(shooter)
+	return shot_controller.get_meter_snapshot(contested, shooter.get_player_data().release_consistency)
 
 
 func _format_clock_text(time_remaining: float) -> String:
@@ -1864,7 +1968,7 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 		return _resolve_defender_animation_family(previous_family, speed)
 	if _should_use_run_family(previous_family, speed):
 		return "off_ball_run"
-	if _should_use_move_family(previous_family, speed):
+	if speed > 0.0:
 		return "off_ball_shuffle"
 	return "no_ball_idle"
 
@@ -2379,16 +2483,22 @@ func _resolve_dunk_root_motion_world_position(frame_progress: float, motion_snap
 
 
 func _resolve_shot_release_visual(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
-	var decision: Dictionary = _build_shot_release_visual_decision(player, motion_vector_override, defender_distance_override)
+	var decision: Dictionary = _build_shot_release_visual_decision(player, motion_vector_override, defender_distance_override, "shot_layout")
 	return {
 		"family": str(decision.get("family", "jumper_release")),
 		"variant_index": int(decision.get("variant_index", 0)),
 	}
 
 
-func _build_shot_release_visual_decision(player: PlayerController, motion_vector_override: Vector2 = Vector2.INF, defender_distance_override: float = -1.0) -> Dictionary:
+func _build_shot_release_visual_decision(
+	player: PlayerController,
+	motion_vector_override: Vector2 = Vector2.INF,
+	defender_distance_override: float = -1.0,
+	control_intent: String = "shot_layout"
+) -> Dictionary:
 	if player == null:
 		return {
+			"allowed": false,
 			"distance_to_hoop": INF,
 			"lateral_offset": INF,
 			"speed": 0.0,
@@ -2397,6 +2507,7 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 			"close_finish_eligible": false,
 			"dunk_eligible": false,
 			"force_no_defenders_dunk": false,
+			"control_intent": control_intent,
 			"family": "jumper_release",
 			"variant_index": 1,
 		}
@@ -2413,7 +2524,7 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 	var lateral_offset: float = absf(player.world_position.x - finish_center_world.x)
 	var player_data: PlayerData = player.get_player_data() if player != null else null
 	var dunk_rating: int = player_data.dunk if player_data != null else 0
-	var force_no_defenders_dunk: bool = not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
+	var force_no_defenders_dunk: bool = control_intent == "dunk" and not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
 	var toward_hoop_dot: float = -1.0
 	if motion_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
 		toward_hoop_dot = motion_vector.normalized().dot(to_hoop.normalized())
@@ -2424,6 +2535,7 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 		and speed >= player_animation_config.dunk_momentum_speed_threshold \
 		and dunk_rating >= player_animation_config.dunk_rating_min)
 	var decision: Dictionary = {
+		"allowed": true,
 		"distance_to_hoop": distance_to_hoop,
 		"lateral_offset": lateral_offset,
 		"speed": speed,
@@ -2432,14 +2544,15 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 		"close_finish_eligible": close_finish_eligible,
 		"dunk_eligible": dunk_eligible,
 		"force_no_defenders_dunk": force_no_defenders_dunk,
+		"control_intent": control_intent,
 		"family": "jumper_release",
 		"variant_index": 0,
 	}
-	if not force_no_defenders_dunk and speed < player_animation_config.finish_momentum_speed_threshold and defender_distance >= player_animation_config.set_shot_space_radius:
-		decision["family"] = "set_shot_release"
-		decision["variant_index"] = 0
-		return decision
-	if close_finish_eligible:
+	if control_intent == "dunk":
+		if not close_finish_eligible:
+			decision["allowed"] = false
+			decision["ignore_reason"] = "dunk_not_available"
+			return decision
 		if dunk_eligible:
 			if lateral_offset >= player_animation_config.side_finish_lateral_threshold:
 				decision["family"] = "close_finish_side_dunk"
@@ -2448,6 +2561,14 @@ func _build_shot_release_visual_decision(player: PlayerController, motion_vector
 			decision["family"] = "close_finish_dunk"
 			decision["variant_index"] = visual_rng.randi_range(0, 1) if visual_rng != null else 0
 			return decision
+		decision["family"] = "close_finish_layup"
+		decision["variant_index"] = 1 if lateral_offset >= player_animation_config.side_finish_lateral_threshold else 0
+		return decision
+	if not close_finish_eligible and speed < player_animation_config.finish_momentum_speed_threshold and defender_distance >= player_animation_config.set_shot_space_radius:
+		decision["family"] = "set_shot_release"
+		decision["variant_index"] = 0
+		return decision
+	if close_finish_eligible:
 		decision["family"] = "close_finish_layup"
 		decision["variant_index"] = 1 if lateral_offset >= player_animation_config.side_finish_lateral_threshold else 0
 		return decision
@@ -2509,14 +2630,16 @@ func _get_active_shot_timing_profile() -> Dictionary:
 	return Dictionary(active_shot_sequence.get("timing_profile", {})).duplicate(true)
 
 
-func _begin_active_shot_sequence(shooter: PlayerController) -> void:
+func _begin_active_shot_sequence(shooter: PlayerController, control_intent: String = "shot_layout") -> bool:
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
 	if shooter == null:
-		return
+		return false
 	var motion_vector: Vector2 = _resolve_player_motion_vector(shooter)
 	var defender_distance: float = _get_primary_defender_distance(shooter)
-	var shot_visual_decision: Dictionary = _build_shot_release_visual_decision(shooter, motion_vector, defender_distance)
+	var shot_visual_decision: Dictionary = _build_shot_release_visual_decision(shooter, motion_vector, defender_distance, control_intent)
+	if not bool(shot_visual_decision.get("allowed", true)):
+		return false
 	var shot_family: String = str(shot_visual_decision.get("family", "jumper_release"))
 	var variant_index: int = int(shot_visual_decision.get("variant_index", 0))
 	var action_vector: Vector2 = _resolve_shot_release_action_vector(shooter, motion_vector)
@@ -2534,6 +2657,7 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 		shot_visual_decision["approach_bucket"] = approach_bucket
 	active_shot_sequence = {
 		"player": shooter,
+		"control_intent": control_intent,
 		"family": shot_family,
 		"variant_index": variant_index,
 		"mirror_west": mirror_west,
@@ -2565,6 +2689,7 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 			"close_finish_eligible": shot_visual_decision.get("close_finish_eligible", false),
 			"dunk_eligible": shot_visual_decision.get("dunk_eligible", false),
 			"force_no_defenders_dunk": shot_visual_decision.get("force_no_defenders_dunk", false),
+			"control_intent": control_intent,
 			"selected_family": shot_family,
 			"selected_row": selected_row,
 			"approach_start_frame": approach_start_frame,
@@ -2573,6 +2698,7 @@ func _begin_active_shot_sequence(shooter: PlayerController) -> void:
 		}
 	)
 	shot_owner = shooter
+	return true
 
 
 func _get_active_defenders(excluded_defenders: Array = []) -> Array[PlayerController]:
@@ -2594,6 +2720,10 @@ func _on_pause_overlay_no_defenders_toggled(enabled: bool) -> void:
 	_set_defenders_disabled(enabled)
 
 
+func _on_pause_overlay_show_controls_toggled(enabled: bool) -> void:
+	_set_controls_visible(enabled)
+
+
 func _set_defenders_disabled(enabled: bool) -> void:
 	if defenders_disabled == enabled:
 		if pause_overlay != null:
@@ -2609,6 +2739,7 @@ func _set_defenders_disabled(enabled: bool) -> void:
 func _refresh_defender_mode(reposition_defenders: bool = false) -> void:
 	if pause_overlay != null:
 		pause_overlay.set_no_defenders_enabled(defenders_disabled)
+		pause_overlay.set_controls_visible_enabled(controls_visible)
 	if defenders_disabled:
 		defense_controller.assignments.clear()
 		_clear_active_pass_interceptor()
@@ -2623,6 +2754,28 @@ func _refresh_defender_mode(reposition_defenders: bool = false) -> void:
 				defender.world_position = _get_defender_guard_target(defender)
 	if debug_overlay != null:
 		debug_overlay.queue_redraw()
+
+
+func _set_controls_visible(enabled: bool) -> void:
+	if controls_visible == enabled:
+		if pause_overlay != null:
+			pause_overlay.set_controls_visible_enabled(controls_visible)
+		if control_panel != null:
+			if input_controller != null:
+				control_panel.set_panel_state(_build_control_panel_state())
+			else:
+				control_panel.visible = controls_visible
+		return
+	controls_visible = enabled
+	if pause_overlay != null:
+		pause_overlay.set_controls_visible_enabled(controls_visible)
+	if control_panel != null:
+		if input_controller != null:
+			control_panel.set_panel_state(_build_control_panel_state())
+		else:
+			control_panel.visible = controls_visible
+	log_writer.log_event("controls_visibility_toggled", {"controls_visible": controls_visible})
+	log_writer.log_match("Controls %s" % ("shown" if controls_visible else "hidden"))
 
 
 func _clear_active_pass_interceptor() -> void:
@@ -2661,17 +2814,13 @@ func _clear_active_dunk_root_motion(reset_velocity: bool = true, player_override
 
 
 func _sync_shot_meter_display() -> void:
-	if context.current_state != GameState.State.SHOT_AIM or active_shot_sequence.is_empty() or not shot_controller.is_aiming:
-		if court_view != null:
-			court_view.clear_shot_meter()
+	if court_view == null:
 		return
-	var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
-	if shooter == null or shooter.get_player_data() == null:
-		if court_view != null:
-			court_view.clear_shot_meter()
-		return
-	var contested: bool = defense_controller.is_contested(shooter)
-	court_view.set_shot_meter(shot_controller.get_meter_snapshot(contested, shooter.get_player_data().release_consistency))
+	var meter_snapshot: Dictionary = _get_current_shot_meter_snapshot()
+	if meter_snapshot.is_empty():
+		court_view.clear_shot_meter()
+	else:
+		court_view.set_shot_meter(meter_snapshot)
 
 
 func _maybe_finish_active_shot_sequence() -> void:

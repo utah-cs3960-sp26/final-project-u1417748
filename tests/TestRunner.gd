@@ -626,38 +626,50 @@ func _run_pure_logic() -> void:
 	short_target.apply_projection(projection.world_to_screen_ground(short_target.world_position), projection.actor_scale(short_target.world_position), projection.shadow_anchor(short_target.world_position) - projection.world_to_screen_ground(short_target.world_position), projection.shadow_scale(short_target.world_position), projection.depth_key(short_target.world_position))
 	long_target.apply_projection(projection.world_to_screen_ground(long_target.world_position), projection.actor_scale(long_target.world_position), projection.shadow_anchor(long_target.world_position) - projection.world_to_screen_ground(long_target.world_position), projection.shadow_scale(long_target.world_position), projection.depth_key(long_target.world_position))
 	out_target.apply_projection(projection.world_to_screen_ground(out_target.world_position), projection.actor_scale(out_target.world_position), projection.shadow_anchor(out_target.world_position) - projection.world_to_screen_ground(out_target.world_position), projection.shadow_scale(out_target.world_position), projection.depth_key(out_target.world_position))
+	var control_layout: Dictionary = input_controller.get_control_layout_snapshot()
+	var control_panel_rect: Rect2 = control_layout.get("control_panel_rect", Rect2())
+	var zone_rects: Dictionary = control_layout.get("control_zone_rects", {})
+	var move_center: Vector2 = zone_rects.get("move", Rect2()).get_center()
+	var left_pass_center: Vector2 = zone_rects.get("pass_left", Rect2()).get_center()
+	var right_pass_center: Vector2 = zone_rects.get("pass_right", Rect2()).get_center()
+	var shoot_center: Vector2 = zone_rects.get("shoot", Rect2()).get_center()
+	var dunk_center: Vector2 = zone_rects.get("dunk", Rect2()).get_center()
 	var movement_snapshot: Dictionary = input_controller.compute_movement_snapshot(Vector2.ZERO, Vector2(input_config.invisible_stick_max_radius, 0.0))
 	_assert_true(movement_snapshot["direction"].is_equal_approx(Vector2.RIGHT), "invisible stick direction follows thumb vector", str(movement_snapshot))
 	_assert_true(float(movement_snapshot["magnitude"]) > 0.99, "invisible stick reaches full magnitude at max radius", str(movement_snapshot["magnitude"]))
-	var quick_tap: Dictionary = input_controller.classify_pass_tap(0.12, 10.0)
-	_assert_true(bool(quick_tap.get("qualifies", false)), "quick tap qualifies for pass", JSON.stringify(quick_tap))
-	var long_tap: Dictionary = input_controller.classify_pass_tap(input_config.pass_tap_max_duration_seconds + 0.05, 10.0)
-	_assert_true(not bool(long_tap.get("qualifies", true)), "long hold does not qualify for pass", JSON.stringify(long_tap))
-	var drag_tap: Dictionary = input_controller.classify_pass_tap(0.1, input_config.pass_tap_max_movement_pixels + 8.0)
-	_assert_true(not bool(drag_tap.get("qualifies", true)), "dragged touch does not qualify for pass", JSON.stringify(drag_tap))
-	var top_half_release_y: float = 720.0
-	var swipe_up: Dictionary = input_controller.classify_vertical_shot_swipe(Vector2(540.0, 1200.0), Vector2(540.0, top_half_release_y))
+	var left_pass_release: Dictionary = input_controller.classify_control_release(move_center, left_pass_center)
+	_assert_true(bool(left_pass_release.get("qualifies", false)) and str(left_pass_release.get("action_type", "")) == "pass" and str(left_pass_release.get("release_zone", "")) == "pass_left", "left pass release resolves through left control lane", JSON.stringify(left_pass_release))
+	var right_pass_release: Dictionary = input_controller.classify_control_release(move_center, right_pass_center)
+	_assert_true(bool(right_pass_release.get("qualifies", false)) and str(right_pass_release.get("action_type", "")) == "pass" and str(right_pass_release.get("release_zone", "")) == "pass_right", "right pass release resolves through right control lane", JSON.stringify(right_pass_release))
+	var shoot_release: Dictionary = input_controller.classify_control_release(move_center, shoot_center)
+	_assert_true(bool(shoot_release.get("qualifies", false)) and str(shoot_release.get("control_intent", "")) == "shot_layout", "top-left shoot release requests shot-layout intent", JSON.stringify(shoot_release))
+	var dunk_release: Dictionary = input_controller.classify_control_release(move_center, dunk_center)
+	_assert_true(bool(dunk_release.get("qualifies", false)) and str(dunk_release.get("control_intent", "")) == "dunk", "top-right dunk release requests dunk intent", JSON.stringify(dunk_release))
+	var center_release: Dictionary = input_controller.classify_control_release(move_center, move_center)
+	_assert_true(not bool(center_release.get("qualifies", true)) and str(center_release.get("release_reason", "")) == "center_cancel", "release in move zone cancels instead of firing an action", JSON.stringify(center_release))
+	var short_shoot_release: Dictionary = input_controller.classify_control_release(move_center, move_center.lerp(shoot_center, 0.12))
+	_assert_true(not bool(short_shoot_release.get("qualifies", true)), "short drag into an action lane does not qualify", JSON.stringify(short_shoot_release))
+	input_controller.begin_test_live_gesture(move_center)
+	input_controller.update_test_live_gesture(shoot_center)
+	var hover_feedback_snapshot: Dictionary = input_controller.get_touch_feedback_snapshot()
 	_assert_true(
-		bool(swipe_up.get("qualifies", false))
-			and swipe_up.get("swipe_direction", "") == "up"
-			and bool(swipe_up.get("ends_in_top_half", false)),
-		"upward swipe into the top half arms shot mode",
-		JSON.stringify(swipe_up)
+		str(hover_feedback_snapshot.get("highlight_zone", "")) == "shoot",
+		"dragging into a control zone marks it as the active hover highlight",
+		JSON.stringify(hover_feedback_snapshot)
 	)
-	var low_upward_swipe: Dictionary = input_controller.classify_vertical_shot_swipe(Vector2(540.0, 1600.0), Vector2(540.0, 1180.0))
+	input_controller.end_test_live_gesture(move_center)
+	var removed_bottom_dunk_release: Dictionary = input_controller.classify_control_release(
+		move_center,
+		Vector2(control_panel_rect.get_center().x, control_panel_rect.end.y - 8.0)
+	)
 	_assert_true(
-		not bool(low_upward_swipe.get("qualifies", true)) and not bool(low_upward_swipe.get("ends_in_top_half", true)),
-		"upward swipe that stays in the lower half does not arm shot mode",
-		JSON.stringify(low_upward_swipe)
+		not bool(removed_bottom_dunk_release.get("qualifies", true))
+			and str(removed_bottom_dunk_release.get("control_intent", "")) == "",
+		"the removed bottom dunk strip no longer triggers a dunk action",
+		JSON.stringify(removed_bottom_dunk_release)
 	)
-	var swipe_down: Dictionary = input_controller.classify_vertical_shot_swipe(Vector2(540.0, 640.0), Vector2(540.0, 640.0 + input_config.shot_swipe_min_distance_pixels + 24.0))
-	_assert_true(not bool(swipe_down.get("qualifies", true)), "downward swipe does not arm shot mode", JSON.stringify(swipe_down))
-	var short_swipe: Dictionary = input_controller.classify_vertical_shot_swipe(Vector2.ZERO, Vector2(0.0, -(input_config.shot_swipe_min_distance_pixels - 12.0)))
-	_assert_true(not bool(short_swipe.get("qualifies", true)), "short swipe does not arm shot mode", JSON.stringify(short_swipe))
-	var horizontal_swipe: Dictionary = input_controller.classify_vertical_shot_swipe(Vector2.ZERO, Vector2(input_config.shot_swipe_min_distance_pixels + 24.0, 0.0))
-	_assert_true(not bool(horizontal_swipe.get("qualifies", true)), "horizontal swipe does not arm shot mode", JSON.stringify(horizontal_swipe))
-	_assert_true(input_controller.find_tapped_teammate(long_target.get_screen_anchor()) == long_target, "tapping teammate hit-tests explicit receiver", long_target.get_position_role())
-	_assert_true(input_controller.find_tapped_teammate(Vector2(540.0, 640.0)) == null, "empty tap does not falsely pick teammate", "")
+	var off_panel_release: Dictionary = input_controller.classify_control_release(move_center, long_target.get_screen_anchor())
+	_assert_true(not bool(off_panel_release.get("qualifies", true)) and str(off_panel_release.get("release_zone", "")) == "none", "open-court release outside the control panel does not map to a gameplay action", JSON.stringify(off_panel_release))
 	var pass_requests: Array[Dictionary] = []
 	input_controller.pass_requested.connect(func(target: PlayerController, details: Dictionary) -> void:
 		pass_requests.append({"target": target, "details": details.duplicate(true)})
@@ -666,58 +678,97 @@ func _run_pure_logic() -> void:
 	input_controller.shot_mode_requested.connect(func(details: Dictionary) -> void:
 		shot_mode_requests.append(details.duplicate(true))
 	)
-	input_controller.tap_test_pass(Vector2(540.0, 640.0), 0.05)
+	input_controller.tap_test_pass(Vector2(180.0, 640.0), 0.05)
 	_assert_true(
 		pass_requests.size() == 1
 			and pass_requests[0].get("target", long_target) == null
-			and not bool(pass_requests[0]["details"].get("started_in_movement_zone", true)),
-		"quick tap outside the movement zone passes to default target",
+			and str(pass_requests[0]["details"].get("release_reason", "")) == "pass_left_button_tap"
+			and str(pass_requests[0]["details"].get("pass_target_source", "")) == "focused_target",
+		"left pass button tap routes to the focused pass target",
 		JSON.stringify(pass_requests[0]["details"] if not pass_requests.is_empty() else {})
 	)
-	input_controller.tap_test_pass(Vector2(540.0, 1800.0), 0.05)
+	input_controller.tap_test_pass(Vector2(900.0, 640.0), 0.05)
 	_assert_true(
 		pass_requests.size() == 2
 			and pass_requests[1].get("target", long_target) == null
-			and bool(pass_requests[1]["details"].get("started_in_movement_zone", false)),
-		"quick tap inside the movement zone also passes",
+			and str(pass_requests[1]["details"].get("release_reason", "")) == "pass_right_button_tap",
+		"right pass button tap also routes to the focused pass target",
 		JSON.stringify(pass_requests[1]["details"] if pass_requests.size() > 1 else {})
 	)
 	input_controller.tap_test_pass(long_target.get_screen_anchor(), 0.05)
 	_assert_true(
 		pass_requests.size() == 3
-			and pass_requests[2].get("target", null) == long_target
-			and str(pass_requests[2]["details"].get("release_reason", "")) == "direct_tap_pass",
-		"direct teammate tap emits explicit pass target",
+			and pass_requests[2].get("target", long_target) == null
+			and str(pass_requests[2]["details"].get("pass_target_source", "")) == "focused_target",
+		"teammate screen coordinates still resolve to the focused pass buttons",
 		JSON.stringify(pass_requests[2]["details"] if pass_requests.size() > 2 else {})
 	)
-	input_controller.swipe_test_shot_arm(Vector2(540.0, 1200.0), Vector2(540.0, top_half_release_y), 0.12)
+	input_controller.swipe_test_shot_arm(move_center, shoot_center, 0.12)
 	_assert_true(
 		shot_mode_requests.size() == 1
-			and str(shot_mode_requests[0].get("swipe_direction", "")) == "up"
-			and bool(shot_mode_requests[0].get("ends_in_top_half", false))
-			and not bool(shot_mode_requests[0].get("started_in_movement_zone", true)),
-		"swipe up into the top half outside the movement zone arms shot mode",
+			and str(shot_mode_requests[0].get("control_intent", "")) == "shot_layout"
+			and str(shot_mode_requests[0].get("release_zone", "")) == "shoot",
+		"release into the shoot band arms shot mode with shot-layout intent",
 		JSON.stringify(shot_mode_requests[0] if not shot_mode_requests.is_empty() else {})
 	)
-	input_controller.swipe_test_shot_arm(Vector2(540.0, 640.0), Vector2(540.0, 640.0 + input_config.shot_swipe_min_distance_pixels + 32.0), 0.12)
-	_assert_true(
-		shot_mode_requests.size() == 1,
-		"swipe down does not arm shot mode",
-		JSON.stringify(shot_mode_requests[0] if not shot_mode_requests.is_empty() else {})
-	)
-	input_controller.swipe_test_shot_arm(Vector2(540.0, 1800.0), Vector2(540.0, top_half_release_y), 0.12)
+	input_controller.swipe_test_shot_arm(move_center, dunk_center, 0.12)
 	_assert_true(
 		shot_mode_requests.size() == 2
-			and bool(shot_mode_requests[1].get("started_in_movement_zone", false))
-			and bool(shot_mode_requests[1].get("ends_in_top_half", false)),
-		"upward swipe into the top half from the movement zone wins over movement release",
+			and str(shot_mode_requests[1].get("control_intent", "")) == "dunk"
+			and str(shot_mode_requests[1].get("release_zone", "")) == "dunk",
+		"release into the dunk band arms dunk intent",
 		JSON.stringify(shot_mode_requests[1] if shot_mode_requests.size() > 1 else {})
 	)
-	input_controller.begin_test_live_gesture(Vector2(540.0, 1800.0))
-	input_controller.tap_test_pass(Vector2(540.0, 640.0), 0.05)
-	input_controller.swipe_test_shot_arm(Vector2(540.0, 1200.0), Vector2(540.0, top_half_release_y), 0.12)
-	_assert_true(pass_requests.size() == 3 and shot_mode_requests.size() == 2, "additional touches are ignored while dragging", JSON.stringify({"passes": pass_requests.size(), "shots": shot_mode_requests.size()}))
-	input_controller.end_test_live_gesture(Vector2(540.0, 1800.0))
+	input_controller.swipe_test_shot_arm(move_center, move_center + Vector2(160.0, 0.0), 0.12)
+	_assert_true(
+		shot_mode_requests.size() == 2,
+		"sideways release back into the move lane does not arm a shot",
+		JSON.stringify({"shots": shot_mode_requests.size()})
+	)
+	input_controller.tap_test_control_button("shoot", 0.05, -94)
+	var direct_tap_feedback_snapshot: Dictionary = input_controller.get_touch_feedback_snapshot()
+	_assert_true(
+		shot_mode_requests.size() == 3
+			and str(shot_mode_requests[2].get("control_intent", "")) == "shot_layout"
+			and bool(shot_mode_requests[2].get("direct_button_tap", false))
+			and str(shot_mode_requests[2].get("release_reason", "")) == "shoot_button_tap",
+		"direct shoot button tap arms shot mode without movement",
+		JSON.stringify(shot_mode_requests[2] if shot_mode_requests.size() > 2 else {})
+	)
+	_assert_true(
+		str(direct_tap_feedback_snapshot.get("highlight_zone", "")) == "shoot",
+		"direct button taps leave a short-lived pressed highlight for panel feedback",
+		JSON.stringify(direct_tap_feedback_snapshot)
+	)
+	input_controller.tap_test_dunk_button(0.05)
+	_assert_true(
+		shot_mode_requests.size() == 4
+			and str(shot_mode_requests[3].get("control_intent", "")) == "dunk"
+			and bool(shot_mode_requests[3].get("direct_button_tap", false))
+			and str(shot_mode_requests[3].get("release_reason", "")) == "dunk_button_tap",
+		"direct dunk button tap arms dunk intent without movement",
+		JSON.stringify(shot_mode_requests[3] if shot_mode_requests.size() > 3 else {})
+	)
+	input_controller.begin_test_live_gesture(move_center)
+	input_controller.tap_test_pass(Vector2(900.0, 640.0), 0.05)
+	_assert_true(
+		pass_requests.size() == 4
+			and str(pass_requests[3]["details"].get("release_reason", "")) == "pass_right_button_tap"
+			and bool(pass_requests[3]["details"].get("direct_button_tap", false)),
+		"second-finger pass button tap works while dragging",
+		JSON.stringify(pass_requests[3]["details"] if pass_requests.size() > 3 else {})
+	)
+	input_controller.end_test_live_gesture(move_center)
+	input_controller.begin_test_live_gesture(move_center)
+	input_controller.tap_test_control_button("shoot", 0.05, -93)
+	_assert_true(
+		shot_mode_requests.size() == 5
+			and str(shot_mode_requests[4].get("release_reason", "")) == "shoot_button_tap"
+			and bool(shot_mode_requests[4].get("direct_button_tap", false)),
+		"second-finger shoot button tap works while dragging",
+		JSON.stringify(shot_mode_requests[4] if shot_mode_requests.size() > 4 else {})
+	)
+	input_controller.end_test_live_gesture(move_center)
 
 	var route_controller: RouteController = RouteController.new()
 	route_controller.route_config = RouteConfig.new()
@@ -842,6 +893,18 @@ func _run_pure_logic() -> void:
 	_assert_true(smoke_court_view != null and smoke_court_view.has_textured_court(), "court art smoke", "")
 	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_sprite_visuals(), "hoop art smoke", "")
 	_assert_true(smoke_coordinator != null and smoke_coordinator.ball_node != null and smoke_coordinator.ball_node.has_sprite_visuals(), "ball art smoke", "")
+	if smoke_coordinator != null and smoke_coordinator.projection_config != null:
+		_assert_true(
+			smoke_coordinator.projection_config.held_ball_render_radius >= 24.0 \
+				and smoke_coordinator.projection_config.live_ball_render_radius_min >= 26.785715 \
+				and smoke_coordinator.projection_config.live_ball_render_radius_max >= 53.57143,
+			"ball projection config keeps the 1.5x enlarged render sizing",
+			"%s %s %s" % [
+				smoke_coordinator.projection_config.held_ball_render_radius,
+				smoke_coordinator.projection_config.live_ball_render_radius_min,
+				smoke_coordinator.projection_config.live_ball_render_radius_max,
+			]
+		)
 	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_ball_z_index_for_phase"), "hoop render-phase z accessor exists", "")
 	_assert_true(smoke_coordinator != null and smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_front_net_exit_screen_y"), "hoop net exit helper exists", "")
 	var smoke_viewport_center: Vector2 = game_root.get_viewport().get_visible_rect().get_center()
@@ -884,7 +947,7 @@ func _run_pure_logic() -> void:
 		var smoke_top_left: Vector2 = smoke_coordinator.court_projection.world_to_base_screen_ground(smoke_rect.position)
 		var smoke_bottom_right: Vector2 = smoke_coordinator.court_projection.world_to_base_screen_ground(smoke_rect.end)
 		_assert_true(smoke_top_left.distance_to(smoke_court_rect.position) < 0.01 and smoke_bottom_right.distance_to(smoke_court_rect.end) < 0.01, "court maps to responsive screen rect", "%s %s %s" % [smoke_top_left, smoke_bottom_right, smoke_court_rect])
-		_assert_true(absf(smoke_court_rect.get_center().x - smoke_available_rect.get_center().x) < 0.01 and absf(smoke_court_rect.get_center().y - smoke_available_rect.get_center().y) < 0.01, "court stays centered below banner", "%s %s" % [smoke_court_rect, smoke_available_rect])
+		_assert_true(absf(smoke_court_rect.get_center().x - smoke_available_rect.get_center().x) < 0.01 and absf(smoke_court_rect.get_center().y - smoke_available_rect.get_center().y) < 0.01, "court stays centered in the available play rect", "%s %s" % [smoke_court_rect, smoke_available_rect])
 	if smoke_coordinator != null and smoke_coordinator.hud != null:
 		var hud_snapshot: Dictionary = smoke_coordinator.hud.get_layout_snapshot()
 		var scoreboard_rect: Rect2 = hud_snapshot.get("scoreboard_rect", hud_snapshot.get("banner_rect", Rect2()))
@@ -898,11 +961,14 @@ func _run_pure_logic() -> void:
 		_assert_true(home_rect.get_center().x < timer_rect.get_center().x, "home score stays left of timer", "%s %s" % [home_rect, timer_rect])
 		_assert_true(away_rect.get_center().x > timer_rect.get_center().x, "away score stays right of timer", "%s %s" % [away_rect, timer_rect])
 		if not smoke_layout.is_empty():
-			var smoke_viewport_rect: Rect2 = smoke_layout.get("viewport_rect", Rect2())
-			_assert_true(absf(scoreboard_rect.get_center().x - smoke_viewport_rect.get_center().x) < 0.01, "scoreboard stays horizontally centered in viewport", "%s %s" % [scoreboard_rect, smoke_viewport_rect])
-		if not smoke_layout.is_empty():
-			var smoke_available_rect: Rect2 = smoke_layout.get("available_play_rect", Rect2())
-			_assert_true(smoke_available_rect.position.y >= scoreboard_rect.end.y - 0.01, "court play rect stays below scoreboard", "%s %s" % [scoreboard_rect, smoke_available_rect])
+			var smoke_safe_rect: Rect2 = smoke_layout.get("safe_rect", Rect2())
+			var smoke_control_rect_for_board: Rect2 = smoke_layout.get("control_panel_rect", Rect2())
+			var smoke_control_zones_for_board: Dictionary = smoke_layout.get("control_zone_rects", {})
+			var smoke_shoot_rect_for_board: Rect2 = smoke_control_zones_for_board.get("shoot", Rect2())
+			_assert_true(_rect_contains_rect(smoke_safe_rect, scoreboard_rect), "scoreboard stays inside the safe area", "%s %s" % [scoreboard_rect, smoke_safe_rect])
+			_assert_true(absf(scoreboard_rect.position.x - smoke_shoot_rect_for_board.position.x) < 0.01, "scoreboard aligns to the shoot lane on the left edge", "%s %s" % [scoreboard_rect, smoke_shoot_rect_for_board])
+			_assert_true(absf(scoreboard_rect.size.x - smoke_shoot_rect_for_board.size.x) < 0.01, "scoreboard width matches the shoot lane", "%s %s" % [scoreboard_rect, smoke_shoot_rect_for_board])
+			_assert_true(scoreboard_rect.end.y <= smoke_control_rect_for_board.position.y - 0.01, "scoreboard sits above the control panel", "%s %s" % [scoreboard_rect, smoke_control_rect_for_board])
 		var scoreboard_texture_size: Vector2 = smoke_coordinator.hud.get_scoreboard_texture_size()
 		var exact_trimmed_size: bool = scoreboard_texture_size.distance_to(Vector2(1098.0, 248.0)) < 0.01
 		var trimmed_aspect_matches: bool = scoreboard_texture_size.y > 0.0 and absf(scoreboard_texture_size.x / scoreboard_texture_size.y - (1098.0 / 248.0)) < 0.001
@@ -910,7 +976,15 @@ func _run_pure_logic() -> void:
 	if smoke_coordinator != null and smoke_coordinator.pause_overlay != null:
 		smoke_coordinator.test_toggle_pause()
 		_assert_true(smoke_coordinator.pause_overlay.visible, "pause overlay opens for debug toggles", str(smoke_coordinator.pause_overlay.visible))
+		_assert_true(smoke_coordinator.pause_overlay.is_controls_visible_enabled(), "show-controls pause toggle starts enabled", str(smoke_coordinator.pause_overlay.is_controls_visible_enabled()))
 		_assert_true(not smoke_coordinator.pause_overlay.is_no_defenders_enabled(), "no-defenders pause toggle starts disabled", str(smoke_coordinator.pause_overlay.is_no_defenders_enabled()))
+		smoke_coordinator.test_set_controls_visible(false)
+		_assert_true(not smoke_coordinator.are_controls_visible(), "pause toggle hides visible controls", str(smoke_coordinator.are_controls_visible()))
+		_assert_true(smoke_coordinator.control_panel != null and not smoke_coordinator.control_panel.visible, "control panel hides when show-controls is off", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else true))
+		_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible and smoke_coordinator.hud.get_layout_snapshot().get("scoreboard_rect", Rect2()).size.x > 0.0, "show-controls toggle leaves the scoreboard visible", str(smoke_coordinator.hud.get_layout_snapshot().get("scoreboard_rect", Rect2()) if smoke_coordinator.hud != null else Rect2()))
+		smoke_coordinator.test_set_controls_visible(true)
+		_assert_true(smoke_coordinator.are_controls_visible(), "pause toggle re-shows visible controls", str(smoke_coordinator.are_controls_visible()))
+		_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "control panel shows again after the pause toggle", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
 		smoke_coordinator.test_set_defenders_disabled(true)
 		_assert_true(smoke_coordinator.are_defenders_disabled(), "pause toggle disables defenders", str(smoke_coordinator.are_defenders_disabled()))
 		var hidden_defenders: bool = true
@@ -923,9 +997,10 @@ func _run_pure_logic() -> void:
 		if no_defender_pg != null:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			no_defender_pg.world_position = finish_center_world + Vector2(20.0, 118.0)
-			var no_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(no_defender_pg, Vector2.ZERO, INF)
-			_assert_true(str(no_defender_finish.get("family", "")) == "close_finish_dunk", "no defenders force a close-range dunk", JSON.stringify(no_defender_finish))
-			_assert_true(bool(no_defender_finish.get("force_no_defenders_dunk", false)), "no defenders mark the forced dunk override", JSON.stringify(no_defender_finish))
+			var no_defender_layout: Dictionary = smoke_coordinator._build_shot_release_visual_decision(no_defender_pg, Vector2(0.0, -140.0), INF, "shot_layout")
+			var no_defender_dunk: Dictionary = smoke_coordinator._build_shot_release_visual_decision(no_defender_pg, Vector2(0.0, -140.0), INF, "dunk")
+			_assert_true(str(no_defender_layout.get("family", "")) == "close_finish_layup", "shoot intent stays on layup even with no defenders", JSON.stringify(no_defender_layout))
+			_assert_true(bool(no_defender_dunk.get("force_no_defenders_dunk", false)), "dunk intent still records the no-defenders dunk override", JSON.stringify(no_defender_dunk))
 		smoke_coordinator.test_set_defenders_disabled(false)
 		_assert_true(not smoke_coordinator.are_defenders_disabled(), "pause toggle re-enables defenders", str(smoke_coordinator.are_defenders_disabled()))
 		var visible_defenders: bool = true
@@ -942,6 +1017,25 @@ func _run_pure_logic() -> void:
 			"players keep oversized close-camera scale",
 			str(smoke_coordinator.current_ballhandler.projected_scale)
 		)
+		var smoke_layout_snapshot: Dictionary = smoke_coordinator.get_layout_metrics_snapshot()
+		var smoke_control_rect: Rect2 = smoke_layout_snapshot.get("control_panel_rect", Rect2())
+		var smoke_control_zones: Dictionary = smoke_layout_snapshot.get("control_zone_rects", {})
+		var smoke_viewport_rect: Rect2 = smoke_layout_snapshot.get("viewport_rect", Rect2())
+		var smoke_pass_left_rect: Rect2 = smoke_control_zones.get("pass_left", Rect2())
+		var smoke_pass_right_rect: Rect2 = smoke_control_zones.get("pass_right", Rect2())
+		var smoke_shoot_rect: Rect2 = smoke_control_zones.get("shoot", Rect2())
+		var smoke_dunk_rect: Rect2 = smoke_control_zones.get("dunk", Rect2())
+		var smoke_move_rect: Rect2 = smoke_control_zones.get("move", Rect2())
+		_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "bottom control panel is visible by default", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
+		_assert_true(smoke_control_rect.size.y >= smoke_viewport_rect.size.y * 0.3 and smoke_control_rect.end.y <= smoke_viewport_rect.end.y + 0.01, "control panel occupies the lower third of the viewport", "%s %s" % [smoke_control_rect, smoke_viewport_rect])
+		_assert_true(not smoke_control_zones.is_empty() and smoke_control_zones.has("move") and smoke_control_zones.has("shoot") and smoke_control_zones.has("dunk"), "control panel exposes authored zone rects", JSON.stringify(smoke_control_zones.keys()))
+		_assert_true(absf(smoke_shoot_rect.size.x - smoke_dunk_rect.size.x) < 0.01, "shoot and dunk split the top row evenly", "%s %s" % [smoke_shoot_rect, smoke_dunk_rect])
+		_assert_true(absf(smoke_shoot_rect.position.y - smoke_dunk_rect.position.y) < 0.01 and absf(smoke_shoot_rect.size.y - smoke_dunk_rect.size.y) < 0.01, "shoot and dunk share the same top-row band", "%s %s" % [smoke_shoot_rect, smoke_dunk_rect])
+		_assert_true(absf(smoke_shoot_rect.end.x - smoke_dunk_rect.position.x) < 0.01, "shoot and dunk meet directly with no bottom-band carryover gap", "%s %s" % [smoke_shoot_rect, smoke_dunk_rect])
+		_assert_true(smoke_dunk_rect.position.y < smoke_move_rect.position.y, "dunk stays in the top row above the move lane", "%s %s" % [smoke_dunk_rect, smoke_move_rect])
+		_assert_true(smoke_move_rect.size.y > smoke_shoot_rect.size.y, "move row is taller than the shoot and dunk row", "%s %s" % [smoke_move_rect, smoke_shoot_rect])
+		_assert_true(absf(smoke_pass_left_rect.size.x - smoke_pass_right_rect.size.x) < 0.01, "pass lanes keep matched widths", "%s %s" % [smoke_pass_left_rect, smoke_pass_right_rect])
+		_assert_true(smoke_move_rect.size.x > smoke_pass_left_rect.size.x and smoke_move_rect.size.x > smoke_pass_right_rect.size.x, "move lane is wider than either pass lane", "%s %s %s" % [smoke_move_rect, smoke_pass_left_rect, smoke_pass_right_rect])
 		_assert_true(smoke_coordinator.current_ballhandler.get_screen_anchor().distance_to(smoke_viewport_center) < 0.01, "opening possession centers ballhandler", str(smoke_coordinator.current_ballhandler.get_screen_anchor()))
 		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "held ball hidden while possessed", str(smoke_coordinator.ball_node.is_ball_visible()))
 		_assert_floor_marker_state(smoke_coordinator.current_ballhandler, true, "opening possession controlled floor marker")
@@ -1009,31 +1103,116 @@ func _run_pure_logic() -> void:
 	_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "ball hides on catch", str(smoke_coordinator.ball_node.is_ball_visible()))
 	smoke_coordinator.begin_test_mode(2409)
 	smoke_coordinator.apply_scenario_setup(smoke_live_offense_setup)
-	var direct_pass_target: PlayerController
-	for candidate in smoke_coordinator.offense_players:
-		if candidate != smoke_coordinator.current_ballhandler and candidate != smoke_coordinator.default_pass_target:
-			direct_pass_target = candidate
-			break
-	if direct_pass_target != null:
-		smoke_coordinator.input_controller.tap_test_pass(direct_pass_target.get_screen_anchor(), 0.05)
-		var direct_pass_snapshot: Dictionary = smoke_coordinator.pass_controller.get_active_pass_snapshot()
+	var hidden_controls_target: PlayerController = smoke_coordinator.default_pass_target
+	smoke_coordinator.test_set_controls_visible(false)
+	_assert_true(not smoke_coordinator.control_panel.visible, "hidden controls only affect presentation", str(smoke_coordinator.control_panel.visible))
+	smoke_coordinator.input_controller.tap_test_pass(Vector2(900.0, 640.0), 0.05)
+	var hidden_controls_pass_snapshot: Dictionary = smoke_coordinator.pass_controller.get_active_pass_snapshot()
+	_assert_true(
+		smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT and hidden_controls_pass_snapshot.get("intended_receiver", null) == hidden_controls_target,
+		"pass hitboxes stay active while the visible controls are hidden",
+		str(hidden_controls_pass_snapshot.get("intended_receiver", null))
+	)
+	smoke_coordinator.test_set_controls_visible(true)
+	_reset_visual_test_state(smoke_coordinator)
+	var smoke_control_layout: Dictionary = smoke_coordinator.input_controller.get_control_layout_snapshot()
+	var smoke_control_zone_rects: Dictionary = smoke_control_layout.get("control_zone_rects", {})
+	var smoke_move_center: Vector2 = smoke_control_zone_rects.get("move", Rect2()).get_center()
+	var smoke_shoot_center: Vector2 = smoke_control_zone_rects.get("shoot", Rect2()).get_center()
+	var smoke_shoot_rect_for_meter: Rect2 = smoke_control_zone_rects.get("shoot", Rect2())
+	var smoke_dunk_rect_for_meter: Rect2 = smoke_control_zone_rects.get("dunk", Rect2())
+	var smoke_top_action_rect: Rect2 = Rect2(
+		smoke_shoot_rect_for_meter.position,
+		Vector2(maxf(smoke_dunk_rect_for_meter.end.x - smoke_shoot_rect_for_meter.position.x, 1.0), smoke_shoot_rect_for_meter.size.y)
+	)
+	if smoke_coordinator.control_panel != null:
+		smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
+		var neutral_shoot_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("shoot")
+		var neutral_move_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("move")
+		var neutral_pass_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("pass_right")
+		var neutral_dunk_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("dunk")
 		_assert_true(
-			smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT and direct_pass_snapshot.get("intended_receiver", null) == direct_pass_target,
-			"direct teammate tap bypasses the marked target",
-			str(direct_pass_snapshot.get("intended_receiver", null))
+			str(neutral_shoot_visual.get("base_color_html", "")) == "1b1d3a"
+				and str(neutral_move_visual.get("base_color_html", "")) == "1b1d3a"
+				and str(neutral_pass_visual.get("base_color_html", "")) == "1b1d3a"
+				and str(neutral_dunk_visual.get("base_color_html", "")) == "1b1d3a",
+			"all control-panel buttons use the neutral dark base color while idle",
+			str({
+				"shoot": neutral_shoot_visual,
+				"move": neutral_move_visual,
+				"pass": neutral_pass_visual,
+				"dunk": neutral_dunk_visual,
+			})
 		)
+	smoke_coordinator.input_controller.begin_test_live_gesture(smoke_move_center)
+	smoke_coordinator.input_controller.update_test_live_gesture(smoke_shoot_center)
+	if smoke_coordinator.control_panel != null:
+		smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
+		var hover_shoot_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("shoot")
+		_assert_true(
+			bool(hover_shoot_visual.get("highlighted", false))
+				and str(hover_shoot_visual.get("base_color_html", "")) != "1b1d3a",
+			"drag-hover swaps the hovered action button from the neutral base into its colored state",
+			str(hover_shoot_visual)
+		)
+	smoke_coordinator.input_controller.end_test_live_gesture(smoke_move_center)
+	var direct_pass_target: PlayerController = smoke_coordinator.default_pass_target
+	smoke_coordinator.input_controller.tap_test_control_button("pass_right", 0.05, -92)
+	var direct_pass_snapshot: Dictionary = smoke_coordinator.pass_controller.get_active_pass_snapshot()
+	_assert_true(
+		smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT and direct_pass_snapshot.get("intended_receiver", null) == direct_pass_target,
+		"direct pass button tap starts a live pass without movement",
+		str(direct_pass_snapshot.get("intended_receiver", null))
+	)
 	_reset_visual_test_state(smoke_coordinator)
-	var smoke_viewport_size: Vector2 = game_root.get_viewport().get_visible_rect().size
-	var smoke_top_half_release_y: float = smoke_viewport_size.y * float(smoke_coordinator.input_config.shot_swipe_max_release_y_ratio) - 24.0
-	var upward_swipe_start: Vector2 = Vector2(smoke_viewport_size.x * 0.5, smoke_viewport_size.y * 0.88)
-	var upward_swipe_end: Vector2 = Vector2(upward_swipe_start.x, smoke_top_half_release_y)
-	smoke_coordinator.input_controller.swipe_test_shot_arm(upward_swipe_start, upward_swipe_end, 0.12)
-	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "upward swipe into the top half enters shot aim", smoke_coordinator.get_state_name())
+	smoke_coordinator.input_controller.begin_test_live_gesture(smoke_move_center)
+	var second_finger_pass_target: PlayerController = smoke_coordinator.default_pass_target
+	smoke_coordinator.input_controller.tap_test_control_button("pass_right", 0.05, -91)
+	var second_finger_pass_snapshot: Dictionary = smoke_coordinator.pass_controller.get_active_pass_snapshot()
+	_assert_true(
+		smoke_coordinator.context.current_state == GameState.State.PASS_IN_FLIGHT and second_finger_pass_snapshot.get("intended_receiver", null) == second_finger_pass_target,
+		"second-finger pass button tap works while the move drag is active",
+		str(second_finger_pass_snapshot.get("intended_receiver", null))
+	)
 	_reset_visual_test_state(smoke_coordinator)
-	var downward_swipe_start: Vector2 = Vector2(smoke_viewport_size.x * 0.5, smoke_viewport_size.y * 0.56)
-	var downward_swipe_end: Vector2 = downward_swipe_start + Vector2(0.0, maxf(float(smoke_coordinator.input_config.shot_swipe_min_distance_pixels) + 40.0, 132.0))
-	smoke_coordinator.input_controller.swipe_test_shot_arm(downward_swipe_start, downward_swipe_end, 0.12)
-	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "downward swipe does not enter shot aim", smoke_coordinator.get_state_name())
+	smoke_coordinator.input_controller.tap_test_control_button("shoot", 0.05, -90)
+	await get_tree().process_frame
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shoot button tap enters shot aim without movement", smoke_coordinator.get_state_name())
+	if smoke_coordinator.control_panel != null:
+		smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
+		var pressed_shoot_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("shoot")
+		_assert_true(
+			bool(pressed_shoot_visual.get("highlighted", false))
+				and str(pressed_shoot_visual.get("base_color_html", "")) != "1b1d3a",
+			"direct button taps briefly paint the pressed action button with its colored state",
+			str(pressed_shoot_visual)
+		)
+		var panel_meter_rect: Rect2 = smoke_coordinator.control_panel.get_shot_meter_bar_rect_snapshot()
+		_assert_true(panel_meter_rect.size.x > smoke_shoot_rect_for_meter.size.x, "control-panel shot meter spans beyond the shoot button into the dunk half", "%s %s" % [panel_meter_rect, smoke_shoot_rect_for_meter])
+		_assert_true(panel_meter_rect.position.x >= smoke_top_action_rect.position.x - 0.01 and panel_meter_rect.end.x <= smoke_top_action_rect.end.x + 0.01, "control-panel shot meter stays inside the full top action row", "%s %s" % [panel_meter_rect, smoke_top_action_rect])
+	_reset_visual_test_state(smoke_coordinator)
+	smoke_coordinator.input_controller.swipe_test_shot_arm(smoke_move_center, smoke_shoot_center, 0.12)
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shoot-band release enters shot aim", smoke_coordinator.get_state_name())
+	_reset_visual_test_state(smoke_coordinator)
+	smoke_coordinator.input_controller.swipe_test_dunk_arm(0.12)
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "dunk-band release far from the hoop is ignored", smoke_coordinator.get_state_name())
+	var finish_logic_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
+	var layout_lc: PlayerController = smoke_coordinator.get_offense_player_by_role("LC")
+	var layout_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
+	if layout_lc != null:
+		layout_lc.world_position = finish_logic_center_world + Vector2(18.0, 108.0)
+		var layup_from_shoot: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_lc, Vector2(0.0, -150.0), INF, "shot_layout")
+		var dunk_from_dunk: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_lc, Vector2(0.0, -150.0), INF, "dunk")
+		_assert_true(str(layup_from_shoot.get("family", "")) == "close_finish_layup", "shoot intent near the rim resolves as a layup instead of a dunk", JSON.stringify(layup_from_shoot))
+		_assert_true(str(dunk_from_dunk.get("family", "")) == "close_finish_dunk", "dunk intent near the rim resolves as a dunk when eligible", JSON.stringify(dunk_from_dunk))
+	if layout_pg != null:
+		layout_pg.world_position = finish_logic_center_world + Vector2(18.0, 118.0)
+		var fallback_layup: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_pg, Vector2(0.0, -140.0), INF, "dunk")
+		var far_dunk_ignored: Dictionary
+		layout_pg.world_position = Vector2(540.0, 1360.0)
+		far_dunk_ignored = smoke_coordinator._build_shot_release_visual_decision(layout_pg, Vector2(0.0, -140.0), INF, "dunk")
+		_assert_true(str(fallback_layup.get("family", "")) == "close_finish_layup", "dunk intent falls back to layup when only the close-finish gates pass", JSON.stringify(fallback_layup))
+		_assert_true(not bool(far_dunk_ignored.get("allowed", true)), "dunk intent far from the hoop does not arm a jumper", JSON.stringify(far_dunk_ignored))
 	_reset_visual_test_state(smoke_coordinator)
 	var visual_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
 	var visual_rc: PlayerController = smoke_coordinator.get_offense_player_by_role("RC")
@@ -1060,6 +1239,7 @@ func _run_pure_logic() -> void:
 	visual_rc = smoke_coordinator.get_offense_player_by_role("RC")
 	visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
 	if visual_rc != null:
+		visual_rc.velocity = Vector2.ZERO
 		smoke_coordinator._sync_projection_visuals(0.0)
 		_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball idle")
 	if visual_pg != null and visual_pg_defender != null:
@@ -1090,7 +1270,10 @@ func _run_pure_logic() -> void:
 			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "no_ball_idle", "variant_index": 0, "mirror_west": false}
 			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_threshold - 2.0)
 			smoke_coordinator._sync_projection_visuals(0.0)
-			_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball idle holds below move enter")
+			_assert_player_visual(visual_rc, "off_ball_shuffle", 19, false, false, "off-ball shuffle starts on any movement")
+			visual_rc.velocity = Vector2.ZERO
+			smoke_coordinator._sync_projection_visuals(0.0)
+			_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball idle only when fully stopped")
 			visual_rc.velocity = Vector2.RIGHT * 44.0
 			smoke_coordinator._sync_projection_visuals(0.0)
 			_assert_player_visual(visual_rc, "off_ball_shuffle", 19, false, false, "off-ball shuffle")
@@ -1101,7 +1284,7 @@ func _run_pure_logic() -> void:
 			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_shuffle", "variant_index": 0, "mirror_west": false}
 			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.stationary_speed_release_threshold - 1.0)
 			smoke_coordinator._sync_projection_visuals(0.0)
-			_assert_player_visual(visual_rc, "no_ball_idle", 1, false, false, "off-ball shuffle releases to idle")
+			_assert_player_visual(visual_rc, "off_ball_shuffle", 19, false, false, "off-ball shuffle persists on sub-threshold movement")
 			smoke_coordinator.player_visual_memory[visual_rc] = {"family": "off_ball_run", "variant_index": 0, "mirror_west": false}
 			visual_rc.velocity = Vector2.RIGHT * (smoke_coordinator.player_animation_config.small_move_speed_release_threshold + 4.0)
 			smoke_coordinator._sync_projection_visuals(0.0)
@@ -1182,7 +1365,7 @@ func _run_pure_logic() -> void:
 			visual_lc_preview.trigger_shot_pose(0.28)
 			smoke_coordinator.player_visual_memory.erase(visual_lc_preview)
 			smoke_coordinator._sync_projection_visuals(0.0)
-			_assert_player_visual(visual_lc_preview, "close_finish_dunk", 15, true, true, "straight dunk")
+			_assert_player_visual(visual_lc_preview, "close_finish_layup", 14, true, true, "straight layup")
 			visual_lc_preview.world_position = finish_center_world + Vector2(80.0, 80.0)
 			visual_lc_preview.velocity = (finish_center_world - visual_lc_preview.world_position).normalized() * 190.0
 			smoke_coordinator.current_move_direction = (finish_center_world - visual_lc_preview.world_position).normalized()
@@ -1190,7 +1373,7 @@ func _run_pure_logic() -> void:
 			visual_lc_preview.trigger_shot_pose(0.28)
 			smoke_coordinator.player_visual_memory.erase(visual_lc_preview)
 			smoke_coordinator._sync_projection_visuals(0.0)
-			_assert_player_visual(visual_lc_preview, "close_finish_side_dunk", 16, true, true, "side dunk")
+			_assert_player_visual(visual_lc_preview, "close_finish_layup", 17, true, true, "side layup")
 		_reset_visual_test_state(smoke_coordinator)
 		visual_pg = smoke_coordinator.get_offense_player_by_role("PG")
 		visual_pg_defender = smoke_coordinator.get_defense_player_by_role("PG")
@@ -1361,8 +1544,8 @@ func _run_pure_logic() -> void:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
 			var dunk_motion: Vector2 = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			var far_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 260.0)
-			var near_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 12.0)
+			var far_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 260.0, "dunk")
+			var near_defender_finish: Dictionary = smoke_coordinator._build_shot_release_visual_decision(visual_lc, dunk_motion, 12.0, "dunk")
 			_assert_true(str(far_defender_finish.get("family", "")) == "close_finish_dunk", "high dunk player in dunk radius chooses dunk", JSON.stringify(far_defender_finish))
 			_assert_true(bool(far_defender_finish.get("close_finish_eligible", false)), "high dunk player is close-finish eligible", JSON.stringify(far_defender_finish))
 			_assert_true(bool(far_defender_finish.get("dunk_eligible", false)), "high dunk player is dunk eligible", JSON.stringify(far_defender_finish))
@@ -1376,7 +1559,7 @@ func _run_pure_logic() -> void:
 				var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 				visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
 				visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-				await _begin_release_test_shot(smoke_coordinator, visual_lc)
+				await _begin_release_test_shot(smoke_coordinator, visual_lc, 12, "dunk")
 				var committed_family: String = str(smoke_coordinator.active_shot_sequence.get("family", ""))
 				var committed_variant: int = int(smoke_coordinator.active_shot_sequence.get("variant_index", 0))
 				var committed_row: int = PlayerVisual.get_row_index_for_family_variant(committed_family, committed_variant)
@@ -1387,15 +1570,17 @@ func _run_pure_logic() -> void:
 					break
 		_assert_true(straight_dunk_profiles.has(13), "straight dunk row 13 timing profile reachable", str(straight_dunk_profiles))
 		_assert_true(straight_dunk_profiles.has(15), "straight dunk row 15 timing profile reachable", str(straight_dunk_profiles))
-		_assert_true(int(straight_dunk_profiles[13]) == 10, "straight dunk row 13 release frame", str(straight_dunk_profiles[13]))
-		_assert_true(int(straight_dunk_profiles[15]) == 11, "straight dunk row 15 release frame", str(straight_dunk_profiles[15]))
+		if straight_dunk_profiles.has(13):
+			_assert_true(int(straight_dunk_profiles[13]) == 10, "straight dunk row 13 release frame", str(straight_dunk_profiles[13]))
+		if straight_dunk_profiles.has(15):
+			_assert_true(int(straight_dunk_profiles[15]) == 11, "straight dunk row 15 release frame", str(straight_dunk_profiles[15]))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
 		visual_lc = smoke_coordinator.get_offense_player_by_role("LC")
 		if visual_lc != null:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(0.0, 90.0)
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			await _begin_release_test_shot(smoke_coordinator, visual_lc)
+			await _begin_release_test_shot(smoke_coordinator, visual_lc, 12, "dunk")
 			_assert_true(int(smoke_coordinator.active_shot_sequence.get("approach_start_frame", -1)) == 8, "short straight dunk starts at jump frames", JSON.stringify(smoke_coordinator.active_shot_sequence))
 			_assert_true(str(smoke_coordinator.active_shot_sequence.get("approach_bucket", "")) == "short", "short straight dunk bucket", JSON.stringify(smoke_coordinator.active_shot_sequence))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
@@ -1404,7 +1589,7 @@ func _run_pure_logic() -> void:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(0.0, 120.0)
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			await _begin_release_test_shot(smoke_coordinator, visual_lc)
+			await _begin_release_test_shot(smoke_coordinator, visual_lc, 12, "dunk")
 			_assert_true(int(smoke_coordinator.active_shot_sequence.get("approach_start_frame", -1)) == 5, "medium straight dunk starts with three run frames", JSON.stringify(smoke_coordinator.active_shot_sequence))
 			_assert_true(str(smoke_coordinator.active_shot_sequence.get("approach_bucket", "")) == "max", "medium straight dunk threshold bucket", JSON.stringify(smoke_coordinator.active_shot_sequence))
 		_reset_visual_test_state(smoke_coordinator, "LC", 2426)
@@ -1413,7 +1598,7 @@ func _run_pure_logic() -> void:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(80.0, 108.7428)
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			await _begin_release_test_shot(smoke_coordinator, visual_lc)
+			await _begin_release_test_shot(smoke_coordinator, visual_lc, 12, "dunk")
 			var side_dunk_family: String = str(smoke_coordinator.active_shot_sequence.get("family", ""))
 			var side_dunk_variant: int = int(smoke_coordinator.active_shot_sequence.get("variant_index", 0))
 			var side_dunk_row: int = PlayerVisual.get_row_index_for_family_variant(side_dunk_family, side_dunk_variant)
@@ -1442,7 +1627,7 @@ func _run_pure_logic() -> void:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(78.0, 110.0)
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			_arm_test_shot(smoke_coordinator)
+			_arm_test_shot(smoke_coordinator, "dunk")
 			await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "side dunk skips shot aim and stages release immediately", smoke_coordinator.get_state_name())
 			_assert_true(not bool(smoke_court_view.shot_meter.get("visible", false)), "side dunk never shows the shot meter", JSON.stringify(smoke_court_view.shot_meter))
@@ -1489,7 +1674,7 @@ func _run_pure_logic() -> void:
 			var finish_center_world: Vector2 = _get_finish_logic_center_world(smoke_coordinator)
 			visual_lc.world_position = finish_center_world + Vector2(22.0, 118.0)
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
-			_arm_test_shot(smoke_coordinator)
+			_arm_test_shot(smoke_coordinator, "dunk")
 			await get_tree().process_frame
 			_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "straight dunk also skips shot aim and stages release immediately", smoke_coordinator.get_state_name())
 			_assert_true(not bool(smoke_court_view.shot_meter.get("visible", false)), "straight dunk never shows the shot meter", JSON.stringify(smoke_court_view.shot_meter))
@@ -1534,7 +1719,7 @@ func _run_pure_logic() -> void:
 			visual_lc.velocity = (finish_center_world - visual_lc.world_position).normalized() * 190.0
 			smoke_coordinator.current_move_direction = (finish_center_world - visual_lc.world_position).normalized()
 			smoke_coordinator.current_move_magnitude = 1.0
-			smoke_coordinator._begin_active_shot_sequence(visual_lc)
+			smoke_coordinator._begin_active_shot_sequence(visual_lc, "dunk")
 			var blocked_dunk_action: Dictionary = smoke_coordinator.shot_controller.build_action_for_quality(
 				visual_lc.world_position,
 				visual_lc.get_player_data(),
@@ -1763,7 +1948,7 @@ func _collect_dunk_hold_snapshot(
 	shooter.velocity = motion_vector
 	coordinator.current_move_direction = motion_vector.normalized()
 	coordinator.current_move_magnitude = 1.0
-	_arm_test_shot(coordinator)
+	_arm_test_shot(coordinator, "dunk")
 	for _frame in 180:
 		await get_tree().process_frame
 		if coordinator.context.current_state == GameState.State.SHOT_RELEASE and shooter.is_dunk_contact_hold_active():
@@ -1834,7 +2019,7 @@ func _collect_dunk_motion_trace(
 	shooter.velocity = motion_vector
 	coordinator.current_move_direction = motion_vector.normalized()
 	coordinator.current_move_magnitude = 1.0
-	_arm_test_shot(coordinator)
+	_arm_test_shot(coordinator, "dunk")
 	var frames: Array[Dictionary] = []
 	var samples: Array[Dictionary] = []
 	var resolved_row: int = -1
@@ -2095,8 +2280,8 @@ func _assert_dunk_root_motion_trace_consistency(
 			)
 
 
-func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerController, aim_frames: int = 12) -> void:
-	_arm_test_shot(coordinator)
+func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerController, aim_frames: int = 12, control_intent: String = "shot_layout") -> void:
+	_arm_test_shot(coordinator, control_intent)
 	for _aim_frame in aim_frames:
 		await get_tree().process_frame
 	if coordinator.context.current_state == GameState.State.SHOT_AIM:
@@ -2104,13 +2289,13 @@ func _begin_release_test_shot(coordinator: GameCoordinator, _shooter: PlayerCont
 		await get_tree().process_frame
 
 
-func _arm_test_shot(coordinator: GameCoordinator) -> void:
+func _arm_test_shot(coordinator: GameCoordinator, control_intent: String = "shot_layout") -> void:
 	if coordinator.input_controller == null:
 		return
-	var viewport_size: Vector2 = coordinator.get_viewport().get_visible_rect().size
-	var swipe_start: Vector2 = Vector2(viewport_size.x * 0.5, viewport_size.y * 0.88)
-	var top_half_limit_y: float = viewport_size.y * float(coordinator.input_config.shot_swipe_max_release_y_ratio)
-	var swipe_end: Vector2 = Vector2(swipe_start.x, minf(swipe_start.y - maxf(float(coordinator.input_config.shot_swipe_min_distance_pixels) + 48.0, 140.0), top_half_limit_y - 24.0))
+	var control_layout: Dictionary = coordinator.input_controller.get_control_layout_snapshot()
+	var zone_rects: Dictionary = control_layout.get("control_zone_rects", {})
+	var swipe_start: Vector2 = zone_rects.get("move", Rect2()).get_center()
+	var swipe_end: Vector2 = zone_rects.get("dunk", Rect2()).get_center() if control_intent == "dunk" else zone_rects.get("shoot", Rect2()).get_center()
 	coordinator.input_controller.swipe_test_shot_arm(swipe_start, swipe_end, 0.12)
 
 

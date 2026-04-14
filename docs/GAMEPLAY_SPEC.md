@@ -4,7 +4,7 @@
 
 1. Boot directly into a 3:00 offense-only match.
 2. Control the offensive ballhandler.
-3. Use one-thumb movement, tap passing, and an upward swipe-to-arm shot timing flow to create a shot.
+3. Use the visible bottom-third control panel for movement, passes, shots, and dunks.
 4. Resolve score, miss, steal, out-of-bounds, or rebound.
 5. If defense gains possession, run the opponent sim and reset to a new offensive possession.
 6. Finish the current live shot or rebound at the buzzer, then end the game.
@@ -13,9 +13,15 @@
 
 ### Movement
 
-- The lower `35%` of the screen is an invisible movement zone.
-- Touch-down in that zone creates a faint temporary anchor under the thumb.
-- Movement direction is the vector from the anchor to the current thumb position.
+- The bottom third of the screen is a visible control panel with a shorter top `SHOOT | DUNK` split row and a larger bottom `PASS | MOVE | PASS` row.
+- The center `MOVE` lane is intentionally wider than either `PASS` lane so movement has the largest touch target.
+- All four visible button zones use a shared dark neutral base color `#1b1d3a` while idle.
+- A button swaps into its action color only while a drag is hovering over that zone or while that button is being pressed directly.
+- Live-offense gestures must start in the center `MOVE` zone.
+- Touch-down in `MOVE` creates the active joystick anchor and knob inside the visible panel.
+- Tapping `PASS`, `SHOOT`, or `DUNK` directly works even if no movement gesture is active.
+- While one finger is dragging in `MOVE`, a second finger can still tap any action button directly.
+- Movement direction is the vector from the `MOVE` anchor to the current thumb position.
 - Tiny thumb shifts inside the dead zone do not move the ballhandler.
 - Touch input is primary.
 - `WASD` / arrow keys mirror the movement vector in debug.
@@ -23,10 +29,10 @@
 ### Passing
 
 - During `LIVE_OFFENSE`, one eligible off-ball teammate is marked as the default pass target with a persistent light-blue ring.
-- An empty quick tap on the gameplay surface passes immediately to that marked teammate.
-- A quick tap directly on a teammate passes immediately to that teammate, even if they are not the marked default target.
-- Lower-zone touches still count as pass taps if they stay inside the tap time and excursion limits instead of becoming a real drag.
-- If no valid default target exists, an empty tap does nothing and live offense continues.
+- Tapping either visible `PASS` button passes immediately to that focused teammate.
+- Releasing a live gesture into either visible `PASS` lane passes immediately to that focused teammate.
+- Both `PASS` lanes route to the same focused receiver. There is no direct teammate tap override in the current control layout.
+- If no valid default target exists, both `PASS` lanes are inert and live offense continues.
 - A pass starts as an immediate straight-line live-ball pass to the chosen teammate.
 - The ball stays visible during `PASS_IN_FLIGHT` and travels on a fixed straight segment toward the receiver's release-time catch point.
 - The intended receiver breaks to that catch point while one eligible defender may commit to the lane based on pass geometry, ratings, and difficulty.
@@ -39,20 +45,22 @@
 
 ### Shooting
 
-- A strong upward swipe that finishes in the top half of the screen enters `SHOT_AIM`.
-- Shot-swipe recognition applies everywhere on the gameplay surface, including the lower movement zone.
-- Lower-zone drags still move the ballhandler while the finger is down, but a qualifying upward swipe into the top half on release arms the shot instead of resolving as a normal movement release.
-- Upward swipes that stay in the lower half, downward swipes, short drags, and clearly horizontal drags do not arm a shot.
+- Tapping the top-left `SHOOT` button directly requests the `shot_layout` intent.
+- Tapping the top-right `DUNK` button directly requests the `dunk` intent.
+- Releasing a live gesture into the top-left `SHOOT` zone requests the `shot_layout` intent.
+- Releasing a live gesture into the top-right `DUNK` zone requests the `dunk` intent.
+- Releasing back into `MOVE`, outside the panel, or on a drag shorter than the action threshold just stops movement.
 - `SHOT_AIM` is an armed timing phase, not a hold-and-drag phase.
 - Gameplay stays at normal speed while the shot is armed.
 - The ballhandler stops moving once shot mode is armed.
 - The committed shot row starts immediately when shot mode is armed.
-- If the committed family is a dunk, the game skips timed `SHOT_AIM` entirely for the current phase, never shows the shot bar, and immediately queues a guaranteed make while still waiting for the authored dunk contact and release beats.
-- For non-dunk shots, a bottom timing meter appears as a long red rectangle with a smaller green rectangle inside it.
+- `shot_layout` keeps normal jumper / set-shot behavior outside the rim, and forces close finishes to resolve as layups instead of auto-promoting to dunks.
+- `dunk` commits a dunk only when the stricter dunk gates pass. If the player is close enough for a finish but not dunk-eligible, the request falls back to a layup. If the player is too far for any finish, the request is ignored and offense stays live.
+- If the committed family is a dunk, the game skips timed `SHOT_AIM`, never shows the shot meter, and immediately queues the authored dunk make flow.
+- For non-dunk shots, the timing meter renders across the full top `SHOOT | DUNK` row as a long red rectangle with a smaller green rectangle inside it.
 - For non-dunk shots, trajectory dots appear during shot mode and preview the current release path.
 - For non-dunk shots, a rectangular indicator sweeps across the bar once from left to right.
 - For non-dunk shots, the first tap anywhere on screen samples the current timing result.
-- Shot entry only comes from the upward swipe path; downward swipes are ignored for shooting.
 - For non-dunk shots, tapping inside the green window guarantees a made shot, even if the shooter is contested, and the release cannot be downgraded into a block.
 - For non-dunk shots, tapping in the red causes a miss or a contest-driven block.
 - For non-dunk shots, if the player never taps before the bar ends, the shot counts as a late miss.
@@ -66,6 +74,7 @@
 - After timing is locked, launch still waits for the committed animation row to cross its authored release frame before the world ball appears.
 - Close-finish family selection is deterministic and ignores defender distance. A player only enters the layup-or-dunk family when the approach is inside `close_finish_radius`, moving toward the hoop above `toward_hoop_dot_threshold`, and carrying at least `finish_momentum_speed_threshold`.
 - Once that close-finish gate is met, dunks require the stricter dunk-only gates: inside `dunk_finish_radius`, at or above `dunk_momentum_speed_threshold`, and at or above `dunk_rating_min`. If any dunk-only gate fails, the finish falls back to layup instead of spilling into a jumper.
+- The pause menu exposes a `Show Controls` toggle that hides or shows the control-panel art without changing the underlying hitboxes or restoring the legacy gesture model.
 - The pause menu also exposes a debug `No Defenders` toggle. While it is active, live defenders are hidden and removed from on-court defensive logic, and any shot started inside `close_finish_radius` commits to a dunk family even for low-dunk or stationary players.
 - Straight-vs-side finish routing still happens after the family choice, using the same lateral offset threshold for layups and dunks.
 - Dunk rows `13`, `15`, and `16` add a second staged beat after the dunk auto-commit: once the committed animation reaches its configured rim-contact frame, the sprite freezes on the rim for `0.5` seconds with the world ball still hidden.
@@ -87,6 +96,7 @@
 
 - The court renders as a flat top-down rectangle with parallel sidelines.
 - The floor art keeps its original aspect ratio, scales to fill the full screen height, and crops extra width with an offensive-side bias instead of stretching.
+- The textured scoreboard sits in a compact bottom-left card just above the `SHOOT` half of the control panel instead of occupying the top edge of the screen.
 - During `LIVE_OFFENSE`, the best pass target shows a persistent light-blue floor ring until a pass or shot begins.
 - Player sprites are intentionally enlarged so the ballhandler and nearby defenders are easy to read in portrait play.
 

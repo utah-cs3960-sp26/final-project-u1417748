@@ -17,9 +17,9 @@ extends Resource
 @export var actor_scale_near: float = 1.5
 @export var actor_scale_far: float = 1.3809524
 @export var actor_distance_to_hoop_scale_strength: float = 0.02
-@export var held_ball_render_radius: float = 16.0
-@export var live_ball_render_radius_min: float = 17.857143
-@export var live_ball_render_radius_max: float = 35.714287
+@export var held_ball_render_radius: float = 24.0
+@export var live_ball_render_radius_min: float = 26.785715
+@export var live_ball_render_radius_max: float = 53.57143
 @export var shadow_offset: Vector2 = Vector2(0.0, 18.0)
 @export var shadow_scale_near: float = 0.88
 @export var shadow_scale_far: float = 0.8

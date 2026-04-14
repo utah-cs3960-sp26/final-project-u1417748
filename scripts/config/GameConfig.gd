@@ -7,4 +7,5 @@ extends Resource
 @export var allow_mouse_emulation: bool = true
 @export var offensive_rebound_keeps_live_play: bool = true
 @export var pause_allows_restart: bool = true
+@export var show_controls_by_default: bool = true
 @export var default_seed: int = 1417748

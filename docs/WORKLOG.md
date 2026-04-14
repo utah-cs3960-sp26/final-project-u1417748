@@ -2,12 +2,59 @@
 
 ## 2026-04-14
 
+### Control-panel buttons now stay dark until hovered or pressed
+
+- changed the visible panel art so `SHOOT`, `DUNK`, `PASS`, and `MOVE` all share the same neutral idle base color `#1b1d3a` instead of always showing their action colors
+- kept the original action palettes, but now only swap a zone into its colored version while the live drag is hovering over that zone or while that button is being pressed directly
+- added a short-lived direct-tap highlight in `InputController` so immediate `PASS`, `SHOOT`, and `DUNK` taps still flash visibly even though they fire on press
+- extended deterministic coverage to assert the neutral idle base, drag-hover color swap, and direct-tap pressed highlight before rerunning validation
+- reran the game-scene smoke boot plus the full headless suite after the neutral-idle button pass: Pure logic `1622`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Action buttons now work as direct taps and the shot meter spans the full top row
+
+- added a direct-button input path for `PASS`, `SHOOT`, and `DUNK`, so each visible button can fire without first starting a movement drag
+- kept drag-release actions intact, but made the action-button tap path independent from the move pointer so a second finger can trigger pass, shoot, or dunk while the first finger keeps dragging in `MOVE`
+- widened the visible shot meter so it now spans the combined `SHOOT | DUNK` top row instead of only the `SHOOT` half, making the green window larger and easier to read during `SHOT_AIM`
+- extended pure-input and coordinator smoke coverage to assert direct button taps, second-finger action taps during movement, and the widened control-panel meter geometry before rerunning validation
+- reran the game-scene smoke boot plus the full headless suite after the direct-button / top-row-meter pass: Pure logic `1617`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Retuned the visible basketball render to 1.5x the original size
+
+- set the held and live ball render radii in `ProjectionConfig` to `1.5x` the original values so passes, shots, and rebounds still read larger on screen without the oversized 2x look
+- kept the change render-only by leaving `BallPhysicsConfig.ball_radius` and hoop collision math unchanged
+- updated smoke coverage so the projection radii stay at or above the new 1.5x thresholds
+- reran the full headless suite after the ball-visual pass: Pure logic `1609`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Rebalanced the visible panel so movement gets most of the space
+
+- reduced the top `SHOOT | DUNK` row height to two-thirds of its previous size and gave the reclaimed height to the lower `PASS | MOVE | PASS` row so the movement band is taller
+- reduced each `PASS` lane width to two-thirds of its previous size and shifted the freed width into the center `MOVE` lane so the move zone is now the widest control target on the panel
+- extended smoke coverage to assert the taller move row, narrower matched pass lanes, and wider center move lane before rerunning validation
+- reran the game-scene smoke boot plus the full headless suite after the move-lane enlargement pass: Pure logic `1608`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Split the action row into `SHOOT | DUNK` and moved the scoreboard above the left half
+
+- reshaped the visible bottom-third control panel from a three-row stack into a two-row layout with an exact `50/50` top `SHOOT | DUNK` split over the existing `PASS | MOVE | PASS` row, removing the old bottom full-width dunk strip entirely
+- kept the same gesture contract and coordinator-owned shot-family logic, but remapped `shot_layout` to the top-left half and `dunk` to the top-right half while making the old bottom-center dunk area inert
+- changed the responsive HUD contract so `banner_rect` now points to a compact bottom-left scoreboard card sized to the `SHOOT` half and anchored just above the control panel instead of reserving the top edge of the viewport
+- updated layout smoke coverage to assert the top-row split geometry, the absence of a bottom dunk band, scoreboard alignment above the `SHOOT` half, and `Show Controls` leaving the scoreboard visible while hiding only the panel art
+- reran the game-scene smoke boot plus the full headless suite after the top-split / scoreboard relocation pass: Pure logic `1605`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Visible bottom-third control panel replaced the old open-screen offense gestures
+
+- replaced the old open-court live-offense gesture model with a dedicated bottom-third panel: top `SHOOT`, middle `PASS | MOVE | PASS`, bottom `DUNK`
+- refactored `InputController` to classify live-offense releases against coordinator-owned control-zone rects instead of viewport-wide tap / swipe rules, and made the center `MOVE` zone the required gesture origin
+- kept the coordinator as the single owner of the focused pass target, then routed both `PASS` lanes through that one highlighted receiver while removing direct teammate tap overrides from the live control path
+- added explicit `shot_layout` and `dunk` control intents so upward `SHOOT` releases now force close finishes to stay layups, while downward `DUNK` releases choose dunk when eligible, fall back to layup when only close-finish-eligible, and ignore far-from-rim attempts
+- added `ControlPanel.tscn` / `ControlPanel.gd`, moved the visible timing meter into the `SHOOT` band, removed joystick / meter rendering from `CourtView`, and added a pause-menu `Show Controls` toggle that hides the panel art without changing the underlying hitboxes
+- updated input smoke coverage, coordinator smoke coverage, scenario resources, and bot pilot helpers around the new panel contract, then reran the full headless suite: Pure logic `1593`, Scenarios `13`, Balance `4`, Failures `0`
+
 ### Off-ball offense slow movement now reuses the defense shuffle row
 
 - split off-ball offense movement presentation into a true slow-move family plus the existing run family, instead of treating every non-idle off-ball motion as the run row
-- mapped the new off-ball slow family to row `19`, which is the same authored shuffle row already used by `guard_shuffle`, so off-ball offense now matches the defense's readable slow-move animation while the ballhandler path stays unchanged
+- mapped the new off-ball slow family to row `19`, which is the same authored shuffle row already used by `guard_shuffle`, and then removed the old off-ball idle threshold so any non-zero off-ball offense movement now resolves to that shuffle row while the ballhandler path stays unchanged
 - extended the deterministic visual smoke checks to cover off-ball offense idle, shuffle, run, and threshold hysteresis transitions separately
-- reran the full headless suite after the off-ball shuffle fix: Pure logic `1583`, Scenarios `13`, Balance `4`, Failures `0`
+- reran the full headless suite after the off-ball shuffle fix: Pure logic `1597`, Scenarios `13`, Balance `4`, Failures `0`
 
 ### Textured scoreboard HUD now uses the authored decor board art
 

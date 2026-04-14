@@ -1,14 +1,16 @@
 class_name InputConfig
 extends Resource
 
-@export var movement_zone_height_ratio: float = 0.35
+@export var control_panel_height_ratio: float = 0.33
+@export var control_panel_horizontal_margin: float = 12.0
+@export var control_panel_bottom_margin: float = 16.0
+@export var control_panel_gutter: float = 10.0
+@export var control_panel_top_row_height_ratio: float = 0.30
+@export var control_panel_side_zone_width_ratio: float = 0.16666667
+@export var control_action_min_distance_pixels: float = 52.0
+@export var control_button_press_highlight_seconds: float = 0.12
 @export var invisible_stick_max_radius: float = 156.0
 @export var deadzone: float = 26.0
-@export var pass_tap_max_duration_seconds: float = 0.18
-@export var pass_tap_max_movement_pixels: float = 20.0
-@export var shot_swipe_min_distance_pixels: float = 88.0
-@export var shot_swipe_vertical_cone_half_angle_degrees: float = 30.0
-@export var shot_swipe_max_release_y_ratio: float = 0.5
 @export var anchor_visual_radius: float = 54.0
 @export var anchor_knob_radius: float = 28.0
 @export var anchor_visual_alpha: float = 0.2
