@@ -335,7 +335,11 @@ func _build_dunk_make_profile(launch_origin: Vector2, quality: String, shot_valu
 	var net_exit_z: float = court_config.net_exit_z
 	var exit_xy: Vector2 = net_exit_xy + Vector2(0.0, ball_config.ball_radius * 0.18)
 	var exit_z: float = maxf(court_config.net_exit_z - 36.0, 0.0)
-	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.12), 0.06)
+	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.14), 0.07)
+	var entry_velocity_xy: Vector2 = Vector2.ZERO
+	var entry_vz: float = -maxf((entry_z - net_exit_z) / maxf(guided_descent_duration, 0.001), 1.0)
+	var guided_exit_velocity_xy: Vector2 = (exit_xy - net_exit_xy) / maxf(exit_duration, 0.001)
+	var guided_exit_vz: float = (exit_z - net_exit_z) / maxf(exit_duration, 0.001)
 	return {
 		"profile_kind": PROFILE_KIND_GUIDED_MAKE,
 		"release_mode": RELEASE_MODE_DUNK_MAKE_DROP,
@@ -343,8 +347,8 @@ func _build_dunk_make_profile(launch_origin: Vector2, quality: String, shot_valu
 		"outcome": "make",
 		"launch_position": entry_xy,
 		"launch_z": entry_z,
-		"velocity_xy": Vector2.ZERO,
-		"vz": 0.0,
+		"velocity_xy": entry_velocity_xy,
+		"vz": entry_vz,
 		"flight_time": guided_descent_duration + exit_duration,
 		"apex_z": entry_z,
 		"apex_time": 0.0,
@@ -353,8 +357,14 @@ func _build_dunk_make_profile(launch_origin: Vector2, quality: String, shot_valu
 		"force_make": false,
 		"approach_launch_position": entry_xy,
 		"approach_launch_z": entry_z,
-		"approach_velocity_xy": Vector2.ZERO,
-		"approach_vz": 0.0,
+		"approach_velocity_xy": entry_velocity_xy,
+		"approach_vz": entry_vz,
+		"guided_entry_velocity_xy": entry_velocity_xy,
+		"guided_entry_vz": entry_vz,
+		"guided_descent_end_velocity_xy": guided_exit_velocity_xy,
+		"guided_descent_end_vz": guided_exit_vz,
+		"net_exit_start_velocity_xy": guided_exit_velocity_xy,
+		"net_exit_start_vz": guided_exit_vz,
 		"entry_xy": entry_xy,
 		"entry_z": entry_z,
 		"entry_time": 0.0,
@@ -428,6 +438,8 @@ func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_va
 				"vz": arc_result["vz"],
 				"flight_time": arc_result["flight_time"],
 				"apex_z": arc_result["apex_z"],
+				"entry_velocity_xy": arc_result.get("entry_velocity_xy", arc_result["velocity_xy"]),
+				"entry_vz": arc_result.get("entry_vz", arc_result["vz_at_entry"]),
 			}
 			var candidate: Dictionary = _build_guided_make_profile_data(
 				launch_origin,
@@ -458,6 +470,8 @@ func _build_guided_make_profile(launch_origin: Vector2, quality: String, shot_va
 		"vz": fallback_arc["vz"],
 		"flight_time": fallback_arc["flight_time"],
 		"apex_z": fallback_arc["apex_z"],
+		"entry_velocity_xy": fallback_arc.get("entry_velocity_xy", fallback_arc["velocity_xy"]),
+		"entry_vz": fallback_arc.get("entry_vz", fallback_arc["vz_at_entry"]),
 	}
 	return _build_guided_make_profile_data(
 		launch_origin,
@@ -489,10 +503,16 @@ func _build_guided_make_profile_data(
 	var net_exit_z: float = court_config.net_exit_z
 	var exit_xy: Vector2 = net_exit_xy + Vector2(0.0, ball_config.ball_radius * 0.18)
 	var exit_z: float = maxf(court_config.net_exit_z - 36.0, 0.0)
-	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.12), 0.06)
+	var exit_duration: float = maxf(minf(guided_descent_duration * 0.45, 0.14), 0.07)
 	var actual_entry_time: float = override_entry_time if override_entry_time > 0.0 else float(approach["flight_time"])
 	var total_time: float = actual_entry_time + capture_duration + guided_descent_duration + exit_duration
 	var apex_time: float = float(approach["vz"]) / maxf(absf(ball_config.gravity), 0.001)
+	var approach_entry_vz: float = float(approach.get("entry_vz", float(approach["vz"]) + ball_config.gravity * actual_entry_time))
+	var net_channel_entry_vz: float = (net_exit_z - entry_z) / maxf(guided_descent_duration, 0.001)
+	var entry_velocity_xy: Vector2 = (exit_xy - entry_xy) / maxf(guided_descent_duration + exit_duration, 0.001)
+	var entry_vz: float = lerpf(approach_entry_vz, net_channel_entry_vz, 0.72)
+	var guided_exit_velocity_xy: Vector2 = (exit_xy - net_exit_xy) / maxf(exit_duration, 0.001)
+	var guided_exit_vz: float = (exit_z - net_exit_z) / maxf(exit_duration, 0.001)
 	return {
 		"profile_kind": PROFILE_KIND_GUIDED_MAKE,
 		"quality": quality,
@@ -511,6 +531,12 @@ func _build_guided_make_profile_data(
 		"approach_launch_z": ball_config.shot_release_height,
 		"approach_velocity_xy": approach["velocity_xy"],
 		"approach_vz": approach["vz"],
+		"guided_entry_velocity_xy": entry_velocity_xy,
+		"guided_entry_vz": entry_vz,
+		"guided_descent_end_velocity_xy": guided_exit_velocity_xy,
+		"guided_descent_end_vz": guided_exit_vz,
+		"net_exit_start_velocity_xy": guided_exit_velocity_xy,
+		"net_exit_start_vz": guided_exit_vz,
 		"entry_xy": entry_xy,
 		"entry_z": entry_z,
 		"entry_time": actual_entry_time,
@@ -672,9 +698,9 @@ func _validate_guided_make_profile(profile: Dictionary) -> bool:
 			return false
 		if _sample_hits_outer_rim(probe):
 			return false
-	if probe.position_xy.distance_to(entry_xy) > 14.0:
+	if probe.position_xy.distance_to(entry_xy) > 2.5:
 		return false
-	if absf(probe.z - entry_z) > 14.0:
+	if absf(probe.z - entry_z) > 2.5:
 		return false
 	return true
 
@@ -728,28 +754,73 @@ func _compute_arc_through_target(
 	min_apex: float,
 	min_flight: float
 ) -> Dictionary:
-	var direction: Vector2 = (entry_xy - shot_origin).normalized()
-	var overshoot_distance: float = ball_config.ball_radius * 0.7
-	var virtual_target_xy: Vector2 = entry_xy + direction * overshoot_distance
-	var virtual_target_z: float = rim_z - ball_config.ball_radius * 0.5
-	var arc: Dictionary = _solve_ballistic_profile(
-		shot_origin, virtual_target_xy, release_z, virtual_target_z,
-		min_apex, min_flight
+	var arc: Dictionary = _solve_exact_arc_to_target(
+		shot_origin,
+		entry_xy,
+		release_z,
+		rim_z,
+		min_apex,
+		min_flight
 	)
-	var vz_launch: float = arc["vz"]
-	var g: float = maxf(absf(ball_config.gravity), 0.001)
-	var discriminant: float = vz_launch * vz_launch - 2.0 * g * (rim_z - release_z)
-	var entry_time: float = arc["flight_time"]
-	if discriminant >= 0.0:
-		entry_time = (vz_launch + sqrt(discriminant)) / g
-	var actual_entry_xy: Vector2 = shot_origin + arc["velocity_xy"] * entry_time
-	var vz_at_entry: float = vz_launch - g * entry_time
 	return {
 		"velocity_xy": arc["velocity_xy"],
-		"vz": vz_launch,
+		"vz": arc["vz"],
 		"flight_time": arc["flight_time"],
 		"apex_z": arc["apex_z"],
-		"entry_time": entry_time,
-		"actual_entry_xy": actual_entry_xy,
-		"vz_at_entry": vz_at_entry,
+		"entry_time": arc["flight_time"],
+		"actual_entry_xy": entry_xy,
+		"vz_at_entry": arc["entry_vz"],
+		"entry_velocity_xy": arc["velocity_xy"],
+		"entry_vz": arc["entry_vz"],
 	}
+
+
+func _solve_exact_arc_to_target(
+	shot_origin: Vector2,
+	target_xy: Vector2,
+	release_z: float,
+	target_z: float,
+	min_apex: float,
+	min_flight: float
+) -> Dictionary:
+	var gravity_strength: float = maxf(absf(ball_config.gravity), 0.001)
+	var low_time: float = maxf(min_flight, 0.05)
+	var high_time: float = low_time
+	var guard: int = 0
+	while not _exact_arc_meets_constraints(release_z, target_z, min_apex, high_time, gravity_strength) and guard < 40:
+		high_time += 0.06
+		guard += 1
+	if not _exact_arc_meets_constraints(release_z, target_z, min_apex, low_time, gravity_strength):
+		for _iteration in 24:
+			var mid_time: float = (low_time + high_time) * 0.5
+			if _exact_arc_meets_constraints(release_z, target_z, min_apex, mid_time, gravity_strength):
+				high_time = mid_time
+			else:
+				low_time = mid_time
+	var flight_time: float = high_time
+	var vz: float = _exact_arc_launch_vz(release_z, target_z, flight_time, gravity_strength)
+	var apex_z: float = release_z + maxf(vz, 0.0) * maxf(vz, 0.0) / (2.0 * gravity_strength)
+	return {
+		"velocity_xy": (target_xy - shot_origin) / maxf(flight_time, 0.001),
+		"vz": vz,
+		"flight_time": flight_time,
+		"apex_z": apex_z,
+		"entry_vz": vz - gravity_strength * flight_time,
+	}
+
+
+func _exact_arc_launch_vz(release_z: float, target_z: float, flight_time: float, gravity_strength: float) -> float:
+	return (target_z - release_z + 0.5 * gravity_strength * flight_time * flight_time) / maxf(flight_time, 0.001)
+
+
+func _exact_arc_meets_constraints(
+	release_z: float,
+	target_z: float,
+	min_apex: float,
+	flight_time: float,
+	gravity_strength: float
+) -> bool:
+	var launch_vz: float = _exact_arc_launch_vz(release_z, target_z, flight_time, gravity_strength)
+	var apex_z: float = release_z + maxf(launch_vz, 0.0) * maxf(launch_vz, 0.0) / (2.0 * gravity_strength)
+	var entry_vz: float = launch_vz - gravity_strength * flight_time
+	return apex_z >= min_apex and entry_vz < -1.0

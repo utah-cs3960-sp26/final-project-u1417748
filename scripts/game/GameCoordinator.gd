@@ -10,6 +10,11 @@ const INPUT_CONFIG_SCRIPT = preload("res://scripts/config/InputConfig.gd")
 const COURT_PROJECTION_SCRIPT = preload("res://scripts/game/CourtProjection.gd")
 const BASE_PRESENTATION_SIZE: Vector2 = Vector2(1080.0, 1920.0)
 const SCOREBOARD_ART_SIZE: Vector2 = Vector2(1098.0, 248.0)
+const SCORE_FOLLOWTHROUGH_HANDOFF_MIN_DURATION: float = 0.06
+const SCORE_FOLLOWTHROUGH_HANDOFF_MAX_DURATION: float = 0.16
+const SCORE_FOLLOWTHROUGH_HANDOFF_DURATION_RATIO: float = 0.5
+const SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON: float = 0.75
+const SCORE_FOLLOWTHROUGH_PRE_BOUNCE_CONTINUITY_EPSILON: float = 0.1
 
 enum BallVisualMode {
 	HIDDEN_WHILE_OWNED,
@@ -98,6 +103,8 @@ var default_pass_target: PlayerController
 var default_pass_target_details: Dictionary = {}
 var layout_metrics: Dictionary = {}
 var camera_tracking_signature: String = ""
+var finish_logic_center_world_cached: Vector2 = Vector2.INF
+var finish_logic_center_screen_cached: Vector2 = Vector2.INF
 var defenders_disabled: bool = false
 var controls_visible: bool = true
 
@@ -372,6 +379,8 @@ func _start_new_match() -> void:
 	if court_projection != null:
 		court_projection.reset_camera_tracking()
 	camera_tracking_signature = ""
+	finish_logic_center_world_cached = Vector2.INF
+	finish_logic_center_screen_cached = Vector2.INF
 	log_writer.set_prefix("match_%d" % Time.get_ticks_msec())
 	log_writer.clear_runtime_logs()
 	player_visual_memory.clear()
@@ -414,6 +423,8 @@ func _reset_possession() -> void:
 	route_controller.reset_runtime_state()
 	shot_owner = null
 	context.gameplay_time_scale = 1.0
+	finish_logic_center_world_cached = Vector2.INF
+	finish_logic_center_screen_cached = Vector2.INF
 	_clear_active_dunk_root_motion()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
@@ -637,6 +648,12 @@ func _update_shot_in_flight(delta: float) -> void:
 		if get_score_followthrough_active():
 			_advance_score_followthrough(delta)
 		_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
+		_trace_score_followthrough("made_shot_frame")
+		if (context.buzzer_waiting_for_resolution or context.match_time_remaining <= 0.0) and not ball_simulator.is_in_flight:
+			_trace_score_followthrough("made_shot_settled", {}, true)
+			made_shot_animation_timer = 0.0
+			_finish_game()
+			return
 		made_shot_animation_timer = maxf(made_shot_animation_timer - delta, 0.0)
 		if made_shot_animation_timer <= 0.0:
 			if context.buzzer_waiting_for_resolution or context.match_time_remaining <= 0.0:
@@ -669,6 +686,7 @@ func _update_shot_in_flight(delta: float) -> void:
 			_update_hud()
 			_begin_score_followthrough(interaction)
 			_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
+			_trace_score_followthrough("score_begin", {}, true)
 			made_shot_animation_timer = maxf(
 				maxf(shot_config.made_shot_animation_duration, ball_simulator.get_remaining_visual_time() + 0.08),
 				_get_active_dunk_root_motion_remaining_seconds()
@@ -1308,9 +1326,76 @@ func get_debug_snapshot() -> Dictionary:
 func get_finish_logic_center_world() -> Vector2:
 	if court_config == null:
 		return Vector2.ZERO
-	if court_projection != null and hoop_node != null and hoop_node.has_method("get_debug_finish_radius_center_screen"):
-		return court_projection.screen_to_world_ground(hoop_node.call("get_debug_finish_radius_center_screen"))
-	return court_config.hoop_position
+	if not is_inf(finish_logic_center_world_cached.x) and not is_inf(finish_logic_center_world_cached.y):
+		return finish_logic_center_world_cached
+	if _should_refresh_finish_logic_center_world_cache():
+		_refresh_finish_logic_center_world_cache()
+	if not is_inf(finish_logic_center_world_cached.x) and not is_inf(finish_logic_center_world_cached.y):
+		return finish_logic_center_world_cached
+	return _get_finish_logic_center_world_from_current_view()
+
+
+func _refresh_finish_logic_center_world_cache() -> void:
+	var finish_snapshot: Dictionary = _get_finish_logic_center_cache_snapshot()
+	finish_logic_center_world_cached = finish_snapshot.get("world", court_config.hoop_position if court_config != null else Vector2.ZERO)
+	finish_logic_center_screen_cached = finish_snapshot.get("screen", Vector2.INF)
+
+
+func _maybe_refresh_finish_logic_center_world_cache() -> void:
+	if not _should_refresh_finish_logic_center_world_cache():
+		return
+	_refresh_finish_logic_center_world_cache()
+
+
+func _should_refresh_finish_logic_center_world_cache() -> bool:
+	if court_projection == null or hoop_node == null:
+		return false
+	if camera_tracking_signature.begins_with("ball"):
+		return false
+	return context.current_state in [
+		GameState.State.MATCH_SETUP,
+		GameState.State.LIVE_OFFENSE,
+		GameState.State.SHOT_AIM,
+	]
+
+
+func _get_finish_logic_center_world_from_current_view() -> Vector2:
+	return _get_finish_logic_center_cache_snapshot().get("world", court_config.hoop_position if court_config != null else Vector2.ZERO)
+
+
+func _get_finish_logic_center_cache_snapshot() -> Dictionary:
+	if court_config == null:
+		return {
+			"world": Vector2.ZERO,
+			"screen": Vector2.ZERO,
+		}
+	if court_projection == null or hoop_node == null or not hoop_node.has_method("get_debug_finish_radius_center_screen"):
+		var fallback_world: Vector2 = court_config.hoop_position
+		return {
+			"world": fallback_world,
+			"screen": court_projection.world_to_screen_ground(fallback_world) if court_projection != null else fallback_world,
+		}
+	if hoop_node.has_method("set_projection"):
+		hoop_node.call("set_projection", court_projection)
+	var finish_center_screen: Vector2 = hoop_node.call("get_debug_finish_radius_center_screen")
+	return {
+		"world": court_projection.screen_to_world_ground(finish_center_screen),
+		"screen": finish_center_screen,
+	}
+
+
+func _get_finish_logic_center_screen_from_current_view() -> Vector2:
+	return _get_finish_logic_center_cache_snapshot().get("screen", finish_logic_center_world_cached)
+
+
+func _get_finish_logic_center_screen() -> Vector2:
+	if not is_inf(finish_logic_center_screen_cached.x) and not is_inf(finish_logic_center_screen_cached.y):
+		return finish_logic_center_screen_cached
+	if _should_refresh_finish_logic_center_world_cache():
+		_refresh_finish_logic_center_world_cache()
+	if not is_inf(finish_logic_center_screen_cached.x) and not is_inf(finish_logic_center_screen_cached.y):
+		return finish_logic_center_screen_cached
+	return _get_finish_logic_center_screen_from_current_view()
 
 
 func begin_test_mode(seed: int) -> void:
@@ -1341,6 +1426,8 @@ func apply_scenario_setup(setup: Dictionary) -> void:
 	if court_projection != null:
 		court_projection.reset_camera_tracking()
 	camera_tracking_signature = ""
+	finish_logic_center_world_cached = Vector2.INF
+	finish_logic_center_screen_cached = Vector2.INF
 	route_controller.reset_runtime_state()
 	player_visual_memory.clear()
 	shot_visual_locks.clear()
@@ -1459,7 +1546,7 @@ func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
 	_clear_active_shot_sequence()
 	_clear_score_followthrough(false)
 	_set_ball_visual_world()
-	ball_simulator.launch_shot_profile(launch_profile)
+	ball_simulator.launch_shot_profile(_prepare_guided_make_profile_for_launch(launch_profile))
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 	change_state(GameState.State.SHOT_IN_FLIGHT)
 	log_writer.log_match("Test scoring shot queued for %s" % shooter.get_display_name())
@@ -1523,6 +1610,16 @@ func get_ball_render_phase() -> String:
 	return current_ball_render_phase
 
 
+func get_ball_screen_anchor() -> Vector2:
+	if ball_node == null:
+		return Vector2.INF
+	return ball_node.position + ball_node.ball_screen_offset
+
+
+func get_score_followthrough_snapshot() -> Dictionary:
+	return score_followthrough_state.duplicate(true)
+
+
 func did_last_scored_shot_pass_through_net() -> bool:
 	return last_scored_shot_passed_through_net
 
@@ -1573,6 +1670,7 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 	if hoop_node != null:
 		hoop_node.set_projection(court_projection)
 		hoop_node.advance_visual_animation(delta)
+	_maybe_refresh_finish_logic_center_world_cache()
 	for player in offense_players + defense_players:
 		var ground_anchor: Vector2 = court_projection.world_to_screen_ground(player.world_position)
 		var shadow_offset: Vector2 = court_projection.shadow_anchor(player.world_position) - ground_anchor
@@ -1600,7 +1698,7 @@ func _update_camera_tracking(delta: float) -> void:
 	if tracking_target.is_empty():
 		return
 	var next_signature: String = str(tracking_target.get("signature", ""))
-	var should_snap: bool = next_signature.begins_with("ball")
+	var should_snap: bool = next_signature.begins_with("ball") or next_signature == "score_followthrough_finish"
 	var base_target_screen: Vector2 = tracking_target.get("base_screen", court_projection.get_viewport_rect().get_center())
 	var post_camera_offset: Vector2 = tracking_target.get("post_camera_offset", Vector2.ZERO)
 	court_projection.update_camera_target(base_target_screen, delta, should_snap, post_camera_offset)
@@ -1608,6 +1706,8 @@ func _update_camera_tracking(delta: float) -> void:
 
 
 func _build_camera_tracking_target() -> Dictionary:
+	if _should_use_score_followthrough_finish_camera():
+		return _build_score_followthrough_finish_camera_target()
 	match context.current_state:
 		GameState.State.PASS_IN_FLIGHT, GameState.State.SHOT_IN_FLIGHT, GameState.State.REBOUND_LIVE:
 			return _build_ball_camera_tracking_target()
@@ -1619,6 +1719,39 @@ func _build_camera_tracking_target() -> Dictionary:
 	if current_steal_holder != null:
 		return _build_player_camera_tracking_target(current_steal_holder)
 	return {}
+
+
+func _should_use_score_followthrough_finish_camera() -> bool:
+	if context.current_state != GameState.State.SHOT_IN_FLIGHT:
+		return false
+	if not ball_simulator.is_guided_make_profile():
+		return false
+	var phase: String = ball_simulator.get_flight_phase()
+	if phase in [
+		BallSimulator.FLIGHT_PHASE_FLOOR_DROP,
+		BallSimulator.FLIGHT_PHASE_FLOOR_SETTLE,
+	]:
+		return true
+	return (
+		last_scored_shot_passed_through_net
+		and not ball_simulator.is_in_flight
+		and made_shot_animation_timer > 0.0
+	)
+
+
+func _build_score_followthrough_finish_camera_target() -> Dictionary:
+	if court_projection == null:
+		return {}
+	var viewport_center: Vector2 = court_projection.get_viewport_rect().get_center()
+	var finish_target_world: Vector2 = ball_simulator.shot_profile.get("floor_target_xy", get_finish_logic_center_world())
+	var finish_target_screen_anchor: Vector2 = ball_simulator.shot_profile.get("floor_target_screen_anchor", Vector2.INF)
+	if is_inf(finish_target_screen_anchor.x) or is_inf(finish_target_screen_anchor.y):
+		finish_target_screen_anchor = _get_finish_logic_center_screen_from_current_view()
+	return {
+		"base_screen": court_projection.world_to_base_screen_ground(finish_target_world),
+		"post_camera_offset": viewport_center - finish_target_screen_anchor,
+		"signature": "score_followthrough_finish",
+	}
 
 
 func _build_player_camera_tracking_target(player: PlayerController) -> Dictionary:
@@ -1639,7 +1772,7 @@ func _build_ball_camera_tracking_target() -> Dictionary:
 	var render_context: Dictionary = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, ball_simulator.vz)
 	return {
 		"base_screen": court_projection.world_to_base_screen(ball_simulator.position_xy, ball_simulator.z),
-		"post_camera_offset": Vector2(0.0, float(render_context.get("screen_drop_px", 0.0))),
+		"post_camera_offset": _get_render_context_screen_offset(render_context),
 		"signature": "ball",
 	}
 
@@ -1665,8 +1798,8 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 	if resolved_render_context.is_empty():
 		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
-	var ball_anchor: Vector2 = court_projection.world_to_screen(world_position, z_value)
-	ball_anchor.y += float(resolved_render_context.get("screen_drop_px", 0.0))
+	var screen_offset: Vector2 = _get_render_context_screen_offset(resolved_render_context)
+	var ball_anchor: Vector2 = _get_ball_screen_anchor_for_world(world_position, z_value, screen_offset)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(world_position)
 	var z_ratio: float = clampf(z_value / 620.0, 0.0, 1.0)
 	var render_phase: String = str(resolved_render_context.get("render_phase", ""))
@@ -1686,6 +1819,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 		z_override,
 		render_phase
 	)
+	_record_score_followthrough_render_snapshot(render_phase, z_override, ball_anchor, resolved_render_context)
 
 
 func _get_held_ball_render_radius() -> float:
@@ -1709,8 +1843,7 @@ func _get_live_ball_render_radius(z_ratio: float) -> float:
 func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
 	score_followthrough_state.clear()
 	current_ball_render_phase = ""
-	if hoop_node != null and hoop_node.has_method("stop_net_swish"):
-		hoop_node.call("stop_net_swish")
+	_stop_score_followthrough_net_swish()
 	if reset_passed_flag:
 		last_scored_shot_passed_through_net = false
 
@@ -1718,31 +1851,58 @@ func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
 func _begin_score_followthrough(interaction: Dictionary) -> void:
 	var start_xy: Vector2 = _clamp_score_followthrough_start(interaction.get("score_sample_xy", court_config.hoop_position))
 	var entry_offset_x: float = start_xy.x - court_config.hoop_position.x
+	var initial_pre_bounce_anchor: Vector2 = get_ball_screen_anchor()
 	score_followthrough_state = {
 		"active": true,
 		"score_sample_xy": start_xy,
 		"entry_offset_x": entry_offset_x,
 		"net_swish_started": bool(score_followthrough_state.get("net_swish_started", false)),
+		"handoff_active": false,
+		"handoff_cleared": false,
+		"handoff_phase": "",
+		"handoff_screen_offset": Vector2.ZERO,
+		"handoff_initial_screen_offset": Vector2.ZERO,
+		"handoff_release_screen_y": hoop_node.get_front_net_exit_screen_y() if hoop_node != null and hoop_node.has_method("get_front_net_exit_screen_y") else 0.0,
+		"handoff_cleared_net": false,
+		"handoff_elapsed": 0.0,
+		"handoff_duration": _get_score_followthrough_handoff_duration(),
+		"handoff_just_started": false,
+		"last_forced_render_phase": "",
+		"last_forced_z_override": BallController.NO_Z_INDEX_OVERRIDE,
+		"last_rendered_ball_anchor": Vector2.INF,
+		"pre_bounce_last_rendered_anchor": initial_pre_bounce_anchor,
+		"trace_index": 0,
+		"trace_last_process_frame": -1,
 	}
 	current_ball_render_phase = ball_simulator.get_render_phase_name()
+	if current_ball_render_phase != "" and hoop_node != null:
+		score_followthrough_state["last_forced_render_phase"] = current_ball_render_phase
+		score_followthrough_state["last_forced_z_override"] = hoop_node.get_ball_z_index_for_phase(current_ball_render_phase)
 	last_scored_shot_passed_through_net = true
+	_announce_score_followthrough_trace_destination()
 	if hoop_node != null and hoop_node.has_method("trigger_net_swish") and not bool(score_followthrough_state.get("net_swish_started", false)):
 		hoop_node.call("trigger_net_swish", entry_offset_x)
 		score_followthrough_state["net_swish_started"] = true
 
 
-func _advance_score_followthrough(delta: float) -> void:
+func _advance_score_followthrough(_delta: float) -> void:
 	if score_followthrough_state.is_empty():
 		return
 	var phase: String = ball_simulator.get_render_phase_name()
-	var is_active: bool = ball_simulator.is_guided_make_profile() and ball_simulator.is_in_flight and phase != ""
-	score_followthrough_state["active"] = is_active
-	if is_active:
+	var terminal_drop_active: bool = ball_simulator.get_terminal_visual_drop_weight() > 0.001
+	var keep_followthrough_active: bool = ball_simulator.is_guided_make_profile() and (
+		(ball_simulator.is_in_flight and (phase != "" or terminal_drop_active))
+		or terminal_drop_active
+	)
+	score_followthrough_state["handoff_active"] = false
+	score_followthrough_state["handoff_cleared"] = false
+	if keep_followthrough_active:
+		score_followthrough_state["active"] = true
 		current_ball_render_phase = phase
 		return
-	current_ball_render_phase = HoopView.BALL_RENDER_PHASE_FRONT_OF_NET if last_scored_shot_passed_through_net else ""
-	if hoop_node != null and hoop_node.has_method("stop_net_swish"):
-		hoop_node.call("stop_net_swish")
+	score_followthrough_state["active"] = false
+	current_ball_render_phase = ""
+	_stop_score_followthrough_net_swish()
 
 
 func _maybe_begin_guided_make_net_swish() -> void:
@@ -1761,12 +1921,14 @@ func _maybe_begin_guided_make_net_swish() -> void:
 func _build_score_followthrough_visual() -> Dictionary:
 	if score_followthrough_state.is_empty() or hoop_node == null:
 		return {}
-	var render_phase: String = current_ball_render_phase if current_ball_render_phase != "" else HoopView.BALL_RENDER_PHASE_FRONT_OF_NET
+	var render_context: Dictionary = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, ball_simulator.vz)
+	var render_phase: String = str(render_context.get("render_phase", current_ball_render_phase))
 	return {
 		"position": ball_simulator.position_xy,
 		"z": ball_simulator.z,
 		"render_phase": render_phase,
-		"z_index_override": hoop_node.get_ball_z_index_for_phase(render_phase),
+		"z_index_override": int(render_context.get("z_index_override", BallController.NO_Z_INDEX_OVERRIDE)),
+		"screen_offset": _get_render_context_screen_offset(render_context),
 	}
 
 
@@ -1789,27 +1951,194 @@ func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_va
 	if hoop_node == null or court_config == null:
 		return {}
 	var render_phase: String = forced_phase
+	var uses_explicit_hoop_phase: bool = false
 	if render_phase == "":
 		var guided_phase: String = ball_simulator.get_render_phase_name()
 		if ball_simulator.is_guided_make_profile() and guided_phase != "":
 			render_phase = guided_phase
-	if render_phase == "" and made_shot_animation_timer > 0.0 and current_ball_render_phase != "":
-		render_phase = current_ball_render_phase
-	if render_phase == "":
-		if not _is_ball_in_hoop_render_zone(world_position, z_value):
-			return {}
+			uses_explicit_hoop_phase = true
+	var screen_drop_px: float = _get_guided_make_terminal_screen_drop_px()
+	if render_phase == "" and _is_ball_in_hoop_render_zone(world_position, z_value):
 		render_phase = hoop_node.get_ball_render_phase(world_position, z_value, vz_value < 0.0, false, ball_config.ball_radius)
-	return {
-		"render_phase": render_phase,
-		"z_index_override": hoop_node.get_ball_z_index_for_phase(render_phase),
-		"screen_drop_px": _get_guided_make_terminal_screen_drop_px(),
+	if render_phase == "" and screen_drop_px <= 0.001:
+		return {}
+	var render_context: Dictionary = {
+		"screen_drop_px": screen_drop_px,
+		"screen_offset": Vector2(0.0, screen_drop_px),
+		"is_followthrough_handoff": false,
+		"uses_explicit_hoop_phase": uses_explicit_hoop_phase,
 	}
+	if render_phase != "":
+		render_context["render_phase"] = render_phase
+		render_context["z_index_override"] = hoop_node.get_ball_z_index_for_phase(render_phase)
+	return _apply_pre_bounce_render_continuity(world_position, z_value, render_context)
 
 
 func _get_guided_make_terminal_screen_drop_px() -> float:
 	if court_projection == null or not ball_simulator.is_guided_make_profile():
 		return 0.0
 	return court_projection.guided_make_terminal_screen_drop(ball_simulator.get_terminal_visual_drop_weight())
+
+
+func _prepare_guided_make_profile_for_launch(profile: Dictionary) -> Dictionary:
+	if str(profile.get("profile_kind", "")) != ShotController.PROFILE_KIND_GUIDED_MAKE:
+		return profile
+	_maybe_refresh_finish_logic_center_world_cache()
+	var prepared_profile: Dictionary = profile.duplicate(true)
+	prepared_profile["floor_target_xy"] = get_finish_logic_center_world()
+	prepared_profile["floor_target_screen_anchor"] = _get_finish_logic_center_screen()
+	prepared_profile["floor_drop_duration"] = ball_config.made_shot_floor_drop_duration if ball_config != null else 0.46
+	prepared_profile["floor_settle_hop_height"] = ball_config.made_shot_floor_settle_hop_height if ball_config != null else 12.0
+	prepared_profile["floor_settle_duration"] = ball_config.made_shot_floor_settle_duration if ball_config != null else 0.12
+	return prepared_profile
+
+
+func _get_score_followthrough_handoff_duration() -> float:
+	var base_duration: float = 0.09
+	if ball_config != null:
+		base_duration = ball_config.made_shot_floor_drop_duration * SCORE_FOLLOWTHROUGH_HANDOFF_DURATION_RATIO
+	return clampf(base_duration, SCORE_FOLLOWTHROUGH_HANDOFF_MIN_DURATION, SCORE_FOLLOWTHROUGH_HANDOFF_MAX_DURATION)
+
+
+func _is_score_followthrough_handoff_active() -> bool:
+	return bool(score_followthrough_state.get("handoff_active", false))
+
+
+func _stop_score_followthrough_net_swish() -> void:
+	if hoop_node != null and hoop_node.has_method("stop_net_swish"):
+		hoop_node.call("stop_net_swish")
+
+
+func _get_render_context_screen_offset(render_context: Dictionary) -> Vector2:
+	return render_context.get("screen_offset", Vector2(0.0, float(render_context.get("screen_drop_px", 0.0))))
+
+
+func _get_ball_screen_anchor_for_world(world_position: Vector2, z_value: float, screen_offset: Vector2 = Vector2.ZERO) -> Vector2:
+	if court_projection == null:
+		return world_position + screen_offset
+	return court_projection.world_to_screen(world_position, z_value) + screen_offset
+
+
+func _should_enforce_pre_bounce_render_continuity() -> bool:
+	if score_followthrough_state.is_empty() or not ball_simulator.is_guided_make_profile():
+		return false
+	return ball_simulator.get_flight_phase() in [
+		BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT,
+		BallSimulator.FLIGHT_PHASE_NET_EXIT,
+		BallSimulator.FLIGHT_PHASE_FLOOR_DROP,
+	]
+
+
+func _clamp_pre_bounce_render_offset(world_position: Vector2, z_value: float, screen_offset: Vector2) -> Dictionary:
+	var resolved_offset: Vector2 = screen_offset
+	var world_anchor: Vector2 = _get_ball_screen_anchor_for_world(world_position, z_value)
+	var rendered_anchor: Vector2 = world_anchor + resolved_offset
+	if not _should_enforce_pre_bounce_render_continuity():
+		return {
+			"screen_offset": resolved_offset,
+			"rendered_anchor": rendered_anchor,
+		}
+	var last_anchor: Vector2 = score_followthrough_state.get("pre_bounce_last_rendered_anchor", Vector2.INF)
+	if not is_inf(last_anchor.x) and not is_inf(last_anchor.y) and rendered_anchor.y < last_anchor.y - SCORE_FOLLOWTHROUGH_PRE_BOUNCE_CONTINUITY_EPSILON:
+		resolved_offset.y = maxf(last_anchor.y - world_anchor.y, 0.0)
+		rendered_anchor = world_anchor + resolved_offset
+	score_followthrough_state["pre_bounce_last_rendered_anchor"] = rendered_anchor
+	return {
+		"screen_offset": resolved_offset,
+		"rendered_anchor": rendered_anchor,
+	}
+
+
+func _apply_pre_bounce_render_continuity(world_position: Vector2, z_value: float, render_context: Dictionary) -> Dictionary:
+	if render_context.is_empty():
+		return render_context
+	var resolved_context: Dictionary = render_context.duplicate(true)
+	var continuity: Dictionary = _clamp_pre_bounce_render_offset(
+		world_position,
+		z_value,
+		_get_render_context_screen_offset(resolved_context)
+	)
+	var resolved_offset: Vector2 = continuity.get("screen_offset", Vector2.ZERO)
+	resolved_context["screen_offset"] = resolved_offset
+	resolved_context["screen_drop_px"] = resolved_offset.y
+	return resolved_context
+
+
+func _record_score_followthrough_render_snapshot(render_phase: String, z_override: int, ball_anchor: Vector2, render_context: Dictionary) -> void:
+	if score_followthrough_state.is_empty() or not bool(render_context.get("uses_explicit_hoop_phase", false)):
+		return
+	score_followthrough_state["last_forced_render_phase"] = render_phase
+	score_followthrough_state["last_forced_z_override"] = z_override
+	score_followthrough_state["last_rendered_ball_anchor"] = ball_anchor
+
+
+func _begin_score_followthrough_handoff() -> void:
+	if score_followthrough_state.is_empty() or hoop_node == null:
+		return
+	if bool(score_followthrough_state.get("handoff_active", false)) or bool(score_followthrough_state.get("handoff_cleared", false)):
+		return
+	var current_world_anchor: Vector2 = _get_ball_screen_anchor_for_world(ball_simulator.position_xy, ball_simulator.z)
+	var last_rendered_anchor: Vector2 = score_followthrough_state.get("last_rendered_ball_anchor", Vector2.INF)
+	if is_inf(last_rendered_anchor.x) or is_inf(last_rendered_anchor.y):
+		last_rendered_anchor = current_world_anchor
+	var handoff_offset: Vector2 = last_rendered_anchor - current_world_anchor
+	if handoff_offset.y < 0.0:
+		handoff_offset.y = 0.0
+	var handoff_phase: String = HoopView.BALL_RENDER_PHASE_FRONT_OF_NET
+	score_followthrough_state["handoff_active"] = true
+	score_followthrough_state["handoff_cleared"] = false
+	score_followthrough_state["handoff_phase"] = handoff_phase
+	score_followthrough_state["handoff_screen_offset"] = handoff_offset
+	score_followthrough_state["handoff_initial_screen_offset"] = handoff_offset
+	score_followthrough_state["handoff_elapsed"] = 0.0
+	score_followthrough_state["handoff_cleared_net"] = false
+	score_followthrough_state["handoff_just_started"] = true
+	score_followthrough_state["handoff_release_screen_y"] = hoop_node.get_front_net_exit_screen_y()
+	score_followthrough_state["last_forced_render_phase"] = handoff_phase
+	score_followthrough_state["last_forced_z_override"] = hoop_node.get_ball_z_index_for_phase(handoff_phase)
+	score_followthrough_state["active"] = true
+	current_ball_render_phase = handoff_phase
+	_stop_score_followthrough_net_swish()
+	_trace_score_followthrough("handoff_begin", {}, true)
+
+
+func _advance_score_followthrough_handoff(delta: float) -> void:
+	if score_followthrough_state.is_empty() or not bool(score_followthrough_state.get("handoff_active", false)):
+		return
+	var current_offset: Vector2 = score_followthrough_state.get("handoff_screen_offset", Vector2.ZERO)
+	if bool(score_followthrough_state.get("handoff_just_started", false)):
+		score_followthrough_state["handoff_just_started"] = false
+	else:
+		var handoff_duration: float = maxf(float(score_followthrough_state.get("handoff_duration", _get_score_followthrough_handoff_duration())), 0.001)
+		var elapsed: float = minf(float(score_followthrough_state.get("handoff_elapsed", 0.0)) + delta, handoff_duration)
+		var progress: float = clampf(elapsed / handoff_duration, 0.0, 1.0)
+		var initial_offset: Vector2 = score_followthrough_state.get("handoff_initial_screen_offset", current_offset)
+		current_offset = initial_offset * (1.0 - progress)
+		if current_offset.length() <= SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON or progress >= 1.0:
+			current_offset = Vector2.ZERO
+		score_followthrough_state["handoff_elapsed"] = elapsed
+	var continuity: Dictionary = _clamp_pre_bounce_render_offset(ball_simulator.position_xy, ball_simulator.z, current_offset)
+	current_offset = continuity.get("screen_offset", current_offset)
+	score_followthrough_state["handoff_screen_offset"] = current_offset
+	var rendered_anchor: Vector2 = continuity.get(
+		"rendered_anchor",
+		_get_ball_screen_anchor_for_world(ball_simulator.position_xy, ball_simulator.z, current_offset)
+	)
+	var release_screen_y: float = float(score_followthrough_state.get("handoff_release_screen_y", 0.0))
+	if hoop_node != null and hoop_node.has_method("get_front_net_exit_screen_y"):
+		release_screen_y = hoop_node.get_front_net_exit_screen_y()
+		score_followthrough_state["handoff_release_screen_y"] = release_screen_y
+	var cleared_net: bool = rendered_anchor.y >= release_screen_y - SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON
+	score_followthrough_state["handoff_cleared_net"] = cleared_net
+	score_followthrough_state["active"] = true
+	current_ball_render_phase = str(score_followthrough_state.get("handoff_phase", HoopView.BALL_RENDER_PHASE_FRONT_OF_NET))
+	if cleared_net and current_offset.length() <= SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON:
+		score_followthrough_state["handoff_active"] = false
+		score_followthrough_state["handoff_cleared"] = true
+		score_followthrough_state["handoff_screen_offset"] = Vector2.ZERO
+		score_followthrough_state["active"] = false
+		current_ball_render_phase = ""
+		_trace_score_followthrough("handoff_cleared", {}, true)
 
 
 func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bool:
@@ -2990,7 +3319,7 @@ func _commit_pending_shot_release(shooter: PlayerController) -> void:
 		_set_ball_visual_hidden(null)
 		return
 	_set_ball_visual_world()
-	ball_simulator.launch_shot_profile(action)
+	ball_simulator.launch_shot_profile(_prepare_guided_make_profile_for_launch(action))
 	_change_state(GameState.State.SHOT_IN_FLIGHT)
 	log_writer.log_event(
 		"shot_launch",
@@ -3074,6 +3403,93 @@ func _clear_steal_resolve() -> void:
 
 func _vector2_payload(value: Vector2) -> Dictionary:
 	return {"x": value.x, "y": value.y}
+
+
+func _optional_vector2_payload(value: Vector2) -> Variant:
+	if is_inf(value.x) or is_inf(value.y):
+		return null
+	return _vector2_payload(value)
+
+
+func _trace_float(value: float) -> float:
+	return snappedf(value, 0.001)
+
+
+func _get_score_followthrough_event_log_path() -> String:
+	if log_writer == null:
+		return ""
+	return ProjectSettings.globalize_path("%s/%s_event.jsonl" % [log_writer.log_dir, log_writer.session_prefix])
+
+
+func _announce_score_followthrough_trace_destination() -> void:
+	var trace_path: String = _get_score_followthrough_event_log_path()
+	if trace_path == "":
+		return
+	var message: String = "Score followthrough trace -> %s" % trace_path
+	print("[score_followthrough_trace] %s" % message)
+	if log_writer != null:
+		log_writer.log_match(message)
+
+
+func _trace_score_followthrough(reason: String, render_context: Dictionary = {}, force: bool = false) -> void:
+	if log_writer == null or not ball_simulator.is_guided_make_profile():
+		return
+	if score_followthrough_state.is_empty() and not ball_simulator.already_scored:
+		return
+	var process_frame: int = Engine.get_process_frames()
+	var last_process_frame: int = int(score_followthrough_state.get("trace_last_process_frame", -1))
+	if not force and last_process_frame == process_frame:
+		return
+	score_followthrough_state["trace_last_process_frame"] = process_frame
+	var trace_index: int = int(score_followthrough_state.get("trace_index", 0))
+	score_followthrough_state["trace_index"] = trace_index + 1
+	var resolved_render_context: Dictionary = render_context
+	if resolved_render_context.is_empty():
+		resolved_render_context = _resolve_ball_render_context(ball_simulator.position_xy, ball_simulator.z, ball_simulator.vz)
+	var screen_offset: Vector2 = _get_render_context_screen_offset(resolved_render_context)
+	var world_anchor: Vector2 = _get_ball_screen_anchor_for_world(ball_simulator.position_xy, ball_simulator.z)
+	var rendered_anchor: Vector2 = world_anchor + screen_offset
+	var live_ball_anchor: Vector2 = get_ball_screen_anchor()
+	if is_inf(live_ball_anchor.x) or is_inf(live_ball_anchor.y):
+		live_ball_anchor = rendered_anchor
+	var release_screen_y: float = 0.0
+	if hoop_node != null and hoop_node.has_method("get_front_net_exit_screen_y"):
+		release_screen_y = hoop_node.get_front_net_exit_screen_y()
+	var payload: Dictionary = {
+		"reason": reason,
+		"trace_index": trace_index,
+		"process_frame": process_frame,
+		"state": GameState.state_name(context.current_state),
+		"session_prefix": log_writer.session_prefix,
+		"sim_phase": ball_simulator.get_flight_phase(),
+		"sim_render_phase": ball_simulator.get_render_phase_name(),
+		"render_context_phase": str(resolved_render_context.get("render_phase", "")),
+		"current_ball_render_phase": current_ball_render_phase,
+		"ball_visible": ball_node != null and ball_node.is_ball_visible(),
+		"ball_z_index": ball_node.z_index if ball_node != null else 0,
+		"position_xy": _vector2_payload(ball_simulator.position_xy),
+		"z": _trace_float(ball_simulator.z),
+		"vz": _trace_float(ball_simulator.vz),
+		"made_shot_animation_timer": _trace_float(made_shot_animation_timer),
+		"world_anchor": _optional_vector2_payload(world_anchor),
+		"rendered_anchor": _optional_vector2_payload(rendered_anchor),
+		"live_ball_anchor": _optional_vector2_payload(live_ball_anchor),
+		"screen_offset": _optional_vector2_payload(screen_offset),
+		"screen_drop_px": _trace_float(float(resolved_render_context.get("screen_drop_px", 0.0))),
+		"live_front_net_exit_screen_y": _trace_float(release_screen_y),
+		"anchor_minus_exit_y": _trace_float(live_ball_anchor.y - release_screen_y),
+		"handoff_active": bool(score_followthrough_state.get("handoff_active", false)),
+		"handoff_phase": str(score_followthrough_state.get("handoff_phase", "")),
+		"handoff_offset": _optional_vector2_payload(score_followthrough_state.get("handoff_screen_offset", Vector2.ZERO)),
+		"handoff_cleared": bool(score_followthrough_state.get("handoff_cleared", false)),
+		"handoff_cleared_net": bool(score_followthrough_state.get("handoff_cleared_net", false)),
+		"handoff_release_screen_y": _trace_float(float(score_followthrough_state.get("handoff_release_screen_y", release_screen_y))),
+		"net_swish_active": get_net_swish_active(),
+		"uses_explicit_hoop_phase": bool(resolved_render_context.get("uses_explicit_hoop_phase", false)),
+		"is_followthrough_handoff": bool(resolved_render_context.get("is_followthrough_handoff", false)),
+	}
+	log_writer.log_event("score_followthrough_trace", payload)
+	print("[score_followthrough_trace] %s" % JSON.stringify(payload))
 
 
 func _player_name_or_empty(player: Variant) -> String:

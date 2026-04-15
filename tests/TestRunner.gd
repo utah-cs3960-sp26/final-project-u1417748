@@ -296,6 +296,9 @@ func _run_pure_logic() -> void:
 	var dunk_origin: Vector2 = shot_controller.court_config.hoop_position + Vector2(22.0, 118.0)
 	var dunk_make_profile: Dictionary = shot_controller.build_launch_profile(dunk_origin, "green", "close_finish_dunk")
 	var dunk_miss_profile: Dictionary = shot_controller.build_launch_profile(dunk_origin, "red", "close_finish_dunk")
+	var guided_floor_target: Vector2 = Vector2(shot_controller.court_config.hoop_position.x, shot_controller.court_config.hoop_position.y + 228.0)
+	var near_green_finished_profile: Dictionary = _with_floor_finish(near_green_profile, guided_floor_target, shot_controller.ball_config)
+	var dunk_make_finished_profile: Dictionary = _with_floor_finish(dunk_make_profile, guided_floor_target, shot_controller.ball_config)
 	_assert_true(str(dunk_make_profile.get("release_mode", "")) == ShotController.RELEASE_MODE_DUNK_MAKE_DROP, "green dunk uses straight-through release mode", str(dunk_make_profile.get("release_mode", "")))
 	_assert_true(str(dunk_make_profile.get("profile_kind", "")) == ShotController.PROFILE_KIND_GUIDED_MAKE, "green dunk still uses guided make profile", "")
 	_assert_true(str(dunk_make_profile.get("start_phase", "")) == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green dunk starts directly in guided descent", str(dunk_make_profile.get("start_phase", "")))
@@ -305,7 +308,7 @@ func _run_pure_logic() -> void:
 	_assert_true(str(dunk_miss_profile.get("profile_kind", "")) == ShotController.PROFILE_KIND_FREE_FLIGHT, "red dunk miss stays free-flight", "")
 	_assert_true(absf(float(dunk_miss_profile.get("launch_z", 0.0)) - shot_controller.court_config.rim_height) < 0.001, "red dunk miss starts from rim height", str(dunk_miss_profile.get("launch_z", 0.0)))
 	var dunk_make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
-	dunk_make_sim.launch_shot_profile(dunk_make_profile)
+	dunk_make_sim.launch_shot_profile(dunk_make_finished_profile)
 	_assert_true(dunk_make_sim.get_flight_phase() == BallSimulator.FLIGHT_PHASE_GUIDED_DESCENT, "green dunk simulator starts inside guided descent", str(dunk_make_sim.get_flight_phase()))
 	var dunk_make_start_z: float = dunk_make_sim.z
 	dunk_make_sim.step(1.0 / 60.0)
@@ -330,12 +333,14 @@ func _run_pure_logic() -> void:
 		_assert_true(expected_preview_screen.distance_to(far_preview_last["screen_position"]) < 0.01, "guided make preview applies terminal drop", "")
 	var make_sim: BallSimulator = _new_ball_simulator(shot_controller.ball_config)
 	var resolver: HoopResolver = HoopResolver.new(CourtConfig.new(), BallPhysicsConfig.new())
-	make_sim.launch_shot_profile(near_green_profile)
+	make_sim.launch_shot_profile(near_green_finished_profile)
 	var scored: bool = false
 	var score_interaction: Dictionary = {}
 	var first_score_interaction: Dictionary = {}
 	var saw_guided_descent: bool = false
 	var saw_net_exit: bool = false
+	var saw_floor_drop: bool = false
+	var saw_floor_settle: bool = false
 	var pre_score_board_side: bool = false
 	var max_descent_center_offset: float = 0.0
 	var score_phase: String = ""
@@ -344,6 +349,13 @@ func _run_pure_logic() -> void:
 	var first_guided_descent_z: float = INF
 	var first_guided_descent_vz: float = 0.0
 	var first_guided_drop_weight: float = 0.0
+	var last_net_exit_vz: float = 0.0
+	var first_floor_drop_vz: float = INF
+	var net_exit_drop_weight_min: float = INF
+	var net_exit_drop_weight_max: float = -INF
+	var last_floor_drop_z: float = INF
+	var floor_settle_started_from_ground: bool = false
+	var floor_settle_peak_z: float = 0.0
 	for _frame in 300:
 		make_sim.step(1.0 / 60.0)
 		match make_sim.get_flight_phase():
@@ -355,6 +367,20 @@ func _run_pure_logic() -> void:
 					first_guided_drop_weight = make_sim.get_terminal_visual_drop_weight()
 			BallSimulator.FLIGHT_PHASE_NET_EXIT:
 				saw_net_exit = true
+				last_net_exit_vz = make_sim.vz
+				var net_exit_drop_weight: float = make_sim.get_terminal_visual_drop_weight()
+				net_exit_drop_weight_min = minf(net_exit_drop_weight_min, net_exit_drop_weight)
+				net_exit_drop_weight_max = maxf(net_exit_drop_weight_max, net_exit_drop_weight)
+			BallSimulator.FLIGHT_PHASE_FLOOR_DROP:
+				saw_floor_drop = true
+				if is_inf(first_floor_drop_vz):
+					first_floor_drop_vz = make_sim.vz
+				last_floor_drop_z = make_sim.z
+			BallSimulator.FLIGHT_PHASE_FLOOR_SETTLE:
+				if not saw_floor_settle:
+					floor_settle_started_from_ground = not is_inf(last_floor_drop_z) and last_floor_drop_z <= 0.5
+				saw_floor_settle = true
+				floor_settle_peak_z = maxf(floor_settle_peak_z, make_sim.z)
 		if make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_FREE_FLIGHT and make_sim.get_flight_phase() != BallSimulator.FLIGHT_PHASE_NONE:
 			handoff_reached = true
 		if handoff_reached and not scored and make_sim.z > shot_controller.court_config.rim_height + 0.01:
@@ -373,10 +399,19 @@ func _run_pure_logic() -> void:
 			break
 	_assert_true(saw_guided_descent, "guided make enters guided descent", "")
 	_assert_true(saw_net_exit, "guided make exits below net", "")
+	_assert_true(saw_floor_drop, "guided make continues into floor drop", "")
+	_assert_true(saw_floor_settle, "guided make continues into floor settle", "")
 	_assert_true(not saw_above_rim_after_handoff, "guided make never rises above rim after handoff", "")
 	_assert_true(not pre_score_board_side, "guided make never goes board-side before score", "")
 	_assert_true(max_descent_center_offset <= shot_controller.ball_config.made_shot_descent_centering_tolerance + 0.5, "guided make descent stays centered", str(max_descent_center_offset))
 	_assert_true(scored, "green launch scores through hoop", "")
+	_assert_true(absf(net_exit_drop_weight_min - 1.0) < 0.001 and absf(net_exit_drop_weight_max - 1.0) < 0.001, "guided make net exit keeps full terminal drop", "%0.3f %0.3f" % [net_exit_drop_weight_min, net_exit_drop_weight_max])
+	_assert_true(not is_inf(first_floor_drop_vz), "guided make samples floor-drop speed", "")
+	_assert_true(first_floor_drop_vz < 0.0 and absf(first_floor_drop_vz) <= absf(last_net_exit_vz) + 1.0, "guided make floor drop does not spike faster than net exit", "%0.2f %0.2f" % [last_net_exit_vz, first_floor_drop_vz])
+	_assert_true(floor_settle_started_from_ground, "guided make bounce starts only after floor contact", str(last_floor_drop_z))
+	_assert_true(floor_settle_peak_z > 0.0 and floor_settle_peak_z <= shot_controller.ball_config.made_shot_floor_settle_hop_height + 0.5, "guided make settle stays a small single hop", str(floor_settle_peak_z))
+	_assert_true(make_sim.position_xy.distance_to(guided_floor_target) < 0.01, "guided make lands on supplied floor target", str(make_sim.position_xy))
+	_assert_true(absf(make_sim.z) < 0.01, "guided make finishes grounded", str(make_sim.z))
 	if scored:
 		_assert_true(first_guided_descent_z <= shot_controller.court_config.rim_height + 0.01 and first_guided_descent_vz < 0.0, "first visible guided descent sample is already dropping from rim", "%0.2f %0.2f" % [first_guided_descent_z, first_guided_descent_vz])
 		_assert_true(absf(projection.guided_make_terminal_screen_drop(first_guided_drop_weight) - projection_config.guided_make_terminal_screen_drop_px * (projection_screen_rect.size.x / 1080.0) * projection.get_camera_zoom()) < 0.001, "guided descent renders at full terminal drop", str(first_guided_drop_weight))
@@ -1810,6 +1845,7 @@ func _run_pure_logic() -> void:
 	out_target.free()
 	await get_tree().process_frame
 	await _run_hoop_render_phase_smoke()
+	await _run_dunk_auto_finish_floor_smoke()
 
 
 func _run_scenarios() -> void:
@@ -2072,6 +2108,7 @@ func _collect_dunk_motion_trace(
 			"state": coordinator.get_state_name(),
 			"world_position": shooter.world_position,
 			"ground_screen": shooter.global_position,
+			"base_ground_screen": coordinator.court_projection.world_to_base_screen_ground(shooter.world_position) if coordinator.court_projection != null else shooter.global_position,
 			"velocity": shooter.velocity,
 			"hold_active": shooter.is_dunk_contact_hold_active(),
 			"root_motion_active": root_motion_active,
@@ -2274,9 +2311,9 @@ func _assert_dunk_root_motion_trace_consistency(
 				"%s %s" % [final_snapshot_again.get("world_position", Vector2.ZERO), first_final_snapshot.get("world_position", Vector2.ZERO)]
 			)
 			_assert_true(
-				final_snapshot_again.get("ground_screen", Vector2.INF).distance_to(first_final_snapshot.get("ground_screen", Vector2.INF)) < 0.01,
-				"%s landing screen anchor stays deterministic" % name_prefix,
-				"%s %s" % [final_snapshot_again.get("ground_screen", Vector2.ZERO), first_final_snapshot.get("ground_screen", Vector2.ZERO)]
+				final_snapshot_again.get("base_ground_screen", Vector2.INF).distance_to(first_final_snapshot.get("base_ground_screen", Vector2.INF)) < 0.01,
+				"%s landing base screen anchor stays deterministic" % name_prefix,
+				"%s %s" % [final_snapshot_again.get("base_ground_screen", Vector2.ZERO), first_final_snapshot.get("base_ground_screen", Vector2.ZERO)]
 			)
 
 
@@ -2319,6 +2356,7 @@ func _run_hoop_render_phase_smoke() -> void:
 		await get_tree().process_frame
 		return
 	_assert_true(smoke_coordinator.has_method("get_ball_render_phase"), "ball render phase accessor exists", "")
+	_assert_true(smoke_coordinator.has_method("get_ball_screen_anchor"), "ball screen-anchor accessor exists", "")
 	_assert_true(smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"), "through-net score accessor exists", "")
 	_assert_true(smoke_coordinator.has_method("get_net_swish_active"), "net swish accessor exists", "")
 	if smoke_coordinator.hoop_node != null:
@@ -2332,6 +2370,10 @@ func _run_hoop_render_phase_smoke() -> void:
 		if smoke_coordinator.hoop_node.has_method("is_net_swish_active"):
 			_assert_true(not bool(smoke_coordinator.hoop_node.call("is_net_swish_active")), "net swish idle before score", "")
 	smoke_coordinator.begin_test_mode(1708)
+	await get_tree().process_frame
+	var finish_center_screen_before_shot: Vector2 = Vector2.INF
+	if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_debug_finish_radius_center_screen"):
+		finish_center_screen_before_shot = smoke_coordinator.hoop_node.call("get_debug_finish_radius_center_screen")
 	smoke_coordinator.test_force_scoring_shot("RC", 2)
 	var through_net: bool = false
 	var score_seen: bool = false
@@ -2340,38 +2382,152 @@ func _run_hoop_render_phase_smoke() -> void:
 	var first_phase_frame: Dictionary = {}
 	var front_after_net_frame: int = -1
 	var score_z: float = INF
+	var finish_center_world: Vector2 = smoke_coordinator.get_finish_logic_center_world()
+	var finish_center_world_after_landing: Vector2 = Vector2.INF
+	var floor_phase_cleared: bool = false
+	var floor_phase_cleared_anchor: Vector2 = Vector2.INF
+	var floor_phase_cleared_release_y: float = INF
+	var landed_before_reset: bool = false
+	var landed_position: Vector2 = Vector2.INF
+	var landed_screen_anchor: Vector2 = Vector2.INF
+	var front_window_count: int = 0
+	var front_window_active: bool = false
+	var reentered_hoop_render_after_clear: bool = false
+	var last_explicit_hoop_anchor: Vector2 = Vector2.INF
+	var first_floor_drop_anchor: Vector2 = Vector2.INF
+	var first_floor_drop_recorded: bool = false
+	var saw_pre_bounce_upward: bool = false
+	var first_upward_phase: String = ""
+	var first_upward_delta: float = 0.0
+	var pre_bounce_upward_phase: String = ""
+	var pre_bounce_upward_delta: float = 0.0
+	var last_followthrough_anchor_y: float = INF
 	for frame in 180:
 		await get_tree().process_frame
 		if smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"):
 			through_net = bool(smoke_coordinator.call("did_last_scored_shot_pass_through_net"))
 		if smoke_coordinator.has_method("get_ball_render_phase"):
 			var phase: String = str(smoke_coordinator.call("get_ball_render_phase"))
+			var ball_anchor: Vector2 = smoke_coordinator.call("get_ball_screen_anchor")
+			var sim_phase: String = smoke_coordinator.ball_simulator.get_flight_phase()
 			if phase != "" and not first_phase_frame.has(phase):
 				first_phase_frame[phase] = frame
+			if first_phase_frame.has("net_channel") and not is_inf(ball_anchor.y):
+				if not is_inf(last_followthrough_anchor_y):
+					var anchor_delta_y: float = ball_anchor.y - last_followthrough_anchor_y
+					if anchor_delta_y < -0.25:
+						if first_upward_phase == "":
+							first_upward_phase = sim_phase
+							first_upward_delta = anchor_delta_y
+						if sim_phase != BallSimulator.FLIGHT_PHASE_FLOOR_SETTLE and not saw_pre_bounce_upward:
+							saw_pre_bounce_upward = true
+							pre_bounce_upward_phase = sim_phase
+							pre_bounce_upward_delta = anchor_delta_y
+				last_followthrough_anchor_y = ball_anchor.y
+			if smoke_coordinator.ball_simulator.get_render_phase_name() != "":
+				last_explicit_hoop_anchor = ball_anchor
+			if not first_floor_drop_recorded and sim_phase == BallSimulator.FLIGHT_PHASE_FLOOR_DROP:
+				first_floor_drop_recorded = true
+				first_floor_drop_anchor = ball_anchor
 			if phase == "front_of_net" and first_phase_frame.has("net_channel") and frame > int(first_phase_frame["net_channel"]) and front_after_net_frame == -1:
 				front_after_net_frame = frame
+			if phase == "front_of_net" and first_phase_frame.has("net_channel"):
+				if not front_window_active:
+					front_window_active = true
+					front_window_count += 1
+			elif front_window_active:
+				front_window_active = false
+			if front_after_net_frame != -1 and phase == "" and not floor_phase_cleared:
+				floor_phase_cleared = true
+				floor_phase_cleared_anchor = ball_anchor
+				if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_front_net_exit_screen_y"):
+					floor_phase_cleared_release_y = smoke_coordinator.hoop_node.call("get_front_net_exit_screen_y")
+			if floor_phase_cleared and phase in ["net_channel", "front_of_net"]:
+				reentered_hoop_render_after_clear = true
 			if smoke_coordinator.context.home_score > 0 and not score_seen:
 				score_seen = true
 				score_phase = phase
 				score_z = smoke_coordinator.ball_simulator.z
 				if smoke_coordinator.has_method("get_net_swish_active"):
 					swish_when_scored = bool(smoke_coordinator.call("get_net_swish_active"))
+		if score_seen and smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT and not smoke_coordinator.ball_simulator.is_in_flight and smoke_coordinator.ball_simulator.z <= 0.01:
+			landed_before_reset = true
+			landed_position = smoke_coordinator.ball_simulator.position_xy
+			landed_screen_anchor = smoke_coordinator.call("get_ball_screen_anchor")
+			finish_center_world_after_landing = smoke_coordinator.get_finish_logic_center_world()
 		if score_seen and front_after_net_frame != -1:
-			break
+			if landed_before_reset:
+				break
 	_assert_true(first_phase_frame.has("net_channel"), "made shot enters net channel phase", str(first_phase_frame))
 	_assert_true(front_after_net_frame != -1, "made shot emerges front of net", str(first_phase_frame))
 	if first_phase_frame.has("rim_mouth") and first_phase_frame.has("net_channel"):
 		_assert_true(int(first_phase_frame["rim_mouth"]) <= int(first_phase_frame["net_channel"]), "optional rim-mouth handoff occurs before net channel", str(first_phase_frame))
 	if first_phase_frame.has("net_channel") and front_after_net_frame != -1:
 		_assert_true(int(first_phase_frame["net_channel"]) < front_after_net_frame, "guided make phases stay ordered", str({"net_channel": first_phase_frame["net_channel"], "front_of_net": front_after_net_frame}))
+	_assert_true(front_window_count <= 1, "made shot uses one contiguous front-of-net window", str(front_window_count))
 	_assert_true(through_net, "made shot records through-net follow-through", "")
 	_assert_true(score_seen, "made shot resolves during smoke test", "")
 	_assert_true(score_phase == "net_channel", "scored frame occurs during guided descent", score_phase)
 	_assert_true(score_z <= smoke_coordinator.court_config.rim_height + 0.01, "score cannot appear while ball is above rim", str(score_z))
+	_assert_true(floor_phase_cleared, "forced hoop render clears after net exit", str(first_phase_frame))
+	_assert_true(not reentered_hoop_render_after_clear, "made shot never re-enters hoop render after clear", str(first_phase_frame))
+	_assert_true(not saw_pre_bounce_upward, "made shot never moves upward before floor bounce", str({"phase": pre_bounce_upward_phase, "delta": pre_bounce_upward_delta}))
+	if first_upward_phase != "":
+		_assert_true(first_upward_phase == BallSimulator.FLIGHT_PHASE_FLOOR_SETTLE, "first upward motion appears only during floor bounce", str({"phase": first_upward_phase, "delta": first_upward_delta}))
+	if first_floor_drop_recorded and not is_inf(last_explicit_hoop_anchor.y):
+		_assert_true(first_floor_drop_anchor.y >= last_explicit_hoop_anchor.y - 0.75, "first floor-drop frame does not jump above hoop exit", "%0.2f %0.2f" % [first_floor_drop_anchor.y, last_explicit_hoop_anchor.y])
+	if floor_phase_cleared and not is_inf(floor_phase_cleared_anchor.y) and not is_inf(floor_phase_cleared_release_y):
+		_assert_true(floor_phase_cleared_anchor.y >= floor_phase_cleared_release_y - 0.75, "hoop render clears only after passing front-net exit threshold", "%0.2f %0.2f" % [floor_phase_cleared_anchor.y, floor_phase_cleared_release_y])
+	_assert_true(landed_before_reset, "made shot lands before opponent sim begins", str({"state": smoke_coordinator.get_state_name(), "z": smoke_coordinator.ball_simulator.z}))
+	_assert_true(landed_position.distance_to(finish_center_world) < 0.01, "made shot lands at finish-radius center", str(landed_position))
+	if not is_inf(finish_center_screen_before_shot.x) and not is_inf(finish_center_screen_before_shot.y) and not is_inf(landed_screen_anchor.x) and not is_inf(landed_screen_anchor.y):
+		_assert_true(landed_screen_anchor.distance_to(finish_center_screen_before_shot) <= 4.0, "made shot lands on the same visible finish-radius marker center", "%s %s" % [landed_screen_anchor, finish_center_screen_before_shot])
+	if not is_inf(finish_center_world_after_landing.x) and not is_inf(finish_center_world_after_landing.y):
+		_assert_true(finish_center_world_after_landing.distance_to(finish_center_world) < 0.01, "finish-radius center stays stable through score follow-through", "%s %s" % [finish_center_world, finish_center_world_after_landing])
 	if smoke_coordinator.has_method("get_score_followthrough_active"):
-		_assert_true(bool(smoke_coordinator.call("get_score_followthrough_active")) or score_phase == "front_of_net", "score follow-through activates after score", "")
+		_assert_true(bool(smoke_coordinator.call("get_score_followthrough_active")) or floor_phase_cleared, "score follow-through activates through hoop exit then clears", "")
 	if smoke_coordinator.has_method("get_net_swish_active"):
 		_assert_true(swish_when_scored, "net swish activates on score", "")
+	game_root.queue_free()
+	await get_tree().process_frame
+
+
+func _run_dunk_auto_finish_floor_smoke() -> void:
+	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
+	var game_root: Node2D = game_root_scene.instantiate() as Node2D
+	add_child(game_root)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var smoke_coordinator: GameCoordinator = game_root.get_node("GameCoordinator") as GameCoordinator
+	_assert_true(smoke_coordinator != null, "dunk floor-finish smoke coordinator exists", "")
+	if smoke_coordinator == null:
+		game_root.queue_free()
+		await get_tree().process_frame
+		return
+	smoke_coordinator.begin_test_mode(1811)
+	smoke_coordinator.test_set_defenders_disabled(true)
+	var dunker: PlayerController = smoke_coordinator.get_offense_player_by_role("LC")
+	_assert_true(dunker != null, "dunk floor-finish smoke has dunker", "")
+	if dunker != null:
+		var finish_center_world: Vector2 = smoke_coordinator.get_finish_logic_center_world()
+		dunker.world_position = finish_center_world + Vector2(-14.0, 92.0)
+		dunker.velocity = Vector2.ZERO
+		smoke_coordinator.test_force_offensive_rebound("LC")
+		await _begin_release_test_shot(smoke_coordinator, dunker, 1, "dunk")
+		var dunk_through_net: bool = false
+		var dunk_landed: bool = false
+		var dunk_landing_position: Vector2 = Vector2.INF
+		for _frame in 240:
+			await get_tree().process_frame
+			if smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"):
+				dunk_through_net = bool(smoke_coordinator.call("did_last_scored_shot_pass_through_net"))
+			if smoke_coordinator.context.home_score > 0 and smoke_coordinator.context.current_state == GameState.State.SHOT_IN_FLIGHT and not smoke_coordinator.ball_simulator.is_in_flight and smoke_coordinator.ball_simulator.z <= 0.01:
+				dunk_landed = true
+				dunk_landing_position = smoke_coordinator.ball_simulator.position_xy
+				break
+		_assert_true(dunk_through_net, "dunk auto-make still passes through net", "")
+		_assert_true(dunk_landed, "dunk auto-make lands before reset", str({"state": smoke_coordinator.get_state_name(), "z": smoke_coordinator.ball_simulator.z}))
+		_assert_true(dunk_landing_position.distance_to(finish_center_world) < 0.01, "dunk auto-make uses finish-radius floor target", str(dunk_landing_position))
 	game_root.queue_free()
 	await get_tree().process_frame
 
@@ -2388,6 +2544,15 @@ func _new_ball_simulator(config: BallPhysicsConfig) -> BallSimulator:
 	simulator.gravity = config.gravity
 	simulator.ball_radius = config.ball_radius
 	return simulator
+
+
+func _with_floor_finish(profile: Dictionary, floor_target_xy: Vector2, config: BallPhysicsConfig) -> Dictionary:
+	var finished_profile: Dictionary = profile.duplicate(true)
+	finished_profile["floor_target_xy"] = floor_target_xy
+	finished_profile["floor_drop_duration"] = config.made_shot_floor_drop_duration
+	finished_profile["floor_settle_hop_height"] = config.made_shot_floor_settle_hop_height
+	finished_profile["floor_settle_duration"] = config.made_shot_floor_settle_duration
+	return finished_profile
 
 
 func _launch_profiles_match(a: Dictionary, b: Dictionary, tolerance: float = 0.01) -> bool:

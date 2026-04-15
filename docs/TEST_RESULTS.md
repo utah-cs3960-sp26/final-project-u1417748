@@ -24,16 +24,16 @@ Automated suite:
 
 Final headless suite status: pass
 
-- Pure logic: 1622 / 1622
+- Pure logic: 1648 / 1648
 - Scenarios: 13 / 13
 - Balance: 4 / 4
 - Failures: 0
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.94`, normal `1.07`, hard `1.32`
+- `difficulty_order`: easy `0.91`, normal `1.04`, hard `1.29`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.28`, defense `0.72`
+- `rebound_distribution`: offense `0.31`, defense `0.69`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -68,6 +68,13 @@ Passed scenarios:
 - hidden-controls mode kept the same pass / move / shoot / dunk hitboxes active in deterministic smoke coverage and left the relocated scoreboard visible
 - shot-meter diagnostics remain mirrored onto `CourtView` for test visibility, but only the control panel renders the meter in live play
 - off-ball offense now uses the same authored shuffle row `19` as defense for any non-zero off-ball movement, and only falls back to row `1` when fully stopped
+- guided makes now continue out of the hoop into a visible floor drop and a single small settle hop, then stop on the same hoop-base center used by the dunk-radius markers
+- made shots now keep a monotonic downward rendered path from `guided_descent` through `floor_drop`, hold the full terminal drop through `net_exit`, and only begin moving upward again once the `floor_settle` bounce starts after floor contact
+- the post-`net_exit` fall now uses a longer carried-velocity descent so the ball leaves the hoop at a speed that better matches the motion already established during the made shot
+- made shots still keep one contiguous `front_of_net` handoff after `net_exit`, then release to plain world rendering only after the rendered ball has visibly cleared the hoop's front-net exit threshold
+- the finish-radius world center is now cached from the live player-camera framing before launch, so made shots and dunk auto-finishes both land back on the exact authored marker center even after the score follow-through camera handoff
+- the score follow-through camera now snaps directly into the cached landing frame and lets the net handoff offset carry the continuity, so the post-net fall no longer drifts toward a later camera target before the landing
+- buzzer-beater makes now end the game as soon as the new floor settle completes, while normal made shots still wait for the visible landing before opponent sim begins
 
 ## Additional Coverage
 
@@ -89,3 +96,10 @@ The final pass added or updated deterministic coverage for:
 - the enlarged `MOVE` lane plus the reduced pass-lane widths after the final proportion retune
 - control-panel shot-meter geometry spanning beyond the `SHOOT` half while staying inside the full top action row
 - scenario harness / bot pilot updates so scripted passes and shot releases use the new panel zones instead of the legacy open-screen gestures
+- guided-make floor-finish sequencing through `net_exit -> floor_drop -> floor_settle`
+- guided-make `net_exit` retaining full terminal drop plus pre-bounce rendered-anchor continuity until the floor bounce starts
+- guided-make `floor_drop` opening from a speed-aligned carried-velocity sample instead of a faster post-net spike
+- grounded landing on the authored finish-radius center for both jumper makes and dunk auto-makes
+- finish-radius center stability from shot launch through landing, even while the camera transitions from player tracking to ball tracking
+- cached finish-marker screen targeting from pre-release camera states, plus a smoke assertion that the landed ball shares the same visible marker center
+- single-window `front_of_net` follow-through, no upward rendered motion before `floor_settle`, no hoop-render re-entry after clear, forced hoop-render clearing after the front-net exit threshold, landed-before-reset behavior, and buzzer completion after the new floor settle

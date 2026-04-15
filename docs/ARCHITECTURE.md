@@ -33,6 +33,7 @@
 - defines `banner_rect` as the compact scoreboard-card bounds anchored above the control panel's left `SHOOT` half rather than as a top banner strip
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - resolves the active close-camera target each frame, following the controlled ballhandler during owned possession and the rendered live ball during passes, shots, rebounds, and score follow-through
+- owns the made-shot render handoff that keeps the ball in a single contiguous `front_of_net` window after `net_exit`, freezes the guided terminal presentation drop through the full explicit hoop follow-through, clamps pre-bounce rendered anchors so `guided_descent -> net_exit -> floor_drop` never step upward on screen, and only releases back to plain world rendering after the ball has visibly cleared the hoop's front-net exit threshold
 - commits any staged shot release before final projection sync so the first visible launched-ball frame already hands camera ownership from the player to the live ball
 - owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
@@ -63,7 +64,8 @@
   - straight-line pass travel, fixed release-time catch points, eligible interceptor selection, a ratings-and-risk commit roll, rating-scaled claim radii, and live catch-vs-steal resolution after commitment
 - `BallSimulator`
   - pure `RefCounted` 2D + z-height motion with explicit above-floor shot release height
-  - guided makes switch from free flight to a rim-plane handoff and then into `guided_descent -> net_exit`, so the live simulator, not the coordinator, owns the downward swish path
+  - guided makes switch from free flight to a rim-plane handoff and then into `guided_descent -> net_exit -> floor_drop -> floor_settle`, holding the terminal presentation drop at full strength through `net_exit`, then using a longer constant-acceleration floor drop that carries the outgoing net-exit velocity instead of spiking into a short ease-down
+  - only allows the visible upward bounce once `floor_settle` begins after floor contact
 - `HoopResolver`
   - score-plane, rim, and backboard resolution
   - guided makes may still collide during approach, but only score once the simulator reports the planned guided-descent score gate crossing

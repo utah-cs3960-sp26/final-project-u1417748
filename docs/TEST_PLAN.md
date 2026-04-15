@@ -50,12 +50,25 @@ Covered by `tests/TestRunner.gd`:
 - guided make approach never going board-side before score
 - guided make score-gate crossing occurring during `guided_descent`
 - guided make descent staying centered inside the hoop cylinder
+- guided make post-score sequencing continuing through `net_exit -> floor_drop -> floor_settle`
+- guided make `net_exit` holding the full terminal presentation drop instead of decaying mid-follow-through
+- guided makes landing at the finish-radius center instead of dying under the net
+- made-shot rendered anchors staying monotonic downward from `guided_descent` through the end of `floor_drop`
+- made-shot landing-frame camera targeting using the same pre-release finish-marker screen sample the player saw before the shot
+- landed made shots sharing the same visible finish-radius marker center instead of only matching the target in world space
+- the first `floor_drop` velocity sample staying aligned with the outgoing `net_exit` motion instead of jumping into a faster post-net descent
+- the first upward rendered-anchor motion being deferred until `floor_settle`
+- a single contiguous `front_of_net` follow-through window before the forced hoop render clears
+- forced hoop render clearing only after the rendered ball has crossed the front-net exit threshold
+- cleared follow-through never re-entering `net_channel` or `front_of_net`
+- made shots landing before opponent sim begins, and before buzzer-end game over
 - misses staying in free flight and never entering guided make phases
 - scoring plane crossing
 - explicit hoop render-phase ordering
 - rim-mouth then net-channel score sequencing
 - through-net score follow-through flags
 - score-triggered net swish activation
+- dunk auto-makes sharing the same floor-finish target as jumper makes
 - 2PT / 3PT classification
 - pass commit-roll failure on an otherwise eligible short lane
 - pass commit-roll success on a risky long/cross-court lane
@@ -186,6 +199,7 @@ Smoke game scene:
 - confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
 - confirm the hoop body plus rear/full hoop, front rim lip, and front net body all stay aligned on the painted top-rim area
 - confirm normal makes render in front of the backboard, meet the rim plane, immediately turn downward into the hanging net during the guided descent, and only go behind the board when thrown over it
+- confirm the scored ball stays in one continuous downward motion from the net through the floor drop, with no upward pop before the floor bounce begins
 - confirm the score text does not appear while the ball is still above the rim or behind the backboard on a made shot
 - confirm only the currently controlled player shows the outline sheet
 - confirm westward dribble/run movement mirrors the player sprite along X

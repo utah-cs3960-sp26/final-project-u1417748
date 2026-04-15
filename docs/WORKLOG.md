@@ -2,6 +2,28 @@
 
 ## 2026-04-14
 
+### Scored-ball follow-through now hands camera control over to the landing frame immediately
+
+- changed `GameCoordinator` so the post-net score follow-through snaps straight into the authored landing-camera frame and lets the existing hoop handoff offset carry continuity, instead of freezing one camera frame and then steering again later
+- cached both the world-space finish center and the screen-space marker center from pre-release non-ball states only (`MATCH_SETUP`, `LIVE_OFFENSE`, `SHOT_AIM`) so the scored-ball landing target is based on the same visible dunk-radius marker the player actually saw before launch
+- moved the hoop-render smoke's visible-marker assertion to capture the finish marker after deterministic setup has rebuilt the live projection state, avoiding a stale pre-setup screen sample
+- reran the full headless suite after the landing-frame handoff rewrite: Pure logic `1648`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Finish-radius landing target now stays locked to the live player-camera marker
+
+- removed the bad layout-time finish-center cache refresh that could sample the hoop-base marker before the live player camera was actually in place, which let guided makes inherit the wrong floor target
+- changed `GameCoordinator` to refresh `finish_logic_center_world_cached` only from live non-ball camera states (`MATCH_SETUP`, `LIVE_OFFENSE`, `SHOT_AIM`, `SHOT_RELEASE`), then reuse that cached world point through score follow-through so the floor target stays stable while the camera tracks the shot
+- cleared the cached finish center on match, possession, and scenario resets so a new offense always reacquires the authored dunk-radius center from the current player-camera framing before the next shot launches
+- reran the full headless suite after the finish-radius cache fix: Pure logic `1647`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Scored-ball net exit now stays seamless until the floor bounce
+
+- fixed the made-shot visual hiccup where the ball could step upward during `net_exit` because the guided terminal screen-drop effect was decaying before the hoop follow-through had actually finished
+- changed `BallSimulator` so guided makes hold the terminal presentation drop at full weight through `net_exit`, then cut over to the floor-drop path only once the explicit hoop follow-through is done
+- added a coordinator-side pre-bounce continuity guard that seeds from the live on-screen anchor at score time and clamps `guided_descent -> net_exit -> floor_drop` so the rendered ball never moves upward before the first floor bounce
+- kept the existing single small `floor_settle` bounce, but locked the new regression coverage so the first upward motion is only allowed once `floor_settle` begins after floor contact
+- reran the full headless suite after the scored-ball continuity fix: Pure logic `1644`, Scenarios `13`, Balance `4`, Failures `0`
+
 ### Control-panel buttons now stay dark until hovered or pressed
 
 - changed the visible panel art so `SHOOT`, `DUNK`, `PASS`, and `MOVE` all share the same neutral idle base color `#1b1d3a` instead of always showing their action colors
@@ -371,6 +393,14 @@
 - added a short defender jump pose, hooked the block check to identify the actual blocker, and routed close-finish shots into layup, straight-dunk, or side-dunk presentation using hoop proximity and approach direction
 - extended the headless suite with exact row, flip, outline, fill-texture, variant-lock, layup/dunk, and guard-state assertions so the full-sheet mapping now has deterministic regression coverage
 
+### Slower post-net floor drop speed alignment
+
+- replaced the first pass of the guided-make `floor_drop` with a longer carried-velocity fall so the ball no longer accelerates too aggressively as soon as it leaves `net_exit`
+- changed `BallSimulator` floor-drop sampling from the earlier short Hermite ease to constant-acceleration motion seeded from the outgoing `net_exit` velocity, which keeps the post-net descent closer to the speed the made shot was already showing on screen
+- retuned `BallPhysicsConfig.made_shot_floor_drop_duration` from `0.24` to `0.42` seconds so the ball has enough time to travel from the hoop exit to the hoop-base floor target without a visible speed spike
+- updated the dunk root-motion determinism harness to compare the final landing against a camera-independent base screen anchor, since the longer scored-ball follow-through now keeps the camera on the live ball slightly longer than before
+- extended the clean-make and buzzer-beater scenarios to wait through the longer visible landing, then reran the headless suite green at Pure logic `1646`, Scenarios `13`, Balance `4`, Failures `0`
+
 ### Release-synced shot staging and hidden held-ball presentation
 
 - inserted a new `SHOT_RELEASE` coordinator state so releasing the meter now commits a locked shot family, row variant, and west-mirror flag before the ball is actually launched
@@ -434,3 +464,15 @@
 - added animation-family and facing hysteresis so off-ball runners and defenders stop chattering between idle, shuffle, run, and left/right mirror states during tiny corrective moves
 - changed the shipped default presentation so the debug overlay no longer boots visible, teammate catch rings stay hidden in normal play, and the active pass-preview target now uses the light-blue ring style instead of the older yellow marker
 - extended the deterministic suite with route hysteresis, smooth-settle steering, animation/facing hysteresis, and gameplay pass-preview feedback assertions; the latest headless run landed at Pure logic `434`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Made baskets now fall cleanly from the net to the hoop-base floor target
+
+- extended `BallSimulator` guided makes with two new terminal phases, `floor_drop` and `floor_settle`, so every made basket now keeps one continuous swish-to-floor motion instead of ending under the net and rattling around the hoop art
+- injected guided-make floor-finish metadata from `GameCoordinator` at launch time, using the same `get_finish_logic_center_world()` anchor that drives the visible dunk-radius markers so jumper makes and dunk auto-makes both land on the authored hoop-base center
+- replaced the immediate post-`net_exit` render clear with a short coordinator-owned `front_of_net` handoff, so the first `floor_drop` frame keeps the last hoop-space screen anchor and decays smoothly into world-space rendering instead of popping back above the net
+- changed the handoff release rule so the hoop-layer render only clears after the rendered ball has visibly crossed `HoopView.get_front_net_exit_screen_y()`, and once it clears the shot can never reactivate `net_channel` or `front_of_net`
+- stopped the net swish as soon as the explicit hoop phase ends, while the new handoff keeps only the layering contract alive for the floor finish
+- added temporary `score_followthrough_trace` diagnostics that print to the Godot console and append structured rows into the active match event log, capturing simulator phase, render phase, handoff offsets, rendered/world ball anchors, and the live front-net exit threshold for post-score glitch triage
+- tightened the buzzer path so expired-clock made shots finish the game as soon as the ball has completed the new floor settle instead of waiting on an outdated post-score timer
+- extended deterministic coverage for guided-make `net_exit -> floor_drop -> floor_settle` ordering, grounded landing on the supplied floor target, single-window `front_of_net` rendering, no render-phase re-entry after clear, floor-drop continuity against the last hoop-exit frame, landed-before-reset behavior, and a dunk auto-finish smoke case that shares the same landing target
+- reran the full headless suite after the render-handoff fix: Pure logic `1640`, Scenarios `13`, Balance `4`, Failures `0`
