@@ -101,6 +101,17 @@ func _queue_actions(pilot: BotPilot, actions: Array[ScenarioAction]) -> void:
 				pilot.force_pressure_turnover()
 			"force_offensive_rebound":
 				pilot.force_offensive_rebound(action.target_id)
+			"force_opponent_sim":
+				pilot.force_opponent_sim()
+			"force_opponent_sim_result":
+				var sim_value: Dictionary = action.value if action.value is Dictionary else {}
+				pilot.force_opponent_sim_result(
+					int(sim_value.get("points_scored", 0)),
+					int(sim_value.get("action_count", 1)),
+					float(sim_value.get("time_consumed", 4.0))
+				)
+			"tap_opponent_banner":
+				pilot.tap_opponent_banner()
 			"assert_state":
 				pilot.assert_state(str(action.value))
 			"assert_score":
@@ -141,6 +152,22 @@ func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpec
 		"state_not":
 			if coordinator.get_state_name() == str(expectation.value):
 				return "state should not be %s" % str(expectation.value)
+		"opponent_banner_visible":
+			var banner_snapshot: Dictionary = coordinator.get_opponent_sim_banner_snapshot()
+			if bool(banner_snapshot.get("visible", false)) != bool(expectation.value):
+				return "opponent banner visible expected %s got %s" % [str(expectation.value), str(banner_snapshot.get("visible", false))]
+		"opponent_banner_text_contains":
+			var opponent_snapshot: Dictionary = coordinator.get_opponent_sim_sequence_snapshot()
+			if not str(opponent_snapshot.get("current_text", "")).contains(str(expectation.value)):
+				return "opponent banner text missing %s in %s" % [str(expectation.value), str(opponent_snapshot.get("current_text", ""))]
+		"opponent_sequence_length":
+			var sequence_snapshot: Dictionary = coordinator.get_opponent_sim_sequence_snapshot()
+			if int(sequence_snapshot.get("action_count", 0)) != int(expectation.value):
+				return "opponent sequence length expected %d got %d" % [int(expectation.value), int(sequence_snapshot.get("action_count", 0))]
+		"opponent_action_index":
+			var index_snapshot: Dictionary = coordinator.get_opponent_sim_sequence_snapshot()
+			if int(index_snapshot.get("current_index", -1)) != int(expectation.value):
+				return "opponent action index expected %d got %d" % [int(expectation.value), int(index_snapshot.get("current_index", -1))]
 		"ball_render_phase":
 			if not coordinator.has_method("get_ball_render_phase"):
 				return "ball render phase accessor missing"

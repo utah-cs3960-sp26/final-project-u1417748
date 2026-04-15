@@ -79,6 +79,12 @@ Covered by `tests/TestRunner.gd`:
 - route target generation
 - rebound fallback generation
 - opponent sim validity
+- opponent sim visual-step count clamped to `1..4`
+- opponent sim final visual action matching the resolved score/no-score result
+- opponent sim display text staying banner-ready and free of internal clock/debug-only lines
+- opponent sim presentation hiding the scoreboard and control panel while banner text is visible
+- opponent sim presentation restoring the scoreboard and controls when `LIVE_OFFENSE` resumes
+- deterministic opponent sim seeds covering one-step score, multi-step score, and no-score outcomes
 - log file creation
 
 ### Deterministic Scenarios
@@ -97,6 +103,11 @@ Resource-backed scenarios under `data/scenarios/`:
 - buzzer shot completion
 - pause/resume safety
 - tap red miss
+- opponent banner one-step score
+- opponent banner multi-step score
+- opponent banner no-score turnover or steal
+- opponent banner tap-skip
+- opponent banner low-clock game-over
 - long-run no-softlock
 
 ### Balance Batches
@@ -176,7 +187,15 @@ Smoke game scene:
 - confirm a clean pass transfers control only after the live ball reaches the receiver
 - confirm a safe short pass usually reaches the target even if a defender was lane-eligible
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
-- confirm a steal shows the defender securing the ball before the possession jump-cut
+- confirm a steal shows the defender securing the ball before the opponent sim action banner takes over
+- confirm opponent possessions show a centered black horizontal action banner at about `80%` opacity
+- confirm the scoreboard card and bottom controls disappear while opponent action text is displayed
+- confirm the banner action text is short, readable, and uses basketball language such as pass, jumper, layup, alley-oop, dunk, turnover, steal, miss, block, or defensive rebound
+- confirm each opponent action beat auto-advances after about one second
+- confirm tapping the screen during the opponent banner advances one action beat, not the entire sequence
+- confirm the final opponent action clearly explains whether AWY scored or failed to score
+- confirm AWY score and clock changes apply after the final opponent action, not when the first banner text appears
+- confirm the scoreboard and controls reappear when the new human possession begins
 - release from `MOVE` into the top-left `SHOOT` half and confirm shot mode arms at normal speed with the timing meter spanning the full top row plus visible preview dots on court
 - release from `MOVE` into the top-right `DUNK` half near the rim and confirm an eligible dunk skips the timing meter and enters the dunk finish flow
 - release from `MOVE` into the top-right `DUNK` half near the rim with a non-dunk finisher and confirm it falls back to a layup instead of a jumper

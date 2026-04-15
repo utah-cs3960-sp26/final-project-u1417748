@@ -101,6 +101,18 @@ func force_offensive_rebound(role: String) -> void:
 	action_queue.append({"kind": "force_offensive_rebound", "role": role})
 
 
+func force_opponent_sim() -> void:
+	action_queue.append({"kind": "force_opponent_sim"})
+
+
+func force_opponent_sim_result(points_scored: int, action_count: int, time_consumed: float) -> void:
+	action_queue.append({"kind": "force_opponent_sim_result", "points_scored": points_scored, "action_count": action_count, "time_consumed": time_consumed})
+
+
+func tap_opponent_banner() -> void:
+	action_queue.append({"kind": "tap_opponent_banner"})
+
+
 func assert_state(expected_state: String) -> void:
 	action_queue.append({"kind": "assert_state", "expected_state": expected_state})
 
@@ -185,6 +197,15 @@ func step(delta: float) -> bool:
 			_advance()
 		"force_offensive_rebound":
 			coordinator.test_force_offensive_rebound(str(action.get("role", "")))
+			_advance()
+		"force_opponent_sim":
+			coordinator.test_force_opponent_sim()
+			_advance()
+		"force_opponent_sim_result":
+			coordinator.test_force_opponent_sim_result(int(action.get("points_scored", 0)), int(action.get("action_count", 1)), float(action.get("time_consumed", 4.0)))
+			_advance()
+		"tap_opponent_banner":
+			coordinator.test_advance_opponent_sim_sequence()
 			_advance()
 		"assert_state":
 			if coordinator.get_state_name() != str(action.get("expected_state", "")):

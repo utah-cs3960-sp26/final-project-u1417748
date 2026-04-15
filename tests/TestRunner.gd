@@ -912,6 +912,21 @@ func _run_pure_logic() -> void:
 	var sim_result: Dictionary = sim_controller.run_possession(away_team, home_team, 180.0, rng)
 	_assert_true(sim_result["points_scored"] >= 0 and sim_result["points_scored"] <= 3, "opponent sim valid score", "")
 	_assert_true(sim_result["time_consumed"] > 0.0, "opponent sim consumes time", "")
+	_assert_true(sim_result.has("visual_steps"), "opponent sim returns visual steps", JSON.stringify(sim_result))
+	var visual_steps: Array = sim_result.get("visual_steps", [])
+	_assert_true(visual_steps.size() >= 1 and visual_steps.size() <= 4, "opponent sim visual step count is 1-4", str(visual_steps.size()))
+	if not visual_steps.is_empty():
+		for visual_step_value in visual_steps:
+			var visual_step: Dictionary = visual_step_value
+			var step_text: String = str(visual_step.get("text", ""))
+			_assert_true(step_text.strip_edges() != "", "opponent sim visual step has text", JSON.stringify(visual_step))
+			_assert_true(not step_text.to_lower().contains("clock"), "opponent sim visual step omits clock text", step_text)
+		var final_step: Dictionary = visual_steps[-1]
+		_assert_true(bool(final_step.get("is_final", false)), "opponent sim final visual step marked final", JSON.stringify(final_step))
+		_assert_true(int(final_step.get("points", 0)) == int(sim_result.get("points_scored", 0)), "opponent sim final visual step matches points", JSON.stringify({"final": final_step, "result": sim_result}))
+	rng.reseed(9)
+	var repeat_sim_result: Dictionary = sim_controller.run_possession(away_team, home_team, 180.0, rng)
+	_assert_true(JSON.stringify(repeat_sim_result.get("visual_steps", [])) == JSON.stringify(sim_result.get("visual_steps", [])), "opponent sim visual steps are deterministic by seed", "")
 
 	var log_writer: LogWriter = LogWriter.new()
 	log_writer.set_prefix("test_check")
@@ -1846,6 +1861,7 @@ func _run_pure_logic() -> void:
 	await get_tree().process_frame
 	await _run_hoop_render_phase_smoke()
 	await _run_dunk_auto_finish_floor_smoke()
+	await _run_opponent_sim_banner_smoke()
 
 
 func _run_scenarios() -> void:
@@ -1884,6 +1900,76 @@ func _assert_true(condition: bool, name: String, detail: String) -> void:
 	pure_logic_results.append(result)
 	if not condition:
 		total_failed += 1
+
+
+func _run_opponent_sim_banner_smoke() -> void:
+	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
+	var game_root: Node2D = game_root_scene.instantiate() as Node2D
+	add_child(game_root)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var smoke_coordinator: GameCoordinator = game_root.get_node("GameCoordinator") as GameCoordinator
+	_assert_true(smoke_coordinator != null, "opponent sim banner smoke coordinator exists", "")
+	if smoke_coordinator == null:
+		game_root.queue_free()
+		await get_tree().process_frame
+		return
+	smoke_coordinator.begin_test_mode(2206)
+	smoke_coordinator.apply_test_setup(4, 6, 30.0)
+	smoke_coordinator.opponent_sim_config.visual_step_min = 3
+	smoke_coordinator.opponent_sim_config.visual_step_max = 3
+	smoke_coordinator.opponent_sim_config.visual_step_duration = 1.0
+	var away_before: int = smoke_coordinator.context.away_score
+	var clock_before: float = smoke_coordinator.context.match_time_remaining
+	smoke_coordinator.test_force_opponent_sim()
+	await get_tree().process_frame
+	var sequence_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner holds opponent sim state", smoke_coordinator.get_state_name())
+	_assert_true(bool(sequence_snapshot.get("active", false)), "opponent sim banner sequence active", JSON.stringify(sequence_snapshot))
+	_assert_true(int(sequence_snapshot.get("action_count", 0)) == 3, "opponent sim banner uses configured step count", JSON.stringify(sequence_snapshot))
+	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 0, "opponent sim banner starts at first step", JSON.stringify(sequence_snapshot))
+	_assert_true(smoke_coordinator.context.away_score == away_before, "opponent sim score deferred during banner", str(smoke_coordinator.context.away_score))
+	_assert_true(absf(smoke_coordinator.context.match_time_remaining - clock_before) < 0.001, "opponent sim clock deferred during banner", str(smoke_coordinator.context.match_time_remaining))
+	var banner_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_banner_snapshot()
+	var safe_rect: Rect2 = smoke_coordinator.layout_metrics.get("safe_rect", Rect2(Vector2.ZERO, Vector2(1080.0, 1920.0)))
+	var banner_rect: Rect2 = banner_snapshot.get("banner_rect", Rect2())
+	var background_color: Color = banner_snapshot.get("background_color", Color.TRANSPARENT)
+	_assert_true(bool(banner_snapshot.get("visible", false)), "opponent sim banner visible", JSON.stringify(banner_snapshot))
+	_assert_true(smoke_coordinator.hud != null and not smoke_coordinator.hud.visible, "opponent sim banner hides scoreboard while visible", str(smoke_coordinator.hud.visible if smoke_coordinator.hud != null else true))
+	_assert_true(smoke_coordinator.control_panel != null and not smoke_coordinator.control_panel.visible, "opponent sim banner hides controls while visible", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else true))
+	_assert_true(absf(background_color.a - 0.8) < 0.01, "opponent sim banner opacity is 80 percent", str(background_color))
+	_assert_true(str(banner_snapshot.get("text", "")) == str(sequence_snapshot.get("current_text", "")), "opponent sim banner text matches sequence", JSON.stringify({"banner": banner_snapshot, "sequence": sequence_snapshot}))
+	_assert_true(absf(banner_rect.position.x - safe_rect.position.x) <= 1.0 and absf(banner_rect.size.x - safe_rect.size.x) <= 1.0, "opponent sim banner spans safe width", "%s %s" % [banner_rect, safe_rect])
+	_assert_true(absf(banner_rect.get_center().y - safe_rect.get_center().y) <= 2.0, "opponent sim banner centered vertically", "%s %s" % [banner_rect, safe_rect])
+
+	for _auto_frame in 61:
+		await get_tree().process_frame
+	sequence_snapshot = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 1, "opponent sim banner auto advances after one second", JSON.stringify(sequence_snapshot))
+	smoke_coordinator.test_advance_opponent_sim_sequence()
+	await get_tree().process_frame
+	sequence_snapshot = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 2, "opponent sim banner tap advances one step", JSON.stringify(sequence_snapshot))
+	var pending_points: int = int(sequence_snapshot.get("pending_points_scored", 0))
+	var pending_time: float = float(sequence_snapshot.get("pending_time_consumed", 0.0))
+	var timer_before_pause: float = float(sequence_snapshot.get("seconds_remaining", 0.0))
+	smoke_coordinator.test_toggle_pause()
+	for _paused_frame in 30:
+		await get_tree().process_frame
+	var paused_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	_assert_true(absf(float(paused_snapshot.get("seconds_remaining", 0.0)) - timer_before_pause) < 0.001, "opponent sim banner timer freezes during pause", JSON.stringify(paused_snapshot))
+	smoke_coordinator.test_toggle_pause()
+	await get_tree().process_frame
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner resumes opponent sim state", smoke_coordinator.get_state_name())
+	smoke_coordinator.test_advance_opponent_sim_sequence()
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "opponent sim banner final tap returns to offense", smoke_coordinator.get_state_name())
+	_assert_true(smoke_coordinator.context.away_score == away_before + pending_points, "opponent sim banner applies pending score once", "%d + %d -> %d" % [away_before, pending_points, smoke_coordinator.context.away_score])
+	_assert_true(absf(smoke_coordinator.context.match_time_remaining - maxf(clock_before - pending_time, 0.0)) < 0.001, "opponent sim banner applies pending clock once", "%0.3f - %0.3f -> %0.3f" % [clock_before, pending_time, smoke_coordinator.context.match_time_remaining])
+	_assert_true(not bool(smoke_coordinator.get_opponent_sim_banner_snapshot().get("visible", true)), "opponent sim banner hides after completion", JSON.stringify(smoke_coordinator.get_opponent_sim_banner_snapshot()))
+	_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible, "opponent sim banner restores scoreboard when offense resumes", str(smoke_coordinator.hud.visible if smoke_coordinator.hud != null else false))
+	_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "opponent sim banner restores controls when offense resumes", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
+	game_root.queue_free()
+	await get_tree().process_frame
 
 
 func _make_visual_test_setup(ballhandler_role: String = "PG") -> Dictionary:

@@ -9,3 +9,6 @@ extends Resource
 @export var second_chance_time_min: float = 2.0
 @export var second_chance_time_max: float = 5.0
 @export var make_bias: float = 0.0
+@export var visual_step_min: int = 1
+@export var visual_step_max: int = 4
+@export var visual_step_duration: float = 1.0

@@ -16,11 +16,13 @@ func run_possession(
 	var time_consumed: float = minf(rng.randf_range(sim_config.possession_time_min, sim_config.possession_time_max), remaining_time)
 	var turnover_chance: float = sim_config.turnover_chance / difficulty_config.get_defense_multiplier()
 	if rng.randf() < turnover_chance:
+		var turnover_player: PlayerData = _choose_visual_player(offense_team.players, "%s_turnover_%0.2f" % [offense_team.abbreviation, time_consumed])
 		events.append("%s turnover" % offense_team.abbreviation)
 		return {
 			"events": events,
 			"points_scored": 0,
 			"time_consumed": time_consumed,
+			"visual_steps": _build_visual_steps(offense_team, turnover_player, "turnover", 0, false, [], events, time_consumed),
 		}
 
 	var shooter: PlayerData = _choose_shooter(offense_team.players, rng)
@@ -36,6 +38,7 @@ func run_possession(
 			"events": events,
 			"points_scored": points,
 			"time_consumed": time_consumed,
+			"visual_steps": _build_visual_steps(offense_team, shooter, "made_three" if is_three else "made_two", points, false, [], events, time_consumed),
 		}
 
 	events.append("miss")
@@ -53,6 +56,7 @@ func run_possession(
 				"events": events,
 				"points_scored": second_points,
 				"time_consumed": time_consumed,
+				"visual_steps": _build_visual_steps(offense_team, rebounder, "second_chance_three" if second_points == 3 else "second_chance_two", second_points, true, [shooter, rebounder], events, time_consumed),
 			}
 		events.append("second chance miss")
 
@@ -61,6 +65,7 @@ func run_possession(
 		"events": events,
 		"points_scored": 0,
 		"time_consumed": time_consumed,
+		"visual_steps": _build_visual_steps(offense_team, shooter, "miss", 0, false, [], events, time_consumed),
 	}
 
 
@@ -89,3 +94,140 @@ func _get_make_chance(shooter: PlayerData, defense_team: TeamData, is_three: boo
 	base += sim_config.make_bias
 	base *= difficulty_config.get_sim_efficiency()
 	return clampf(base, 0.18, 0.72)
+
+
+func _build_visual_steps(
+	offense_team: TeamData,
+	final_player: PlayerData,
+	final_kind: String,
+	points: int,
+	prefer_second_chance: bool,
+	required_setup_players: Array[PlayerData],
+	events: PackedStringArray,
+	time_consumed: float
+) -> Array[Dictionary]:
+	var steps: Array[Dictionary] = []
+	var seed_text: String = "%s|%s|%d|%0.2f" % [offense_team.abbreviation, "|".join(events), points, time_consumed]
+	var total_steps: int = _get_visual_step_count(seed_text, prefer_second_chance, required_setup_players.size())
+	var setup_count: int = maxi(total_steps - 1, 0)
+	var required_setup_count: int = mini(required_setup_players.size(), setup_count)
+	for index in required_setup_count:
+		var setup_player: PlayerData = required_setup_players[index]
+		var required_kind: String = "missed_jumper" if index == 0 else "offensive_board"
+		steps.append(_create_visual_step(required_kind, setup_player, 0, false))
+	var remaining_setup_count: int = setup_count - required_setup_count
+	for index in remaining_setup_count:
+		var setup_seed: String = "%s|setup|%d" % [seed_text, index]
+		var setup_actor: PlayerData = _choose_visual_player(offense_team.players, setup_seed)
+		var setup_kind: String = _choose_setup_kind(setup_seed)
+		steps.append(_create_visual_step(setup_kind, setup_actor, 0, false))
+	steps.append(_create_visual_step(_choose_final_kind(final_kind, seed_text), final_player, points, true))
+	return steps
+
+
+func _get_visual_step_count(seed_text: String, prefer_second_chance: bool, required_setup_count: int) -> int:
+	var min_count: int = clampi(sim_config.visual_step_min, 1, 4)
+	var max_count: int = clampi(sim_config.visual_step_max, min_count, 4)
+	var required_count: int = clampi(required_setup_count + 1, min_count, max_count)
+	if prefer_second_chance:
+		min_count = maxi(min_count, required_count)
+	return min_count + _hash_to_index(seed_text, max_count - min_count + 1)
+
+
+func _choose_setup_kind(seed_text: String) -> String:
+	var setup_kinds: PackedStringArray = PackedStringArray([
+		"pass",
+		"drive",
+		"crossover",
+		"kickout",
+		"pick_and_roll",
+	])
+	return setup_kinds[_hash_to_index(seed_text, setup_kinds.size())]
+
+
+func _choose_final_kind(result_kind: String, seed_text: String) -> String:
+	match result_kind:
+		"made_three":
+			var three_kinds: PackedStringArray = PackedStringArray(["corner_three", "jump_shot"])
+			return three_kinds[_hash_to_index(seed_text, three_kinds.size())]
+		"made_two":
+			var two_kinds: PackedStringArray = PackedStringArray(["jump_shot", "layup", "alley_oop", "dunk", "breakaway_layup"])
+			return two_kinds[_hash_to_index(seed_text, two_kinds.size())]
+		"second_chance_three":
+			var second_three_kinds: PackedStringArray = PackedStringArray(["corner_three", "jump_shot"])
+			return second_three_kinds[_hash_to_index(seed_text, second_three_kinds.size())]
+		"second_chance_two":
+			var second_two_kinds: PackedStringArray = PackedStringArray(["putback", "layup", "dunk"])
+			return second_two_kinds[_hash_to_index(seed_text, second_two_kinds.size())]
+		"turnover":
+			var turnover_kinds: PackedStringArray = PackedStringArray(["turnover", "steal"])
+			return turnover_kinds[_hash_to_index(seed_text, turnover_kinds.size())]
+		"miss":
+			var miss_kinds: PackedStringArray = PackedStringArray(["missed_jumper", "blocked_shot", "defensive_board"])
+			return miss_kinds[_hash_to_index(seed_text, miss_kinds.size())]
+	return "turnover"
+
+
+func _choose_visual_player(players: Array[PlayerData], seed_text: String) -> PlayerData:
+	if players.is_empty():
+		return null
+	return players[_hash_to_index(seed_text, players.size())]
+
+
+func _hash_to_index(seed_text: String, size: int) -> int:
+	if size <= 0:
+		return 0
+	return absi(seed_text.hash()) % size
+
+
+func _create_visual_step(kind: String, player: PlayerData, points: int, is_final: bool) -> Dictionary:
+	var player_name: String = player.display_name if player != null else "AWY"
+	var text_value: String = _get_visual_step_text(kind, player_name)
+	return {
+		"text": text_value,
+		"kind": kind,
+		"player": player_name,
+		"points": points,
+		"is_final": is_final,
+	}
+
+
+func _get_visual_step_text(kind: String, player_name: String) -> String:
+	match kind:
+		"pass":
+			return "Pass to %s" % player_name
+		"drive":
+			return "Drive by %s" % player_name
+		"crossover":
+			return "Crossover from %s" % player_name
+		"kickout":
+			return "Kickout to %s" % player_name
+		"pick_and_roll":
+			return "Pick-and-roll to %s" % player_name
+		"jump_shot":
+			return "Jump shot from %s" % player_name
+		"corner_three":
+			return "Corner three from %s" % player_name
+		"layup":
+			return "Layup from %s" % player_name
+		"alley_oop":
+			return "Alley-oop from %s" % player_name
+		"dunk":
+			return "Dunk from %s" % player_name
+		"putback":
+			return "Putback from %s" % player_name
+		"breakaway_layup":
+			return "Breakaway layup from %s" % player_name
+		"turnover":
+			return "Turnover from %s" % player_name
+		"steal":
+			return "Steal from %s" % player_name
+		"missed_jumper":
+			return "Missed jumper from %s" % player_name
+		"blocked_shot":
+			return "Blocked shot from %s" % player_name
+		"defensive_board":
+			return "Defensive board by HOM"
+		"offensive_board":
+			return "Offensive board by %s" % player_name
+	return "Turnover from %s" % player_name

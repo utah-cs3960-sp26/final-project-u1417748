@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-04-15
+
+### Opponent sim action banner implemented and validated
+
+- extended `OpponentSimController.run_possession()` so every opponent possession now returns deterministic `visual_steps` alongside `events`, `points_scored`, and `time_consumed`
+- added tunable `visual_step_min`, `visual_step_max`, and `visual_step_duration` settings to `OpponentSimConfig`
+- added `OpponentSimBanner` under `UIRoot`, with a centered safe-width black `80%` opacity action strip, readable wrapped text, full-screen tap capture while visible, and debug layout/text accessors
+- refactored `GameCoordinator` so `OPPONENT_SIM` persists while the visual sequence plays; score and clock are now applied only after the final step completes or is skipped
+- hid the live scoreboard and bottom control panel during opponent-sim action text, then restored them after the reset returns to `LIVE_OFFENSE`
+- added coordinator and scenario helpers for forced opponent-sim entry/results, plus deterministic scenario coverage for one-step score, multi-step score, no-score turnover, tap-skip, and low-clock game-over
+- updated existing defensive-rebound, steal, turnover, made-shot reset, and long-run scenarios to account for the staged opponent sim delay
+- reran validation after implementation and the transient UI-hide pass: pure logic `1681`, scenarios `18`, balance `4`, failures `2`; all banner-specific checks and scenarios passed, with the remaining failures limited to existing shot-followthrough smoke checks
+
+### Opponent sim action banner docs prepared for implementation
+
+- documented the planned shift from instant opponent-sim jump cuts to `1..4` visible action beats shown in a centered black `80%` opacity banner
+- recorded the intended action vocabulary for setup, scoring, and no-score outcomes, with the final visible action required to match the resolved `points_scored`
+- added test-plan coverage for visual-step generation, deterministic score/no-score seeds, banner layout, one-second auto-advance, tap-to-advance, deferred score/clock application, and low-clock game-over resolution
+- noted that the opponent sim remains text-presented rather than a live animated defensive sequence
+
 ## 2026-04-14
 
 ### Scored-ball follow-through now hands camera control over to the landing frame immediately

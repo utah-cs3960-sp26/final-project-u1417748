@@ -29,7 +29,7 @@ value = 2
 [sub_resource type="Resource" id="Action_wait_score"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 2.4
+seconds = 7.0
 
 [sub_resource type="Resource" id="Action_pause"]
 script = ExtResource("2")
@@ -58,7 +58,7 @@ vector = Vector2(320, 640)
 [sub_resource type="Resource" id="Action_wait_rebound"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 2.8
+seconds = 8.0
 
 [sub_resource type="Resource" id="Expectation_state"]
 script = ExtResource("3")

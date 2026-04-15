@@ -12,7 +12,7 @@ target_id = "PG"
 [sub_resource type="Resource" id="ScenarioAction_wait"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 0.5
+seconds = 4.3
 
 [sub_resource type="Resource" id="ScenarioExpectation_state"]
 script = ExtResource("3")

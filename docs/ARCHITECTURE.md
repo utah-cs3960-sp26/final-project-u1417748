@@ -7,6 +7,7 @@
   - `Entities`
   - `Systems/InputController`
   - `UIRoot/HUD`
+  - `UIRoot/OpponentSimBanner`
   - `UIRoot/PauseOverlay`
   - `UIRoot/GameOverOverlay`
   - `UIRoot/FeedbackText`
@@ -28,7 +29,9 @@
 - owns state transitions
 - runs possession resets
 - drives ball flight, rebound resolution, and opponent sim
-- owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim takes over
+- owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim action banner takes over
+- owns staged opponent-sim presentation: the sim result is generated and logged immediately, while score, clock, and possession reset are deferred until the final visible action beat completes
+- owns the transient opponent-sim match-UI hide flag so the scoreboard and bottom control panel disappear while action text is visible and restore only when human offense resumes
 - owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `control_panel_rect`, `control_zone_rects`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
 - defines `banner_rect` as the compact scoreboard-card bounds anchored above the control panel's left `SHOOT` half rather than as a top banner strip
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
@@ -56,6 +59,8 @@
   - also renders gameplay-only overlays like the light-blue focused-pass ring and trajectory dots while leaving joystick art and shot-meter rendering to the dedicated control panel
 - `HUD`
   - renders the cropped textured scoreboard as a compact bottom-left card above the `SHOOT` half of the control panel, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
+- `OpponentSimBanner`
+  - captures taps only while `OPPONENT_SIM` is presenting, renders a centered full-width black action banner at `80%` opacity, exposes layout/text snapshots for smoke coverage, and emits advance requests that move one visual step at a time
 - `ControlPanel`
   - renders the visible bottom-third control panel, keeping every button on a shared dark neutral idle base until the active drag or a direct press swaps that zone into its action color, while also drawing the joystick art, pass badges, and the widened shot meter that spans the combined `SHOOT | DUNK` top row during `SHOT_AIM`
 - `ShotController`
@@ -90,6 +95,7 @@
   - man assignments, arrival-steered guard recovery, contests, blocks, and stationary pressure turnovers
 - `OpponentSimController`
   - ratings-driven off-screen possession resolution
+  - returns log-oriented `events` plus presentation-oriented `visual_steps`; each possession has `1..4` visible steps, and the final step matches `points_scored`
 
 ## Data
 

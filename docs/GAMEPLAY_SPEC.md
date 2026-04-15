@@ -6,7 +6,7 @@
 2. Control the offensive ballhandler.
 3. Use the visible bottom-third control panel for movement, passes, shots, and dunks.
 4. Resolve score, miss, steal, out-of-bounds, or rebound.
-5. If defense gains possession, run the opponent sim and reset to a new offensive possession.
+5. If defense gains possession, run the opponent sim, present its visible action beats, then reset to a new offensive possession.
 6. Finish the current live shot or rebound at the buzzer, then end the game.
 
 ## Controls
@@ -40,7 +40,7 @@
 - The first player to bring the live ball inside their claim radius wins the pass. If the receiver and defender arrive on the same frame, the offense keeps the ball.
 - A successful catch transfers control to the receiver.
 - Defenders can intercept long or cross-court lanes.
-- A completed steal enters a short `STEAL_RESOLVE` beat so the defender visibly secures the ball before the opponent sim jump-cut.
+- A completed steal enters a short `STEAL_RESOLVE` beat so the defender visibly secures the ball before the opponent sim action banner takes over.
 - Out-of-bounds passes become turnovers.
 
 ### Shooting
@@ -138,6 +138,16 @@ Spacing nudges keep off-ball players from collapsing on the ballhandler.
 - consumes plausible clock
 - uses player ratings and difficulty multipliers
 - can produce turnover, miss, 2PT, 3PT, offensive rebound, and second-chance points
+- presents `1..4` short action beats before the possession resolves on screen
+- each action beat appears in a centered horizontal black banner at `80%` opacity
+- the live scoreboard card and bottom control panel are hidden while opponent action text is visible
+- each action beat auto-advances after `1.0` second, and a screen press during `OPPONENT_SIM` advances to the next beat immediately
+- the final visible action is the outcome beat and must match the resolved score result
+- scoring outcome beats include short basketball descriptions such as `Jump shot from {player}`, `Corner three from {player}`, `Layup from {player}`, `Alley-oop from {player}`, `Dunk from {player}`, `Putback from {player}`, and `Breakaway layup from {player}`
+- no-score outcome beats include short descriptions such as `Turnover from {player}`, `Steal from {player}`, `Missed jumper from {player}`, `Blocked shot from {player}`, and `Defensive board by HOM`
+- setup beats may include actions such as `Pass to {player}`, `Drive by {player}`, `Crossover from {player}`, `Kickout to {player}`, and `Pick-and-roll to {player}`
+- score and clock changes apply only after the final action beat completes or is skipped
+- the scoreboard and controls reappear only after the game resets into `LIVE_OFFENSE` with a human ballhandler
 - logs each possession sequence to `user://logs/`
 
 ## State Machine

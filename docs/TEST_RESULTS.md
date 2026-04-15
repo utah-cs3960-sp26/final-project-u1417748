@@ -1,8 +1,12 @@
 # Test Results
 
+## Opponent Sim Action Banner Validation
+
+The opponent sim action banner implementation was validated with the project headless suite. Banner-specific logic, UI smoke coverage, and all new scenario resources passed. The full suite still exits non-zero because two existing shot-followthrough smoke checks are failing outside the opponent-sim banner path.
+
 ## Environment
 
-- Date: 2026-04-14
+- Date: 2026-04-15
 - Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
 - Engine used for validation: Godot 4.6.1 stable
 
@@ -11,7 +15,7 @@
 Gameplay boot smoke:
 
 ```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . res://scenes/GameRoot.tscn --quit-after 3
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit
 ```
 
 Automated suite:
@@ -22,18 +26,34 @@ Automated suite:
 
 ## Automated Result
 
-Final headless suite status: pass
+Final headless suite status: fail, with non-banner failures only
 
-- Pure logic: 1648 / 1648
-- Scenarios: 13 / 13
+- Pure logic: 1679 / 1681
+- Scenarios: 18 / 18
 - Balance: 4 / 4
-- Failures: 0
+- Failures: 2
+
+Failing pure-logic smoke checks:
+
+- `guided make bounce starts only after floor contact`
+- `straight dunk keeps moving through the landing after launch`
+
+Opponent banner-specific validation passed:
+
+- `run_possession()` returns `visual_steps` with a clamped `1..4` count.
+- Every visual step has non-empty banner-ready text.
+- Final visual-step points match `points_scored`.
+- Repeating the same seed produces the same visual-step sequence.
+- The coordinator smoke verified score and clock stay pending while the first banner beat is visible.
+- The banner layout smoke verified full safe-width coverage, vertical centering, black `0.8` alpha, and matching current-step text.
+- The coordinator smoke verified the scoreboard and controls hide while the banner is visible and restore when `LIVE_OFFENSE` resumes.
+- One-second auto-advance, tap-to-advance, pause freeze/resume, final-step completion, score/time application exactly once, and banner hide all passed.
 
 Balance metrics from the final run:
 
-- `difficulty_order`: easy `0.91`, normal `1.04`, hard `1.29`
+- `difficulty_order`: easy `0.92`, normal `1.08`, hard `1.30`
 - `pass_risk`: short `0.00`, long `0.23`
-- `rebound_distribution`: offense `0.31`, defense `0.69`
+- `rebound_distribution`: offense `0.32`, defense `0.68`
 - `shot_quality`: green `1.0`, red `0.0`, contested green `1.0`, contested green window width `0.180000007152557`
 
 ## Scenario Result
@@ -49,6 +69,11 @@ Passed scenarios:
 - Late Miss Timeout
 - Long Run No Softlock
 - Offensive Rebound Continuation
+- Opponent Banner Game Over
+- Opponent Banner Multi-Step Score
+- Opponent Banner No-Score Turnover
+- Opponent Banner One-Step Score
+- Opponent Banner Tap Skip
 - Out Of Bounds Turnover
 - Pause Resume Safety
 - Stationary Pressure Turnover
@@ -56,7 +81,8 @@ Passed scenarios:
 
 ## Smoke Result
 
-- the standalone `GameRoot` boot smoke and the full headless suite both completed without script or runtime regressions in the new control flow
+- the standalone `GameRoot` boot smoke completed without script or runtime regressions in the new control flow
+- the opponent sim banner smoke passed with the sequence active in `OPPONENT_SIM`, score/clock deferred, scoreboard and controls hidden while text is visible, a centered `80%` black banner, one-second auto-advance, tap-to-advance, pause freeze/resume, exact once-only score/time application on final completion, and scoreboard/control restoration when offense resumes
 - the visible control panel now occupies the safe-area bottom third as a two-row layout with an exact `50/50` top `SHOOT | DUNK` split above a taller `PASS | MOVE | PASS` row
 - the center `MOVE` zone is now both taller and wider than either `PASS` lane, keeping live joystick movement responsive while the left and right `PASS` lanes both route to the same highlighted default receiver
 - `PASS`, `SHOOT`, and `DUNK` now work as direct button taps even without a movement drag, and second-finger action taps still fire while the move drag is active

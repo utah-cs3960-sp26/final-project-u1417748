@@ -61,6 +61,7 @@ var ui_root: CanvasLayer
 var input_controller: InputController
 var hud: HUD
 var control_panel: Control
+var opponent_sim_banner
 var pause_overlay: PauseOverlay
 var game_over_overlay: GameOverOverlay
 var feedback_text: FeedbackText
@@ -107,6 +108,11 @@ var finish_logic_center_world_cached: Vector2 = Vector2.INF
 var finish_logic_center_screen_cached: Vector2 = Vector2.INF
 var defenders_disabled: bool = false
 var controls_visible: bool = true
+var opponent_sim_match_ui_hidden: bool = false
+var pending_opponent_sim_result: Dictionary = {}
+var opponent_sim_visual_steps: Array[Dictionary] = []
+var opponent_sim_visual_index: int = -1
+var opponent_sim_visual_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -128,6 +134,7 @@ func _resolve_nodes() -> void:
 	ui_root = root.get_node("UIRoot") as CanvasLayer
 	hud = ui_root.get_node("HUD") as HUD
 	control_panel = ui_root.get_node("ControlPanel") as Control
+	opponent_sim_banner = ui_root.get_node("OpponentSimBanner")
 	pause_overlay = ui_root.get_node("PauseOverlay") as PauseOverlay
 	game_over_overlay = ui_root.get_node("GameOverOverlay") as GameOverOverlay
 	feedback_text = ui_root.get_node("FeedbackText") as FeedbackText
@@ -183,6 +190,8 @@ func _apply_responsive_layout(sync_visuals: bool = true) -> void:
 		hud.apply_layout(layout_metrics)
 	if control_panel != null:
 		control_panel.apply_layout(layout_metrics)
+	if opponent_sim_banner != null:
+		opponent_sim_banner.apply_layout(layout_metrics)
 	if input_controller != null:
 		input_controller.set_control_layout(layout_metrics)
 	if sync_visuals:
@@ -359,6 +368,7 @@ func _wire_input_and_ui() -> void:
 	input_controller.shot_mode_requested.connect(_on_shot_mode_requested)
 	input_controller.shot_timing_tapped.connect(_on_shot_timing_tapped)
 	input_controller.pause_requested.connect(_toggle_pause)
+	opponent_sim_banner.advance_requested.connect(_on_opponent_sim_advance_requested)
 	hud.pause_pressed.connect(_toggle_pause)
 	pause_overlay.resume_pressed.connect(_resume_from_pause)
 	pause_overlay.show_controls_toggled.connect(_on_pause_overlay_show_controls_toggled)
@@ -402,6 +412,8 @@ func _start_new_match() -> void:
 	default_pass_target_details.clear()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
+	_clear_opponent_sim_sequence()
+	_set_opponent_sim_match_ui_hidden(false)
 	_set_ball_visual_hidden(null)
 	_clear_score_followthrough()
 	current_preview_points.clear()
@@ -433,6 +445,7 @@ func _reset_possession() -> void:
 	shot_controller.cancel_aim()
 	made_shot_animation_timer = 0.0
 	_clear_steal_resolve()
+	_clear_opponent_sim_sequence()
 	_clear_score_followthrough(false)
 	default_pass_target = null
 	default_pass_target_details.clear()
@@ -489,6 +502,8 @@ func _process(delta: float) -> void:
 			_update_shot_in_flight(scaled_delta)
 		GameState.State.REBOUND_LIVE:
 			_update_rebound_live(scaled_delta)
+		GameState.State.OPPONENT_SIM:
+			_update_opponent_sim_sequence(scaled_delta)
 	_sync_projection_visuals(scaled_delta)
 
 
@@ -995,14 +1010,144 @@ func _run_opponent_possession() -> void:
 	var result: Dictionary = opponent_sim_controller.run_possession(away_team, home_team, context.match_time_remaining, rng)
 	for event_line in result["events"]:
 		log_writer.log_sim(event_line)
-	context.away_score += result["points_scored"]
-	context.match_time_remaining = maxf(context.match_time_remaining - result["time_consumed"], 0.0)
+	_begin_opponent_sim_sequence(result)
+
+
+func _begin_opponent_sim_sequence(result: Dictionary) -> void:
+	pending_opponent_sim_result = result.duplicate(true)
+	opponent_sim_visual_steps = _normalize_opponent_sim_visual_steps(result.get("visual_steps", []))
+	opponent_sim_visual_index = 0
+	_set_opponent_sim_match_ui_hidden(true)
+	_show_current_opponent_sim_step()
+
+
+func _normalize_opponent_sim_visual_steps(raw_steps: Variant) -> Array[Dictionary]:
+	var steps: Array[Dictionary] = []
+	if raw_steps is Array:
+		for raw_step in raw_steps:
+			if raw_step is Dictionary:
+				var step: Dictionary = raw_step.duplicate(true)
+				var text_value: String = str(step.get("text", "")).strip_edges()
+				if text_value == "":
+					continue
+				step["text"] = text_value
+				step["is_final"] = false
+				steps.append(step)
+	if steps.is_empty():
+		steps.append({
+			"text": "Turnover from AWY",
+			"kind": "turnover",
+			"player": "AWY",
+			"points": 0,
+			"is_final": true,
+		})
+	while steps.size() > 4:
+		steps.pop_back()
+	for index in steps.size():
+		steps[index]["is_final"] = index == steps.size() - 1
+	return steps
+
+
+func _show_current_opponent_sim_step() -> void:
+	if opponent_sim_visual_steps.is_empty():
+		_complete_opponent_sim_sequence()
+		return
+	opponent_sim_visual_index = clampi(opponent_sim_visual_index, 0, opponent_sim_visual_steps.size() - 1)
+	var step: Dictionary = opponent_sim_visual_steps[opponent_sim_visual_index]
+	var text_value: String = str(step.get("text", ""))
+	opponent_sim_visual_timer = maxf(float(opponent_sim_config.visual_step_duration), 0.05)
+	if opponent_sim_banner != null:
+		opponent_sim_banner.show_action(text_value)
+	log_writer.log_event(
+		"opponent_sim_visual_step",
+		{
+			"index": opponent_sim_visual_index,
+			"count": opponent_sim_visual_steps.size(),
+			"text": text_value,
+			"kind": str(step.get("kind", "")),
+			"points": int(step.get("points", 0)),
+			"is_final": bool(step.get("is_final", false)),
+		}
+	)
+
+
+func _update_opponent_sim_sequence(delta: float) -> void:
+	if pending_opponent_sim_result.is_empty():
+		return
+	opponent_sim_visual_timer = maxf(opponent_sim_visual_timer - delta, 0.0)
+	if opponent_sim_visual_timer <= 0.0:
+		_advance_opponent_sim_sequence()
+
+
+func _advance_opponent_sim_sequence() -> void:
+	if pending_opponent_sim_result.is_empty():
+		return
+	if opponent_sim_visual_index >= opponent_sim_visual_steps.size() - 1:
+		_complete_opponent_sim_sequence()
+		return
+	opponent_sim_visual_index += 1
+	_show_current_opponent_sim_step()
+
+
+func _on_opponent_sim_advance_requested() -> void:
+	if context.current_state != GameState.State.OPPONENT_SIM:
+		return
+	_advance_opponent_sim_sequence()
+
+
+func _complete_opponent_sim_sequence() -> void:
+	if pending_opponent_sim_result.is_empty():
+		_clear_opponent_sim_sequence()
+		return
+	var result: Dictionary = pending_opponent_sim_result.duplicate(true)
+	var points_scored: int = int(result.get("points_scored", 0))
+	var time_consumed: float = float(result.get("time_consumed", 0.0))
+	context.away_score += points_scored
+	context.match_time_remaining = maxf(context.match_time_remaining - time_consumed, 0.0)
+	log_writer.log_event(
+		"opponent_sim_visual_complete",
+		{
+			"points_scored": points_scored,
+			"time_consumed": time_consumed,
+			"step_count": opponent_sim_visual_steps.size(),
+		}
+	)
+	_clear_opponent_sim_sequence()
 	_update_hud()
 	if context.match_time_remaining <= 0.0:
 		_finish_game()
 		return
 	_reset_possession()
 	_change_state(GameState.State.LIVE_OFFENSE)
+	_set_opponent_sim_match_ui_hidden(false)
+
+
+func _clear_opponent_sim_sequence() -> void:
+	pending_opponent_sim_result.clear()
+	opponent_sim_visual_steps.clear()
+	opponent_sim_visual_index = -1
+	opponent_sim_visual_timer = 0.0
+	if opponent_sim_banner != null:
+		opponent_sim_banner.hide_banner()
+
+
+func _set_opponent_sim_match_ui_hidden(hidden: bool) -> void:
+	if opponent_sim_match_ui_hidden == hidden:
+		_sync_match_ui_visibility()
+		return
+	opponent_sim_match_ui_hidden = hidden
+	_sync_match_ui_visibility()
+	log_writer.log_event("opponent_sim_match_ui_visibility", {"hidden": opponent_sim_match_ui_hidden})
+
+
+func _sync_match_ui_visibility() -> void:
+	if hud != null:
+		hud.visible = not opponent_sim_match_ui_hidden
+	if control_panel != null:
+		if input_controller != null:
+			control_panel.set_panel_state(_build_control_panel_state())
+		else:
+			control_panel.visible = controls_visible and not opponent_sim_match_ui_hidden
 
 
 func _begin_rebound(override_zone: Vector2 = Vector2.INF) -> void:
@@ -1016,6 +1161,7 @@ func _begin_rebound(override_zone: Vector2 = Vector2.INF) -> void:
 
 func _finish_game() -> void:
 	context.gameplay_time_scale = 1.0
+	_clear_opponent_sim_sequence()
 	_change_state(GameState.State.GAME_OVER)
 	game_over_overlay.visible = true
 	game_over_overlay.show_result(context.home_score, context.away_score)
@@ -1408,12 +1554,16 @@ func begin_test_mode(seed: int) -> void:
 	_clear_active_dunk_root_motion()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()
+	_clear_opponent_sim_sequence()
+	_set_opponent_sim_match_ui_hidden(false)
 	log_writer.set_prefix("test_%d" % seed)
 	log_writer.clear_runtime_logs()
 
 
 func apply_test_setup(home_score: int, away_score: int, time_remaining: float) -> void:
 	_clear_score_followthrough()
+	_clear_opponent_sim_sequence()
+	_set_opponent_sim_match_ui_hidden(false)
 	context.home_score = home_score
 	context.away_score = away_score
 	context.match_time_remaining = time_remaining
@@ -1493,6 +1643,27 @@ func match_log_contains(fragment: String) -> bool:
 	return false
 
 
+func get_opponent_sim_sequence_snapshot() -> Dictionary:
+	var current_text: String = ""
+	if opponent_sim_visual_index >= 0 and opponent_sim_visual_index < opponent_sim_visual_steps.size():
+		current_text = str(opponent_sim_visual_steps[opponent_sim_visual_index].get("text", ""))
+	return {
+		"active": not pending_opponent_sim_result.is_empty(),
+		"current_index": opponent_sim_visual_index,
+		"action_count": opponent_sim_visual_steps.size(),
+		"current_text": current_text,
+		"seconds_remaining": opponent_sim_visual_timer,
+		"pending_points_scored": int(pending_opponent_sim_result.get("points_scored", 0)),
+		"pending_time_consumed": float(pending_opponent_sim_result.get("time_consumed", 0.0)),
+	}
+
+
+func get_opponent_sim_banner_snapshot() -> Dictionary:
+	if opponent_sim_banner == null:
+		return {}
+	return opponent_sim_banner.get_layout_snapshot()
+
+
 func get_offense_player_by_role(role: String) -> PlayerController:
 	for player in offense_players:
 		if player.get_position_role() == role:
@@ -1525,6 +1696,54 @@ func test_set_defenders_disabled(enabled: bool) -> void:
 
 func test_set_controls_visible(enabled: bool) -> void:
 	_set_controls_visible(enabled)
+
+
+func test_force_opponent_sim() -> void:
+	_run_opponent_possession()
+
+
+func test_force_opponent_sim_result(points_scored: int = 0, action_count: int = 1, time_consumed: float = 4.0) -> void:
+	var clamped_count: int = clampi(action_count, 1, 4)
+	var steps: Array[Dictionary] = []
+	for index in maxi(clamped_count - 1, 0):
+		var setup_text: String = "Pass to AWY" if index % 2 == 0 else "Drive by AWY"
+		steps.append({
+			"text": setup_text,
+			"kind": "pass" if index % 2 == 0 else "drive",
+			"player": "AWY",
+			"points": 0,
+			"is_final": false,
+		})
+	var final_text: String = "Turnover from AWY"
+	var final_kind: String = "turnover"
+	if points_scored == 2:
+		final_text = "Layup from AWY"
+		final_kind = "layup"
+	elif points_scored == 3:
+		final_text = "Corner three from AWY"
+		final_kind = "corner_three"
+	steps.append({
+		"text": final_text,
+		"kind": final_kind,
+		"player": "AWY",
+		"points": points_scored,
+		"is_final": true,
+	})
+	_clear_steal_resolve()
+	_clear_pending_shot_release()
+	_clear_active_shot_sequence()
+	_set_ball_visual_hidden(null)
+	_change_state(GameState.State.OPPONENT_SIM)
+	_begin_opponent_sim_sequence({
+		"events": PackedStringArray(["test opponent sim"]),
+		"points_scored": points_scored,
+		"time_consumed": time_consumed,
+		"visual_steps": steps,
+	})
+
+
+func test_advance_opponent_sim_sequence() -> void:
+	_advance_opponent_sim_sequence()
 
 
 func test_force_scoring_shot(role: String = "", shot_value: int = 0) -> void:
@@ -2209,7 +2428,7 @@ func _build_court_input_feedback() -> Dictionary:
 
 func _build_control_panel_state() -> Dictionary:
 	var panel_state: Dictionary = input_controller.get_touch_feedback_snapshot() if input_controller != null else {}
-	panel_state["controls_visible"] = controls_visible
+	panel_state["controls_visible"] = controls_visible and not opponent_sim_match_ui_hidden
 	panel_state["pass_available"] = context.current_state == GameState.State.LIVE_OFFENSE and default_pass_target != null
 	panel_state["pass_target_role"] = default_pass_target.get_position_role() if default_pass_target != null else ""
 	panel_state["pass_target_name"] = default_pass_target.get_display_name() if default_pass_target != null else ""
@@ -3089,20 +3308,12 @@ func _set_controls_visible(enabled: bool) -> void:
 	if controls_visible == enabled:
 		if pause_overlay != null:
 			pause_overlay.set_controls_visible_enabled(controls_visible)
-		if control_panel != null:
-			if input_controller != null:
-				control_panel.set_panel_state(_build_control_panel_state())
-			else:
-				control_panel.visible = controls_visible
+		_sync_match_ui_visibility()
 		return
 	controls_visible = enabled
 	if pause_overlay != null:
 		pause_overlay.set_controls_visible_enabled(controls_visible)
-	if control_panel != null:
-		if input_controller != null:
-			control_panel.set_panel_state(_build_control_panel_state())
-		else:
-			control_panel.visible = controls_visible
+	_sync_match_ui_visibility()
 	log_writer.log_event("controls_visibility_toggled", {"controls_visible": controls_visible})
 	log_writer.log_match("Controls %s" % ("shown" if controls_visible else "hidden"))
 
