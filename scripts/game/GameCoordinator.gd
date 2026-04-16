@@ -2633,13 +2633,31 @@ func _build_court_input_feedback() -> Dictionary:
 
 func _build_control_panel_state() -> Dictionary:
 	var panel_state: Dictionary = input_controller.get_touch_feedback_snapshot() if input_controller != null else {}
+	var dunk_button_state: Dictionary = _build_dunk_button_state()
 	panel_state["controls_visible"] = controls_visible and not opponent_sim_match_ui_hidden
 	panel_state["pass_available"] = context.current_state == GameState.State.LIVE_OFFENSE and default_pass_target != null
 	panel_state["pass_target_role"] = default_pass_target.get_position_role() if default_pass_target != null else ""
 	panel_state["pass_target_name"] = default_pass_target.get_display_name() if default_pass_target != null else ""
+	panel_state["dunk_available"] = bool(dunk_button_state.get("available", false))
+	panel_state["dunk_commits_dunk"] = bool(dunk_button_state.get("dunk_eligible", false))
 	panel_state["interactive"] = context.current_state == GameState.State.LIVE_OFFENSE
 	panel_state["shot_meter"] = _get_current_shot_meter_snapshot()
 	return panel_state
+
+
+func _build_dunk_button_state() -> Dictionary:
+	if context.current_state != GameState.State.LIVE_OFFENSE or current_ballhandler == null:
+		return {
+			"available": false,
+			"close_finish_eligible": false,
+			"dunk_eligible": false,
+		}
+	var finish_gate_state: Dictionary = _build_close_finish_gate_state(current_ballhandler, Vector2.INF, "dunk")
+	return {
+		"available": bool(finish_gate_state.get("close_finish_eligible", false)),
+		"close_finish_eligible": bool(finish_gate_state.get("close_finish_eligible", false)),
+		"dunk_eligible": bool(finish_gate_state.get("dunk_eligible", false)),
+	}
 
 
 func _get_current_shot_meter_snapshot() -> Dictionary:
@@ -3250,6 +3268,56 @@ func _resolve_shot_release_visual(player: PlayerController, motion_vector_overri
 	}
 
 
+func _build_close_finish_gate_state(
+	player: PlayerController,
+	motion_vector_override: Vector2 = Vector2.INF,
+	control_intent: String = "shot_layout"
+) -> Dictionary:
+	if player == null:
+		return {
+			"distance_to_hoop": INF,
+			"lateral_offset": INF,
+			"speed": 0.0,
+			"toward_hoop_dot": -1.0,
+			"dunk_rating": 0,
+			"close_finish_eligible": false,
+			"dunk_eligible": false,
+			"force_no_defenders_dunk": false,
+			"control_intent": control_intent,
+		}
+	var motion_vector: Vector2 = motion_vector_override
+	if motion_vector == Vector2.INF:
+		motion_vector = _resolve_player_motion_vector(player)
+	var speed: float = motion_vector.length()
+	var finish_center_world: Vector2 = get_finish_logic_center_world()
+	var to_hoop: Vector2 = finish_center_world - player.world_position
+	var distance_to_hoop: float = to_hoop.length()
+	var lateral_offset: float = absf(player.world_position.x - finish_center_world.x)
+	var player_data: PlayerData = player.get_player_data() if player != null else null
+	var dunk_rating: int = player_data.dunk if player_data != null else 0
+	var force_no_defenders_dunk: bool = control_intent == "dunk" and not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
+	var toward_hoop_dot: float = -1.0
+	if motion_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
+		toward_hoop_dot = motion_vector.normalized().dot(to_hoop.normalized())
+	var toward_hoop: bool = speed >= player_animation_config.finish_momentum_speed_threshold and toward_hoop_dot >= player_animation_config.toward_hoop_dot_threshold
+	var close_finish_eligible: bool = force_no_defenders_dunk or (toward_hoop and distance_to_hoop <= player_animation_config.close_finish_radius)
+	var dunk_eligible: bool = force_no_defenders_dunk or (close_finish_eligible \
+		and distance_to_hoop <= player_animation_config.dunk_finish_radius \
+		and speed >= player_animation_config.dunk_momentum_speed_threshold \
+		and dunk_rating >= player_animation_config.dunk_rating_min)
+	return {
+		"distance_to_hoop": distance_to_hoop,
+		"lateral_offset": lateral_offset,
+		"speed": speed,
+		"toward_hoop_dot": toward_hoop_dot,
+		"dunk_rating": dunk_rating,
+		"close_finish_eligible": close_finish_eligible,
+		"dunk_eligible": dunk_eligible,
+		"force_no_defenders_dunk": force_no_defenders_dunk,
+		"control_intent": control_intent,
+	}
+
+
 func _build_shot_release_visual_decision(
 	player: PlayerController,
 	motion_vector_override: Vector2 = Vector2.INF,
@@ -3271,29 +3339,18 @@ func _build_shot_release_visual_decision(
 			"family": "jumper_release",
 			"variant_index": 1,
 		}
-	var motion_vector: Vector2 = motion_vector_override
-	if motion_vector == Vector2.INF:
-		motion_vector = _resolve_player_motion_vector(player)
-	var speed: float = motion_vector.length()
+	var finish_gate_state: Dictionary = _build_close_finish_gate_state(player, motion_vector_override, control_intent)
+	var speed: float = float(finish_gate_state.get("speed", 0.0))
 	var defender_distance: float = defender_distance_override
 	if defender_distance < 0.0:
 		defender_distance = _get_primary_defender_distance(player)
-	var finish_center_world: Vector2 = get_finish_logic_center_world()
-	var to_hoop: Vector2 = finish_center_world - player.world_position
-	var distance_to_hoop: float = to_hoop.length()
-	var lateral_offset: float = absf(player.world_position.x - finish_center_world.x)
-	var player_data: PlayerData = player.get_player_data() if player != null else null
-	var dunk_rating: int = player_data.dunk if player_data != null else 0
-	var force_no_defenders_dunk: bool = control_intent == "dunk" and not _has_active_defenders() and distance_to_hoop <= player_animation_config.close_finish_radius
-	var toward_hoop_dot: float = -1.0
-	if motion_vector.length_squared() > 0.001 and to_hoop.length_squared() > 0.001:
-		toward_hoop_dot = motion_vector.normalized().dot(to_hoop.normalized())
-	var toward_hoop: bool = speed >= player_animation_config.finish_momentum_speed_threshold and toward_hoop_dot >= player_animation_config.toward_hoop_dot_threshold
-	var close_finish_eligible: bool = force_no_defenders_dunk or (toward_hoop and distance_to_hoop <= player_animation_config.close_finish_radius)
-	var dunk_eligible: bool = force_no_defenders_dunk or (close_finish_eligible \
-		and distance_to_hoop <= player_animation_config.dunk_finish_radius \
-		and speed >= player_animation_config.dunk_momentum_speed_threshold \
-		and dunk_rating >= player_animation_config.dunk_rating_min)
+	var distance_to_hoop: float = float(finish_gate_state.get("distance_to_hoop", INF))
+	var lateral_offset: float = float(finish_gate_state.get("lateral_offset", INF))
+	var toward_hoop_dot: float = float(finish_gate_state.get("toward_hoop_dot", -1.0))
+	var dunk_rating: int = int(finish_gate_state.get("dunk_rating", 0))
+	var close_finish_eligible: bool = bool(finish_gate_state.get("close_finish_eligible", false))
+	var dunk_eligible: bool = bool(finish_gate_state.get("dunk_eligible", false))
+	var force_no_defenders_dunk: bool = bool(finish_gate_state.get("force_no_defenders_dunk", false))
 	var decision: Dictionary = {
 		"allowed": true,
 		"distance_to_hoop": distance_to_hoop,

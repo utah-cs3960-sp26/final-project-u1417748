@@ -1218,8 +1218,9 @@ func _run_pure_logic() -> void:
 			str(neutral_shoot_visual.get("base_color_html", "")) == "1b1d3a"
 				and str(neutral_move_visual.get("base_color_html", "")) == "1b1d3a"
 				and str(neutral_pass_visual.get("base_color_html", "")) == "1b1d3a"
-				and str(neutral_dunk_visual.get("base_color_html", "")) == "1b1d3a",
-			"all control-panel buttons use the neutral dark base color while idle",
+				and bool(neutral_dunk_visual.get("disabled", false))
+				and str(neutral_dunk_visual.get("base_color_html", "")) != "1b1d3a",
+			"control panel keeps active buttons neutral while tinting dunk disabled when no close finish is available",
 			str({
 				"shoot": neutral_shoot_visual,
 				"move": neutral_move_visual,
@@ -1298,11 +1299,22 @@ func _run_pure_logic() -> void:
 	var layout_pg: PlayerController = smoke_coordinator.get_offense_player_by_role("PG")
 	if layout_lc != null:
 		layout_lc.world_position = finish_logic_center_world + Vector2(18.0, 108.0)
+		layout_lc.velocity = (finish_logic_center_world - layout_lc.world_position).normalized() * 150.0
+		smoke_coordinator._set_ballhandler(layout_lc)
+		if smoke_coordinator.control_panel != null:
+			smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
+			var available_dunk_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("dunk")
+			_assert_true(
+				not bool(available_dunk_visual.get("disabled", true)),
+				"dunk button re-enables when the current ballhandler has a live close-finish action",
+				str(available_dunk_visual)
+			)
 		var layup_from_shoot: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_lc, Vector2(0.0, -150.0), INF, "shot_layout")
 		var dunk_from_dunk: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_lc, Vector2(0.0, -150.0), INF, "dunk")
 		_assert_true(str(layup_from_shoot.get("family", "")) == "close_finish_layup", "shoot intent near the rim resolves as a layup instead of a dunk", JSON.stringify(layup_from_shoot))
 		_assert_true(str(dunk_from_dunk.get("family", "")) == "close_finish_dunk", "dunk intent near the rim resolves as a dunk when eligible", JSON.stringify(dunk_from_dunk))
 	if layout_pg != null:
+		smoke_coordinator._set_ballhandler(layout_pg)
 		layout_pg.world_position = finish_logic_center_world + Vector2(18.0, 118.0)
 		var fallback_layup: Dictionary = smoke_coordinator._build_shot_release_visual_decision(layout_pg, Vector2(0.0, -140.0), INF, "dunk")
 		var far_dunk_ignored: Dictionary

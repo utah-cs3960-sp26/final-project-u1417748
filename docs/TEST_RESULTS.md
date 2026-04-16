@@ -206,3 +206,5 @@ The final pass added or updated deterministic coverage for:
 - finish-radius center stability from shot launch through landing, even while the camera transitions from player tracking to ball tracking
 - cached finish-marker screen targeting from pre-release camera states, plus a smoke assertion that the landed ball shares the same visible marker center
 - single-window `front_of_net` follow-through, no upward rendered motion before `floor_settle`, no hoop-render re-entry after clear, forced hoop-render clearing after the front-net exit threshold, landed-before-reset behavior, and buzzer completion after the new floor settle
+- latest headless suite after the dunk-button availability pass: Pure logic `1773`, Scenarios `18`, Balance `4`, Failures `2`; the only remaining failures were the pre-existing followthrough checks `guided make bounce starts only after floor contact` and `straight dunk keeps moving through the landing after launch`
+- control-panel smoke coverage now asserts that the `DUNK` zone starts visually disabled from the perimeter, then clears the disabled state once the active ballhandler enters a live close-finish window near the rim

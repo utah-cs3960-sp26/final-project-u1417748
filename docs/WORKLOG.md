@@ -569,3 +569,9 @@
 - tightened the buzzer path so expired-clock made shots finish the game as soon as the ball has completed the new floor settle instead of waiting on an outdated post-score timer
 - extended deterministic coverage for guided-make `net_exit -> floor_drop -> floor_settle` ordering, grounded landing on the supplied floor target, single-window `front_of_net` rendering, no render-phase re-entry after clear, floor-drop continuity against the last hoop-exit frame, landed-before-reset behavior, and a dunk auto-finish smoke case that shares the same landing target
 - reran the full headless suite after the render-handoff fix: Pure logic `1640`, Scenarios `13`, Balance `4`, Failures `0`
+
+### Dunk button disabled feedback
+
+- added a coordinator-owned `dunk_available` control-panel flag derived from the same non-random close-finish gates that drive dunk-intent resolution, so the HUD no longer invents a separate availability rule
+- updated `ControlPanel` to tint and dim the `DUNK` zone when the current ballhandler has no live close-finish action available, while leaving the existing pass-lane disabled treatment intact
+- extended deterministic smoke coverage to assert that the `DUNK` zone starts disabled from the perimeter and re-enables once the active ballhandler enters a live close-finish window near the rim

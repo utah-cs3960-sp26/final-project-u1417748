@@ -16,6 +16,7 @@ const DUNK_ACCENT_COLOR: Color = Color("ea6a68")
 const DISABLED_TINT: Color = Color(0.42, 0.42, 0.48, 0.86)
 const TEXT_COLOR: Color = Color(0.98, 0.98, 0.96, 1.0)
 const TEXT_OUTLINE_COLOR: Color = Color(0.15, 0.08, 0.12, 0.95)
+const DISABLED_TEXT_COLOR: Color = Color(0.72, 0.72, 0.76, 0.9)
 const JOYSTICK_BASE_COLOR: Color = Color("5565bb")
 const JOYSTICK_RING_COLOR: Color = Color("9cb7ff")
 const JOYSTICK_KNOB_COLOR: Color = Color("2d3158")
@@ -56,6 +57,7 @@ func set_panel_state(panel_state: Dictionary) -> void:
 	_panel_state = panel_state.duplicate(true)
 	visible = bool(_panel_state.get("controls_visible", true))
 	_sync_label_text()
+	_sync_label_visuals()
 	_apply_label_layouts()
 	queue_redraw()
 
@@ -99,6 +101,23 @@ func _sync_label_text() -> void:
 	var focus_text: String = pass_role if pass_available and pass_role != "" else "NO TARGET"
 	_pass_left_focus_label.text = focus_text
 	_pass_right_focus_label.text = focus_text
+
+
+func _sync_label_visuals() -> void:
+	var pass_available: bool = bool(_panel_state.get("pass_available", false))
+	var dunk_available: bool = bool(_panel_state.get("dunk_available", false))
+	_apply_zone_label_visual(_shoot_label, false)
+	_apply_zone_label_visual(_move_label, false)
+	_apply_zone_label_visual(_pass_left_label, not pass_available)
+	_apply_zone_label_visual(_pass_right_label, not pass_available)
+	_apply_zone_label_visual(_dunk_label, not dunk_available)
+
+
+func _apply_zone_label_visual(label: Label, disabled: bool) -> void:
+	if label == null:
+		return
+	label.add_theme_color_override("font_color", DISABLED_TEXT_COLOR if disabled else TEXT_COLOR)
+	label.add_theme_color_override("font_outline_color", TEXT_OUTLINE_COLOR)
 
 
 func _apply_label_layouts() -> void:
@@ -175,13 +194,14 @@ func _draw() -> void:
 	draw_rect(Rect2(panel_rect.position + Vector2(0.0, 6.0), panel_rect.size), PANEL_SHADOW_COLOR)
 
 	var pass_available: bool = bool(_panel_state.get("pass_available", false))
+	var dunk_available: bool = bool(_panel_state.get("dunk_available", false))
 	var highlight_zone: String = str(_panel_state.get("highlight_zone", ""))
 
-	_draw_zone(zone_rects.get("shoot", Rect2()), _resolve_zone_visual_state("shoot", highlight_zone, pass_available))
-	_draw_zone(zone_rects.get("move", Rect2()), _resolve_zone_visual_state("move", highlight_zone, pass_available))
-	_draw_zone(zone_rects.get("pass_left", Rect2()), _resolve_zone_visual_state("pass_left", highlight_zone, pass_available))
-	_draw_zone(zone_rects.get("pass_right", Rect2()), _resolve_zone_visual_state("pass_right", highlight_zone, pass_available))
-	_draw_zone(zone_rects.get("dunk", Rect2()), _resolve_zone_visual_state("dunk", highlight_zone, pass_available))
+	_draw_zone(zone_rects.get("shoot", Rect2()), _resolve_zone_visual_state("shoot", highlight_zone, pass_available, dunk_available))
+	_draw_zone(zone_rects.get("move", Rect2()), _resolve_zone_visual_state("move", highlight_zone, pass_available, dunk_available))
+	_draw_zone(zone_rects.get("pass_left", Rect2()), _resolve_zone_visual_state("pass_left", highlight_zone, pass_available, dunk_available))
+	_draw_zone(zone_rects.get("pass_right", Rect2()), _resolve_zone_visual_state("pass_right", highlight_zone, pass_available, dunk_available))
+	_draw_zone(zone_rects.get("dunk", Rect2()), _resolve_zone_visual_state("dunk", highlight_zone, pass_available, dunk_available))
 
 	_draw_pass_focus_badge(zone_rects.get("pass_left", Rect2()), pass_available, highlight_zone == "pass_left")
 	_draw_pass_focus_badge(zone_rects.get("pass_right", Rect2()), pass_available, highlight_zone == "pass_right")
@@ -209,14 +229,16 @@ func _draw_zone(zone_rect: Rect2, zone_visual_state: Dictionary) -> void:
 
 func get_zone_visual_state_snapshot(zone_name: String) -> Dictionary:
 	var pass_available: bool = bool(_panel_state.get("pass_available", false))
+	var dunk_available: bool = bool(_panel_state.get("dunk_available", false))
 	var highlight_zone: String = str(_panel_state.get("highlight_zone", ""))
-	return _resolve_zone_visual_state(zone_name, highlight_zone, pass_available).duplicate(true)
+	return _resolve_zone_visual_state(zone_name, highlight_zone, pass_available, dunk_available).duplicate(true)
 
 
-func _resolve_zone_visual_state(zone_name: String, highlight_zone: String, pass_available: bool) -> Dictionary:
+func _resolve_zone_visual_state(zone_name: String, highlight_zone: String, pass_available: bool, dunk_available: bool) -> Dictionary:
 	var palette: Dictionary = _get_zone_palette(zone_name)
 	var highlighted: bool = highlight_zone == zone_name
-	var disabled: bool = (zone_name == "pass_left" or zone_name == "pass_right") and not pass_available
+	var disabled: bool = ((zone_name == "pass_left" or zone_name == "pass_right") and not pass_available) \
+		or (zone_name == "dunk" and not dunk_available)
 	var resolved_base: Color = BUTTON_IDLE_COLOR
 	var resolved_accent: Color = BUTTON_IDLE_ACCENT_COLOR
 	if disabled:

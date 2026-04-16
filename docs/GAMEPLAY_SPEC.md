@@ -49,6 +49,7 @@
 - Tapping the top-right `DUNK` button directly requests the `dunk` intent.
 - Releasing a live gesture into the top-left `SHOOT` zone requests the `shot_layout` intent.
 - Releasing a live gesture into the top-right `DUNK` zone requests the `dunk` intent.
+- The top-right `DUNK` panel art shows a disabled state whenever the current ballhandler does not have a live close-finish action for the dunk-intent path, and re-enables once that same input would resolve to a close finish.
 - Releasing back into `MOVE`, outside the panel, or on a drag shorter than the action threshold just stops movement.
 - `SHOT_AIM` is an armed timing phase, not a hold-and-drag phase.
 - Gameplay stays at normal speed while the shot is armed.
