@@ -919,8 +919,20 @@ func _run_pure_logic() -> void:
 		for visual_step_value in visual_steps:
 			var visual_step: Dictionary = visual_step_value
 			var step_text: String = str(visual_step.get("text", ""))
+			var step_kind: String = str(visual_step.get("kind", ""))
+			var step_player_id: String = str(visual_step.get("player_id", ""))
+			var step_player_role: String = str(visual_step.get("player_role", ""))
+			var step_actor_team: String = str(visual_step.get("actor_team", ""))
+			_assert_true(step_kind.strip_edges() != "", "opponent sim visual step has kind", JSON.stringify(visual_step))
+			_assert_true(step_player_id.strip_edges() != "", "opponent sim visual step has player id", JSON.stringify(visual_step))
+			_assert_true(step_player_role.strip_edges() != "", "opponent sim visual step has player role", JSON.stringify(visual_step))
+			_assert_true(step_actor_team.strip_edges() != "", "opponent sim visual step has actor team", JSON.stringify(visual_step))
 			_assert_true(step_text.strip_edges() != "", "opponent sim visual step has text", JSON.stringify(visual_step))
 			_assert_true(not step_text.to_lower().contains("clock"), "opponent sim visual step omits clock text", step_text)
+			_assert_true(not step_text.to_lower().contains("debug"), "opponent sim visual step omits debug text", step_text)
+			_assert_true(not step_text.to_lower().contains("seed"), "opponent sim visual step omits seed text", step_text)
+			if int(visual_step.get("points", 0)) > 0:
+				_assert_true(bool(visual_step.get("is_final", false)), "scoring opponent sim visual step is final", JSON.stringify(visual_step))
 		var final_step: Dictionary = visual_steps[-1]
 		_assert_true(bool(final_step.get("is_final", false)), "opponent sim final visual step marked final", JSON.stringify(final_step))
 		_assert_true(int(final_step.get("points", 0)) == int(sim_result.get("points_scored", 0)), "opponent sim final visual step matches points", JSON.stringify({"final": final_step, "result": sim_result}))
@@ -1228,6 +1240,11 @@ func _run_pure_logic() -> void:
 	smoke_coordinator.input_controller.tap_test_control_button("shoot", 0.05, -90)
 	await get_tree().process_frame
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shoot button tap enters shot aim without movement", smoke_coordinator.get_state_name())
+	var direct_shoot_player: PlayerController = smoke_coordinator.current_ballhandler
+	if direct_shoot_player != null:
+		_assert_true(direct_shoot_player.get_debug_animation_family() == "shot_aim", "direct shoot button first tap holds aim pose instead of starting the release row", direct_shoot_player.get_debug_animation_family())
+	_assert_true(smoke_coordinator.pending_shot_release.is_empty(), "direct shoot button first tap does not stage a shot release", JSON.stringify(smoke_coordinator.pending_shot_release))
+	_assert_true(bool(smoke_court_view.shot_meter.get("visible", false)), "direct shoot button first tap shows the timing meter", JSON.stringify(smoke_court_view.shot_meter))
 	if smoke_coordinator.control_panel != null:
 		smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
 		var pressed_shoot_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("shoot")
@@ -1240,6 +1257,15 @@ func _run_pure_logic() -> void:
 		var panel_meter_rect: Rect2 = smoke_coordinator.control_panel.get_shot_meter_bar_rect_snapshot()
 		_assert_true(panel_meter_rect.size.x > smoke_shoot_rect_for_meter.size.x, "control-panel shot meter spans beyond the shoot button into the dunk half", "%s %s" % [panel_meter_rect, smoke_shoot_rect_for_meter])
 		_assert_true(panel_meter_rect.position.x >= smoke_top_action_rect.position.x - 0.01 and panel_meter_rect.end.x <= smoke_top_action_rect.end.x + 0.01, "control-panel shot meter stays inside the full top action row", "%s %s" % [panel_meter_rect, smoke_top_action_rect])
+	for _direct_shoot_hold_frame in 25:
+		await get_tree().process_frame
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "direct shoot button timing waits for a second tap past the authored release frame", smoke_coordinator.get_state_name())
+	_assert_true(smoke_coordinator.pending_shot_release.is_empty(), "direct shoot button timing still has no pending release before the second tap", JSON.stringify(smoke_coordinator.pending_shot_release))
+	smoke_coordinator.input_controller.tap_test_shot_timing(smoke_shoot_center)
+	await get_tree().process_frame
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_RELEASE, "direct shoot button second tap commits the shot release", smoke_coordinator.get_state_name())
+	_assert_true(not smoke_coordinator.pending_shot_release.is_empty(), "direct shoot button second tap stages a pending shot release", JSON.stringify(smoke_coordinator.pending_shot_release))
+	_assert_true(str(smoke_coordinator.active_shot_sequence.get("shot_timing_mode", "")) == "direct_shoot_button", "direct shoot button keeps its isolated timing mode through release", JSON.stringify(smoke_coordinator.active_shot_sequence))
 	_reset_visual_test_state(smoke_coordinator)
 	smoke_coordinator.input_controller.swipe_test_shot_arm(smoke_move_center, smoke_shoot_center, 0.12)
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "shoot-band release enters shot aim", smoke_coordinator.get_state_name())
@@ -1923,13 +1949,35 @@ func _run_opponent_sim_banner_smoke() -> void:
 	var clock_before: float = smoke_coordinator.context.match_time_remaining
 	smoke_coordinator.test_force_opponent_sim()
 	await get_tree().process_frame
+	var smoke_court_view: CourtView = game_root.get_node("CourtView") as CourtView
+	_assert_true(smoke_court_view != null and smoke_court_view.has_method("get_bottom_hoop_snapshot"), "bottom hoop snapshot accessor exists", "")
+	_assert_true(smoke_coordinator.has_method("get_opponent_sim_visual_snapshot"), "opponent sim visual snapshot accessor exists", "")
 	var sequence_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	var visual_snapshot: Dictionary = _get_opponent_visual_snapshot(smoke_coordinator)
+	var presentation_node: Node = game_root.get_node_or_null("Entities/OpponentSimPresentation")
+	var bottom_hoop_snapshot: Dictionary = _get_bottom_hoop_snapshot(smoke_court_view)
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner holds opponent sim state", smoke_coordinator.get_state_name())
 	_assert_true(bool(sequence_snapshot.get("active", false)), "opponent sim banner sequence active", JSON.stringify(sequence_snapshot))
 	_assert_true(int(sequence_snapshot.get("action_count", 0)) == 3, "opponent sim banner uses configured step count", JSON.stringify(sequence_snapshot))
 	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 0, "opponent sim banner starts at first step", JSON.stringify(sequence_snapshot))
 	_assert_true(smoke_coordinator.context.away_score == away_before, "opponent sim score deferred during banner", str(smoke_coordinator.context.away_score))
 	_assert_true(absf(smoke_coordinator.context.match_time_remaining - clock_before) < 0.001, "opponent sim clock deferred during banner", str(smoke_coordinator.context.match_time_remaining))
+	_assert_true(bool(visual_snapshot.get("active", false)), "opponent sim visual snapshot active", JSON.stringify(visual_snapshot))
+	var visual_kind: String = str(visual_snapshot.get("current_kind", visual_snapshot.get("kind", "")))
+	var visual_actor_role: String = str(visual_snapshot.get("current_actor_role", visual_snapshot.get("actor_role", "")))
+	var visual_actor_team: String = str(visual_snapshot.get("current_actor_team", visual_snapshot.get("actor_team", "")))
+	_assert_true(visual_kind.strip_edges() != "", "opponent sim visual snapshot exposes current kind", JSON.stringify(visual_snapshot))
+	_assert_true(visual_actor_role.strip_edges() != "", "opponent sim visual snapshot exposes current actor role", JSON.stringify(visual_snapshot))
+	_assert_true(visual_actor_team.strip_edges() != "", "opponent sim visual snapshot exposes current actor team", JSON.stringify(visual_snapshot))
+	_assert_true(bool(visual_snapshot.get("presentation_visible", presentation_node != null and presentation_node.visible)), "opponent sim presentation visible", JSON.stringify(visual_snapshot))
+	_assert_true(_opponent_visual_snapshot_positions_are_bottom_half(visual_snapshot, smoke_coordinator), "opponent sim tableau stays on bottom half", JSON.stringify(visual_snapshot))
+	_assert_true(_bottom_hoop_snapshot_is_valid(bottom_hoop_snapshot, smoke_coordinator), "bottom hoop snapshot is visible and anchored", JSON.stringify(bottom_hoop_snapshot))
+	_assert_true(float(bottom_hoop_snapshot.get("scale_multiplier", 0.0)) >= 2.0, "bottom hoop uses doubled visual scale", JSON.stringify(bottom_hoop_snapshot))
+	_assert_true(_bottom_hoop_z_order_above_entity_sprites(bottom_hoop_snapshot, smoke_coordinator, presentation_node), "bottom hoop renders above entity sprites", JSON.stringify(bottom_hoop_snapshot))
+	for player in smoke_coordinator.offense_players:
+		_assert_true(not player.visible, "opponent sim hides live offense players", player.name)
+	for player in smoke_coordinator.defense_players:
+		_assert_true(not player.visible, "opponent sim hides live defense players", player.name)
 	var banner_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_banner_snapshot()
 	var safe_rect: Rect2 = smoke_coordinator.layout_metrics.get("safe_rect", Rect2(Vector2.ZERO, Vector2(1080.0, 1920.0)))
 	var banner_rect: Rect2 = banner_snapshot.get("banner_rect", Rect2())
@@ -1941,35 +1989,164 @@ func _run_opponent_sim_banner_smoke() -> void:
 	_assert_true(str(banner_snapshot.get("text", "")) == str(sequence_snapshot.get("current_text", "")), "opponent sim banner text matches sequence", JSON.stringify({"banner": banner_snapshot, "sequence": sequence_snapshot}))
 	_assert_true(absf(banner_rect.position.x - safe_rect.position.x) <= 1.0 and absf(banner_rect.size.x - safe_rect.size.x) <= 1.0, "opponent sim banner spans safe width", "%s %s" % [banner_rect, safe_rect])
 	_assert_true(absf(banner_rect.get_center().y - safe_rect.get_center().y) <= 2.0, "opponent sim banner centered vertically", "%s %s" % [banner_rect, safe_rect])
+	var initial_visual_text: String = str(visual_snapshot.get("current_text", ""))
+	var initial_visual_kind: String = visual_kind
 
 	for _auto_frame in 61:
 		await get_tree().process_frame
 	sequence_snapshot = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	visual_snapshot = _get_opponent_visual_snapshot(smoke_coordinator)
+	var auto_visual_text: String = str(visual_snapshot.get("current_text", ""))
+	var auto_visual_kind: String = str(visual_snapshot.get("current_kind", visual_snapshot.get("kind", "")))
 	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 1, "opponent sim banner auto advances after one second", JSON.stringify(sequence_snapshot))
+	_assert_true(auto_visual_text != initial_visual_text or auto_visual_kind != initial_visual_kind, "opponent sim tableau changes after auto advance", JSON.stringify(visual_snapshot))
 	smoke_coordinator.test_advance_opponent_sim_sequence()
 	await get_tree().process_frame
 	sequence_snapshot = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	visual_snapshot = _get_opponent_visual_snapshot(smoke_coordinator)
+	var tapped_visual_text: String = str(visual_snapshot.get("current_text", ""))
+	var tapped_visual_kind: String = str(visual_snapshot.get("current_kind", visual_snapshot.get("kind", "")))
 	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 2, "opponent sim banner tap advances one step", JSON.stringify(sequence_snapshot))
+	_assert_true(tapped_visual_text != auto_visual_text or tapped_visual_kind != auto_visual_kind, "opponent sim tableau changes on tap advance", JSON.stringify(visual_snapshot))
 	var pending_points: int = int(sequence_snapshot.get("pending_points_scored", 0))
 	var pending_time: float = float(sequence_snapshot.get("pending_time_consumed", 0.0))
 	var timer_before_pause: float = float(sequence_snapshot.get("seconds_remaining", 0.0))
+	var paused_visual_text: String = tapped_visual_text
 	smoke_coordinator.test_toggle_pause()
 	for _paused_frame in 30:
 		await get_tree().process_frame
 	var paused_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	visual_snapshot = _get_opponent_visual_snapshot(smoke_coordinator)
 	_assert_true(absf(float(paused_snapshot.get("seconds_remaining", 0.0)) - timer_before_pause) < 0.001, "opponent sim banner timer freezes during pause", JSON.stringify(paused_snapshot))
+	_assert_true(str(visual_snapshot.get("current_text", "")) == paused_visual_text, "opponent sim tableau freezes during pause", JSON.stringify(visual_snapshot))
 	smoke_coordinator.test_toggle_pause()
 	await get_tree().process_frame
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner resumes opponent sim state", smoke_coordinator.get_state_name())
 	smoke_coordinator.test_advance_opponent_sim_sequence()
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "opponent sim banner final tap returns to offense", smoke_coordinator.get_state_name())
+	visual_snapshot = _get_opponent_visual_snapshot(smoke_coordinator)
 	_assert_true(smoke_coordinator.context.away_score == away_before + pending_points, "opponent sim banner applies pending score once", "%d + %d -> %d" % [away_before, pending_points, smoke_coordinator.context.away_score])
 	_assert_true(absf(smoke_coordinator.context.match_time_remaining - maxf(clock_before - pending_time, 0.0)) < 0.001, "opponent sim banner applies pending clock once", "%0.3f - %0.3f -> %0.3f" % [clock_before, pending_time, smoke_coordinator.context.match_time_remaining])
 	_assert_true(not bool(smoke_coordinator.get_opponent_sim_banner_snapshot().get("visible", true)), "opponent sim banner hides after completion", JSON.stringify(smoke_coordinator.get_opponent_sim_banner_snapshot()))
+	_assert_true(not bool(visual_snapshot.get("active", true)), "opponent sim visual snapshot clears after completion", JSON.stringify(visual_snapshot))
+	_assert_true(not bool(visual_snapshot.get("presentation_visible", presentation_node != null and presentation_node.visible)), "opponent sim presentation hides after completion", JSON.stringify(visual_snapshot))
+	for player in smoke_coordinator.offense_players:
+		_assert_true(player.visible, "opponent sim restores live offense players", player.name)
+	for player in smoke_coordinator.defense_players:
+		_assert_true(player.visible, "opponent sim restores live defense players", player.name)
+	_assert_true(_bottom_hoop_snapshot_is_valid(_get_bottom_hoop_snapshot(smoke_court_view), smoke_coordinator), "bottom hoop stays anchored after cleanup", "")
 	_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible, "opponent sim banner restores scoreboard when offense resumes", str(smoke_coordinator.hud.visible if smoke_coordinator.hud != null else false))
 	_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "opponent sim banner restores controls when offense resumes", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
 	game_root.queue_free()
 	await get_tree().process_frame
+
+
+func _opponent_visual_snapshot_positions_are_bottom_half(snapshot: Dictionary, coordinator: GameCoordinator) -> bool:
+	if snapshot.is_empty() or coordinator == null or coordinator.court_config == null:
+		return false
+	var positions: Array[Vector2] = []
+	_collect_snapshot_positions(snapshot.get("ghost_positions_by_team", {}), positions)
+	_collect_snapshot_positions(snapshot.get("ghost_positions_by_role", {}), positions)
+	_collect_snapshot_positions(snapshot.get("ghost_positions", {}), positions)
+	_collect_snapshot_positions(snapshot.get("away_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("home_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("away_ghost_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("home_ghost_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("actor_position", Vector2.INF), positions)
+	_collect_snapshot_positions(snapshot.get("ball_anchor", Vector2.INF), positions)
+	_collect_snapshot_positions(snapshot.get("ball_position", Vector2.INF), positions)
+	if positions.is_empty():
+		return false
+	var minimum_y: float = coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5 - 0.01
+	for position in positions:
+		if position == Vector2.INF:
+			continue
+		if position.y < minimum_y:
+			return false
+	return true
+
+
+func _bottom_hoop_snapshot_is_valid(snapshot: Dictionary, coordinator: GameCoordinator) -> bool:
+	if snapshot.is_empty() or coordinator == null or coordinator.court_config == null:
+		return false
+	var visible: bool = bool(snapshot.get("visible", snapshot.get("is_visible", false)))
+	if not visible:
+		return false
+	var texture_size: Vector2 = snapshot.get("texture_size", snapshot.get("source_size", snapshot.get("image_size", Vector2.ZERO)))
+	if absf(texture_size.x - 144.0) > 0.01 or absf(texture_size.y - 170.0) > 0.01:
+		return false
+	var anchor_value: Variant = snapshot.get("anchor_screen", snapshot.get("screen_anchor", snapshot.get("anchor", Vector2.INF)))
+	if anchor_value is Vector2 and anchor_value != Vector2.INF:
+		return anchor_value.y >= coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5
+	var rect_value: Variant = snapshot.get("screen_rect", snapshot.get("bottom_hoop_rect", snapshot.get("rect", Rect2())))
+	if rect_value is Rect2:
+		var hoop_rect: Rect2 = rect_value
+		if hoop_rect.size.x <= 0.0 or hoop_rect.size.y <= 0.0:
+			return false
+		return hoop_rect.get_center().y >= coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5
+	return false
+
+
+func _bottom_hoop_z_order_above_entity_sprites(snapshot: Dictionary, coordinator: GameCoordinator, presentation_node: Node) -> bool:
+	if snapshot.is_empty() or coordinator == null:
+		return false
+	var hoop_z: int = int(snapshot.get("z_index", -999999))
+	if hoop_z <= -999999:
+		return false
+	if bool(snapshot.get("z_as_relative", true)):
+		return false
+	var entity_nodes: Array[Node] = []
+	for player in coordinator.offense_players:
+		entity_nodes.append(player)
+	for player in coordinator.defense_players:
+		entity_nodes.append(player)
+	if coordinator.ball_node != null:
+		entity_nodes.append(coordinator.ball_node)
+	if coordinator.hoop_node != null:
+		entity_nodes.append(coordinator.hoop_node)
+	_collect_canvas_children(presentation_node, entity_nodes)
+	for node in entity_nodes:
+		var canvas_item: CanvasItem = node as CanvasItem
+		if canvas_item == null:
+			continue
+		if canvas_item.z_index >= hoop_z:
+			return false
+	return true
+
+
+func _collect_canvas_children(node: Node, output: Array[Node]) -> void:
+	if node == null:
+		return
+	for child in node.get_children():
+		output.append(child)
+		_collect_canvas_children(child, output)
+
+
+func _get_opponent_visual_snapshot(coordinator: GameCoordinator) -> Dictionary:
+	if coordinator == null or not coordinator.has_method("get_opponent_sim_visual_snapshot"):
+		return {}
+	var snapshot: Variant = coordinator.call("get_opponent_sim_visual_snapshot")
+	return snapshot if snapshot is Dictionary else {}
+
+
+func _get_bottom_hoop_snapshot(court_view: CourtView) -> Dictionary:
+	if court_view == null or not court_view.has_method("get_bottom_hoop_snapshot"):
+		return {}
+	var snapshot: Variant = court_view.call("get_bottom_hoop_snapshot")
+	return snapshot if snapshot is Dictionary else {}
+
+
+func _collect_snapshot_positions(value: Variant, positions: Array[Vector2]) -> void:
+	if value is Vector2:
+		positions.append(value)
+	elif value is Array:
+		for item in value:
+			_collect_snapshot_positions(item, positions)
+	elif value is Dictionary:
+		for key in value.keys():
+			var key_name: String = str(key).to_lower()
+			if key_name.contains("position"):
+				_collect_snapshot_positions(value[key], positions)
 
 
 func _make_visual_test_setup(ballhandler_role: String = "PG") -> Dictionary:
@@ -2448,15 +2625,86 @@ func _run_hoop_render_phase_smoke() -> void:
 	if smoke_coordinator.hoop_node != null:
 		if smoke_coordinator.hoop_node.has_method("supports_three_piece_visuals"):
 			_assert_true(bool(smoke_coordinator.hoop_node.call("supports_three_piece_visuals")), "three-piece hoop visuals exist", "")
+		if smoke_coordinator.hoop_node.has_method("supports_four_layer_visuals"):
+			_assert_true(bool(smoke_coordinator.hoop_node.call("supports_four_layer_visuals")), "four-layer net visuals exist", "")
 		var back_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "behind_backboard"))
 		var rim_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "rim_mouth"))
 		var channel_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "net_channel"))
 		var front_z: int = int(smoke_coordinator.hoop_node.call("get_ball_z_index_for_phase", "front_of_net"))
 		_assert_true(back_z < rim_z and rim_z < channel_z and channel_z < front_z, "hoop phase z-order increases frontward", "%d %d %d %d" % [back_z, rim_z, channel_z, front_z])
+		if smoke_coordinator.hoop_node.has_method("get_layering_snapshot"):
+			var layering_snapshot: Dictionary = smoke_coordinator.hoop_node.call("get_layering_snapshot")
+			var layers: Dictionary = layering_snapshot.get("layers", {})
+			var phases: Dictionary = layering_snapshot.get("ball_phases", {})
+			var body_snapshot: Dictionary = layers.get("hoop_body", {})
+			var net_snapshot: Dictionary = layers.get("net", {})
+			var clean_snapshot: Dictionary = layers.get("net_clean", {})
+			var bottom_half_snapshot: Dictionary = layers.get("net_clean_bottom_half", {})
+			var net_body_snapshot: Dictionary = layers.get("net_body", {})
+			var body_z: int = int(body_snapshot.get("effective_z_index", -999999))
+			var net_z: int = int(net_snapshot.get("effective_z_index", -999999))
+			var clean_z: int = int(clean_snapshot.get("effective_z_index", -999999))
+			var bottom_half_z: int = int(bottom_half_snapshot.get("effective_z_index", -999999))
+			var net_body_z: int = int(net_body_snapshot.get("effective_z_index", -999999))
+			var phase_z_values: Array[int] = [
+				int(phases.get("rim_mouth", -999999)),
+				int(phases.get("net_channel", -999999)),
+				int(phases.get("front_of_net", -999999)),
+			]
+			var phases_above_clean: bool = true
+			var inactive_phases_above_bottom_half: bool = true
+			var phases_below_net_body: bool = true
+			for phase_z in phase_z_values:
+				phases_above_clean = phases_above_clean and phase_z > clean_z
+				inactive_phases_above_bottom_half = inactive_phases_above_bottom_half and phase_z > bottom_half_z
+				phases_below_net_body = phases_below_net_body and phase_z < net_body_z
+			_assert_true(bool(layering_snapshot.get("supports_four_layer_visuals", false)), "layering snapshot reports four-layer net", JSON.stringify(layering_snapshot))
+			_assert_true(back_z < body_z and body_z < net_z and net_z < clean_z, "rear hoop layers sit behind shot phases", JSON.stringify(layering_snapshot))
+			_assert_true(not bool(layering_snapshot.get("bottom_half_mask_active", true)), "bottom-half net mask starts inactive", JSON.stringify(layering_snapshot))
+			_assert_true(phases_above_clean, "shot ball phases render in front of NetClean", JSON.stringify(layering_snapshot))
+			_assert_true(inactive_phases_above_bottom_half, "inactive bottom-half net renders below airborne shot phases", JSON.stringify(layering_snapshot))
+			_assert_true(phases_below_net_body, "shot ball phases stay behind NetBody", JSON.stringify(layering_snapshot))
+			_assert_true(clean_z < bottom_half_z and bottom_half_z < net_body_z, "inactive NetCleanBottomHalf sits between NetClean and NetBody", JSON.stringify(layering_snapshot))
+			_assert_true(_net_layer_texture_sizes_are_registered(layers), "four net layers share 30x28 registration", JSON.stringify(layering_snapshot))
+			if smoke_coordinator.hoop_node.has_method("set_bottom_half_net_mask_active"):
+				smoke_coordinator.hoop_node.call("set_bottom_half_net_mask_active", true)
+				var active_snapshot: Dictionary = smoke_coordinator.hoop_node.call("get_layering_snapshot")
+				var active_layers: Dictionary = active_snapshot.get("layers", {})
+				var active_phases: Dictionary = active_snapshot.get("ball_phases", {})
+				var active_bottom_half_z: int = int(active_layers.get("net_clean_bottom_half", {}).get("effective_z_index", -999999))
+				var active_net_body_z: int = int(active_layers.get("net_body", {}).get("effective_z_index", -999999))
+				var active_channel_z: int = int(active_phases.get("net_channel", -999999))
+				var active_front_z: int = int(active_phases.get("front_of_net", -999999))
+				_assert_true(bool(active_snapshot.get("bottom_half_mask_active", false)), "bottom-half net mask toggles active", JSON.stringify(active_snapshot))
+				_assert_true(active_channel_z < active_bottom_half_z and active_front_z < active_bottom_half_z, "active bottom-half net masks through-net ball phases", JSON.stringify(active_snapshot))
+				_assert_true(active_bottom_half_z < active_net_body_z, "active NetCleanBottomHalf stays below NetBody", JSON.stringify(active_snapshot))
+				smoke_coordinator.hoop_node.call("set_bottom_half_net_mask_active", false)
 		if smoke_coordinator.hoop_node.has_method("is_net_swish_active"):
 			_assert_true(not bool(smoke_coordinator.hoop_node.call("is_net_swish_active")), "net swish idle before score", "")
 	smoke_coordinator.begin_test_mode(1708)
 	await get_tree().process_frame
+	if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_layering_snapshot"):
+		var airborne_world: Vector2 = smoke_coordinator.court_config.hoop_position + Vector2(0.0, smoke_coordinator.court_config.score_entry_min_front_offset)
+		var airborne_z: float = smoke_coordinator.court_config.rim_height + 72.0
+		smoke_coordinator.ball_simulator.position_xy = airborne_world
+		smoke_coordinator.ball_simulator.previous_position_xy = airborne_world
+		smoke_coordinator.ball_simulator.z = airborne_z
+		smoke_coordinator.ball_simulator.previous_z = airborne_z
+		smoke_coordinator.ball_simulator.vz = 120.0
+		smoke_coordinator.ball_simulator.is_guided_make = false
+		smoke_coordinator.ball_simulator.profile_kind = BallSimulator.PROFILE_KIND_FREE_FLIGHT
+		smoke_coordinator.ball_simulator.flight_phase = BallSimulator.FLIGHT_PHASE_FREE_FLIGHT
+		smoke_coordinator._sync_ball_world_visual(airborne_world, airborne_z)
+		var airborne_phase: String = smoke_coordinator.get_ball_render_phase()
+		var airborne_snapshot: Dictionary = smoke_coordinator.hoop_node.call("get_layering_snapshot")
+		var airborne_layers: Dictionary = airborne_snapshot.get("layers", {})
+		var airborne_phases: Dictionary = airborne_snapshot.get("ball_phases", {})
+		var airborne_bottom_half_z: int = int(airborne_layers.get("net_clean_bottom_half", {}).get("effective_z_index", -999999))
+		var airborne_net_body_z: int = int(airborne_layers.get("net_body", {}).get("effective_z_index", -999999))
+		var airborne_ball_z: int = int(airborne_phases.get(airborne_phase, -999999))
+		_assert_true(airborne_phase == "front_of_net", "non-descending airborne ball near hoop uses front phase", airborne_phase)
+		_assert_true(not bool(airborne_snapshot.get("bottom_half_mask_active", true)), "non-descending airborne ball keeps bottom-half mask inactive", JSON.stringify(airborne_snapshot))
+		_assert_true(airborne_bottom_half_z < airborne_ball_z and airborne_ball_z < airborne_net_body_z, "airborne front-phase ball renders above inactive bottom-half and below NetBody", JSON.stringify(airborne_snapshot))
 	var finish_center_screen_before_shot: Vector2 = Vector2.INF
 	if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_debug_finish_radius_center_screen"):
 		finish_center_screen_before_shot = smoke_coordinator.hoop_node.call("get_debug_finish_radius_center_screen")
@@ -2488,6 +2736,10 @@ func _run_hoop_render_phase_smoke() -> void:
 	var pre_bounce_upward_phase: String = ""
 	var pre_bounce_upward_delta: float = 0.0
 	var last_followthrough_anchor_y: float = INF
+	var net_channel_mask_active_seen: bool = false
+	var through_front_mask_active_seen: bool = false
+	var active_mask_order_ok: bool = true
+	var active_mask_order_failure: Dictionary = {}
 	for frame in 180:
 		await get_tree().process_frame
 		if smoke_coordinator.has_method("did_last_scored_shot_pass_through_net"):
@@ -2498,6 +2750,24 @@ func _run_hoop_render_phase_smoke() -> void:
 			var sim_phase: String = smoke_coordinator.ball_simulator.get_flight_phase()
 			if phase != "" and not first_phase_frame.has(phase):
 				first_phase_frame[phase] = frame
+			if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_layering_snapshot") and phase in ["net_channel", "front_of_net"]:
+				var dynamic_layering_snapshot: Dictionary = smoke_coordinator.hoop_node.call("get_layering_snapshot")
+				var dynamic_layers: Dictionary = dynamic_layering_snapshot.get("layers", {})
+				var dynamic_phases: Dictionary = dynamic_layering_snapshot.get("ball_phases", {})
+				var dynamic_ball_z: int = int(dynamic_phases.get(phase, -999999))
+				var dynamic_bottom_half_z: int = int(dynamic_layers.get("net_clean_bottom_half", {}).get("effective_z_index", -999999))
+				var dynamic_net_body_z: int = int(dynamic_layers.get("net_body", {}).get("effective_z_index", -999999))
+				var dynamic_mask_active: bool = bool(dynamic_layering_snapshot.get("bottom_half_mask_active", false))
+				if phase == "net_channel":
+					net_channel_mask_active_seen = net_channel_mask_active_seen or dynamic_mask_active
+					if not dynamic_mask_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
+						active_mask_order_ok = false
+						active_mask_order_failure = dynamic_layering_snapshot
+				if phase == "front_of_net" and first_phase_frame.has("net_channel"):
+					through_front_mask_active_seen = through_front_mask_active_seen or dynamic_mask_active
+					if not dynamic_mask_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
+						active_mask_order_ok = false
+						active_mask_order_failure = dynamic_layering_snapshot
 			if first_phase_frame.has("net_channel") and not is_inf(ball_anchor.y):
 				if not is_inf(last_followthrough_anchor_y):
 					var anchor_delta_y: float = ball_anchor.y - last_followthrough_anchor_y
@@ -2550,6 +2820,9 @@ func _run_hoop_render_phase_smoke() -> void:
 		_assert_true(int(first_phase_frame["rim_mouth"]) <= int(first_phase_frame["net_channel"]), "optional rim-mouth handoff occurs before net channel", str(first_phase_frame))
 	if first_phase_frame.has("net_channel") and front_after_net_frame != -1:
 		_assert_true(int(first_phase_frame["net_channel"]) < front_after_net_frame, "guided make phases stay ordered", str({"net_channel": first_phase_frame["net_channel"], "front_of_net": front_after_net_frame}))
+	_assert_true(net_channel_mask_active_seen, "bottom-half mask activates during net channel", str(first_phase_frame))
+	_assert_true(through_front_mask_active_seen, "bottom-half mask stays active during through-net front exit", str(first_phase_frame))
+	_assert_true(active_mask_order_ok, "active bottom-half mask renders above through-net ball phases", JSON.stringify(active_mask_order_failure))
 	_assert_true(front_window_count <= 1, "made shot uses one contiguous front-of-net window", str(front_window_count))
 	_assert_true(through_net, "made shot records through-net follow-through", "")
 	_assert_true(score_seen, "made shot resolves during smoke test", "")
@@ -2576,6 +2849,31 @@ func _run_hoop_render_phase_smoke() -> void:
 		_assert_true(swish_when_scored, "net swish activates on score", "")
 	game_root.queue_free()
 	await get_tree().process_frame
+
+
+func _net_layer_texture_sizes_are_registered(layers: Dictionary) -> bool:
+	var layer_names: Array[String] = ["net", "net_clean", "net_clean_bottom_half", "net_body"]
+	var expected_size: Vector2 = Vector2(30.0, 28.0)
+	var expected_position: Vector2 = Vector2.INF
+	var expected_scale: Vector2 = Vector2.INF
+	for layer_name in layer_names:
+		var layer: Dictionary = layers.get(layer_name, {})
+		if layer.is_empty() or not bool(layer.get("visible", false)):
+			return false
+		var texture_size: Vector2 = layer.get("texture_size", Vector2.ZERO)
+		if texture_size.distance_to(expected_size) > 0.01:
+			return false
+		var position: Vector2 = layer.get("position", Vector2.INF)
+		var scale: Vector2 = layer.get("scale", Vector2.INF)
+		if expected_position == Vector2.INF:
+			expected_position = position
+			expected_scale = scale
+			continue
+		if position.distance_to(expected_position) > 0.01:
+			return false
+		if scale.distance_to(expected_scale) > 0.01:
+			return false
+	return true
 
 
 func _run_dunk_auto_finish_floor_smoke() -> void:

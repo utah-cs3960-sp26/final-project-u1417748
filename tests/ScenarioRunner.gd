@@ -121,6 +121,14 @@ func _queue_actions(pilot: BotPilot, actions: Array[ScenarioAction]) -> void:
 				pilot.assert_controlled_player(action.target_id)
 			"assert_last_log_contains":
 				pilot.assert_last_log_contains(str(action.value))
+			"assert_opponent_visual_field":
+				pilot.assert_opponent_visual_field(str(action.target_id), action.value)
+			"assert_opponent_visual_bottom_half":
+				pilot.assert_opponent_visual_bottom_half()
+			"assert_bottom_hoop_field":
+				pilot.assert_bottom_hoop_field(str(action.target_id), action.value)
+			"assert_bottom_hoop_bottom_anchored":
+				pilot.assert_bottom_hoop_bottom_anchored()
 
 
 func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpectation) -> String:
@@ -168,6 +176,20 @@ func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpec
 			var index_snapshot: Dictionary = coordinator.get_opponent_sim_sequence_snapshot()
 			if int(index_snapshot.get("current_index", -1)) != int(expectation.value):
 				return "opponent action index expected %d got %d" % [int(expectation.value), int(index_snapshot.get("current_index", -1))]
+		"opponent_visual_field":
+			var opponent_visual_snapshot: Dictionary = _get_opponent_visual_snapshot(coordinator)
+			if not _snapshot_field_matches(opponent_visual_snapshot, str(expectation.subject), expectation.value):
+				return "opponent visual snapshot field expected %s == %s" % [str(expectation.subject), str(expectation.value)]
+		"opponent_visual_bottom_half":
+			if not _opponent_visual_positions_are_bottom_half(_get_opponent_visual_snapshot(coordinator), coordinator):
+				return "opponent visual snapshot positions were not confined to bottom half"
+		"bottom_hoop_field":
+			var bottom_hoop_snapshot: Dictionary = _get_bottom_hoop_snapshot(coordinator)
+			if not _snapshot_field_matches(bottom_hoop_snapshot, str(expectation.subject), expectation.value):
+				return "bottom hoop snapshot field expected %s == %s" % [str(expectation.subject), str(expectation.value)]
+		"bottom_hoop_bottom_anchored":
+			if not _bottom_hoop_is_bottom_anchored(_get_bottom_hoop_snapshot(coordinator), coordinator):
+				return "bottom hoop snapshot was not bottom anchored"
 		"ball_render_phase":
 			if not coordinator.has_method("get_ball_render_phase"):
 				return "ball render phase accessor missing"
@@ -188,3 +210,82 @@ func _check_expectation(coordinator: GameCoordinator, expectation: ScenarioExpec
 			if bool(coordinator.call("get_score_followthrough_active")) != bool(expectation.value):
 				return "score follow-through expected %s got %s" % [str(expectation.value), str(coordinator.call("get_score_followthrough_active"))]
 	return ""
+
+
+func _get_opponent_visual_snapshot(coordinator: GameCoordinator) -> Dictionary:
+	if coordinator == null or not coordinator.has_method("get_opponent_sim_visual_snapshot"):
+		return {}
+	var snapshot: Variant = coordinator.call("get_opponent_sim_visual_snapshot")
+	return snapshot if snapshot is Dictionary else {}
+
+
+func _get_bottom_hoop_snapshot(coordinator: GameCoordinator) -> Dictionary:
+	if coordinator == null or coordinator.court_view == null or not coordinator.court_view.has_method("get_bottom_hoop_snapshot"):
+		return {}
+	var snapshot: Variant = coordinator.court_view.call("get_bottom_hoop_snapshot")
+	return snapshot if snapshot is Dictionary else {}
+
+
+func _snapshot_field_matches(snapshot: Dictionary, field_path: String, expected: Variant) -> bool:
+	if snapshot.is_empty() or field_path.strip_edges() == "":
+		return false
+	var current: Variant = snapshot
+	for segment in field_path.split(".", false):
+		if current is Dictionary and current.has(segment):
+			current = current[segment]
+		else:
+			return false
+	return current == expected
+
+
+func _opponent_visual_positions_are_bottom_half(snapshot: Dictionary, coordinator: GameCoordinator) -> bool:
+	if snapshot.is_empty() or coordinator == null or coordinator.court_config == null:
+		return false
+	var positions: Array[Vector2] = []
+	_collect_snapshot_positions(snapshot.get("ghost_positions_by_team", {}), positions)
+	_collect_snapshot_positions(snapshot.get("ghost_positions_by_role", {}), positions)
+	_collect_snapshot_positions(snapshot.get("ghost_positions", {}), positions)
+	_collect_snapshot_positions(snapshot.get("away_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("home_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("away_ghost_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("home_ghost_positions", []), positions)
+	_collect_snapshot_positions(snapshot.get("actor_position", Vector2.INF), positions)
+	_collect_snapshot_positions(snapshot.get("ball_anchor", Vector2.INF), positions)
+	_collect_snapshot_positions(snapshot.get("ball_position", Vector2.INF), positions)
+	if positions.is_empty():
+		return false
+	var minimum_y: float = coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5 - 0.01
+	for position in positions:
+		if position == Vector2.INF:
+			continue
+		if position.y < minimum_y:
+			return false
+	return true
+
+
+func _bottom_hoop_is_bottom_anchored(snapshot: Dictionary, coordinator: GameCoordinator) -> bool:
+	if snapshot.is_empty() or coordinator == null or coordinator.court_config == null:
+		return false
+	var anchor_value: Variant = snapshot.get("anchor_screen", snapshot.get("screen_anchor", snapshot.get("anchor", Vector2.INF)))
+	if anchor_value is Vector2 and anchor_value != Vector2.INF:
+		return anchor_value.y >= coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5
+	var rect_value: Variant = snapshot.get("screen_rect", snapshot.get("bottom_hoop_rect", snapshot.get("rect", Rect2())))
+	if rect_value is Rect2:
+		var hoop_rect: Rect2 = rect_value
+		if hoop_rect.size.x <= 0.0 or hoop_rect.size.y <= 0.0:
+			return false
+		return hoop_rect.get_center().y >= coordinator.court_config.court_rect.position.y + coordinator.court_config.court_rect.size.y * 0.5
+	return false
+
+
+func _collect_snapshot_positions(value: Variant, positions: Array[Vector2]) -> void:
+	if value is Vector2:
+		positions.append(value)
+	elif value is Array:
+		for item in value:
+			_collect_snapshot_positions(item, positions)
+	elif value is Dictionary:
+		for key in value.keys():
+			var key_name: String = str(key).to_lower()
+			if key_name.contains("position"):
+				_collect_snapshot_positions(value[key], positions)

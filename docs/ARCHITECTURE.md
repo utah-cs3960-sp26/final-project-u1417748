@@ -17,6 +17,7 @@
   - `Player.tscn`
   - `Ball.tscn`
   - `Hoop.tscn`
+  - `OpponentSimPresentation.tscn`
 
 ## Runtime Ownership
 
@@ -32,13 +33,15 @@
 - owns the brief `STEAL_RESOLVE` handoff so steals read on screen before the opponent sim action banner takes over
 - owns staged opponent-sim presentation: the sim result is generated and logged immediately, while score, clock, and possession reset are deferred until the final visible action beat completes
 - owns the transient opponent-sim match-UI hide flag so the scoreboard and bottom control panel disappear while action text is visible and restore only when human offense resumes
+- owns the opponent-sim presentation layer lifecycle, hiding live players and live ball while AWY/HOM ghost tableaux play on the bottom half of the court, then restoring live entities on completion, game over, restart, or test reset
+- snaps the close camera to the current opponent-sim actor or tableau center during `OPPONENT_SIM` so static jump cuts are readable immediately
 - owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `control_panel_rect`, `control_zone_rects`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
 - defines `banner_rect` as the compact scoreboard-card bounds anchored above the control panel's left `SHOOT` half rather than as a top banner strip
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - resolves the active close-camera target each frame, following the controlled ballhandler during owned possession and the rendered live ball during passes, shots, rebounds, and score follow-through
-- owns the made-shot render handoff that keeps the ball in a single contiguous `front_of_net` window after `net_exit`, freezes the guided terminal presentation drop through the full explicit hoop follow-through, clamps pre-bounce rendered anchors so `guided_descent -> net_exit -> floor_drop` never step upward on screen, and only releases back to plain world rendering after the ball has visibly cleared the hoop's front-net exit threshold
+- owns the made-shot render handoff that keeps the ball in a single contiguous `front_of_net` timing window after `net_exit`, activates the lower `NetCleanBottomHalf` mask only for through-net follow-through, freezes the guided terminal presentation drop through the full explicit hoop follow-through, clamps pre-bounce rendered anchors so `guided_descent -> net_exit -> floor_drop` never step upward on screen, and only releases back to plain world rendering after the ball has visibly cleared the hoop's front-net exit threshold
 - commits any staged shot release before final projection sync so the first visible launched-ball frame already hands camera ownership from the player to the live ball
-- owns the explicit hoop render-phase contract so made shots can render in front of the backboard, inside the rim mouth, behind the hanging net body, or behind the board only when the path truly goes over it
+- owns the explicit hoop render-phase contract so shot balls render in front of `NetClean`, behind `NetBody`, and only behind `NetCleanBottomHalf` while they are actually in the net channel or the contiguous made-shot net-exit follow-through
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - owns the full-sheet animation classifier, including family selection, deterministic variant locking, close-finish layup/dunk routing, westward mirroring, and controlled-player outline visibility
 - owns the `SHOT_RELEASE` staging state, the pending shot-release snapshot, and the presentation-only ball visibility mode that keeps the rendered world ball hidden while a player-held sprite already includes the ball
@@ -56,11 +59,20 @@
   - applies a runtime screen-layout override so the same gameplay court can be centered inside a banner-safe play rect without changing `CourtConfig`
 - `CourtView`
   - draws the rotated blue second-court atlas slice as a textured projected floor surface, using the active `court_screen_rect` for ratio-aware cropping and keeping the active offensive hoop anchored inside the centered mobile play area
+  - owns a high-z `Sprite2D` child for the normalized opposite-side bottom hoop, anchored at `CourtConfig.opposite_hoop_position`, scaled through `CourtProjection`, and multiplied by `CourtConfig.opposite_hoop_visual_scale_multiplier`
+  - keeps the bottom hoop on an absolute z index above entity sprites so live and opponent-sim players/balls layer behind the back-of-hoop art
+  - exposes a bottom-hoop snapshot so smoke tests can verify visibility, `144x170` texture size, projected rect, doubled scale multiplier, z order, and bottom-court anchor
   - also renders gameplay-only overlays like the light-blue focused-pass ring and trajectory dots while leaving joystick art and shot-meter rendering to the dedicated control panel
 - `HUD`
   - renders the cropped textured scoreboard as a compact bottom-left card above the `SHOOT` half of the control panel, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
 - `OpponentSimBanner`
   - captures taps only while `OPPONENT_SIM` is presenting, renders a centered full-width black action banner at `80%` opacity, exposes layout/text snapshots for smoke coverage, and emits advance requests that move one visual step at a time
+- `OpponentSimPresentation`
+  - dedicated `Entities` child used only during `OPPONENT_SIM`
+  - owns five AWY ghost players, five passive HOM defender ghosts, and a ghost ball using the same player/ball scene visuals as live play
+  - maps each opponent visual step into a static bottom-half formation, including setup spacing, wing/corner jumpers, lane finishes, loose-ball misses, steals, blocks, and defensive boards
+  - keeps positions in court world space and resyncs projection each frame, but does not interpolate movement between steps
+  - exposes a snapshot with current kind, actor role/team, ghost positions, ball owner/visibility, and camera anchor for deterministic smoke coverage
 - `ControlPanel`
   - renders the visible bottom-third control panel, keeping every button on a shared dark neutral idle base until the active drag or a direct press swaps that zone into its action color, while also drawing the joystick art, pass badges, and the widened shot meter that spans the combined `SHOOT | DUNK` top row during `SHOT_AIM`
 - `ShotController`
@@ -75,8 +87,8 @@
   - score-plane, rim, and backboard resolution
   - guided makes may still collide during approach, but only score once the simulator reports the planned guided-descent score gate crossing
 - `HoopView`
-  - composes the hoop body plus a three-piece hoop stack around the gameplay rim anchor: a rear/full hoop silhouette, a front rim lip, and a front net body with a small swish animation
-  - exposes render-phase z-order helpers so the ball can be layered in front of the backboard, inside the rim mouth, behind the hanging net, or behind the board only for true over-the-top paths
+  - composes the hoop body plus a four-layer hoop stack around the gameplay rim anchor: `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`, with the four net textures sharing the same 30x28 registration transform
+  - exposes render-phase z-order helpers, a bottom-half mask active flag, and a layering snapshot so inactive `NetCleanBottomHalf` sits below airborne, rim-mouth, and generic front-net ball phases, then rises above only `net_channel` and through-net `front_of_net` phases while `NetBody` remains above all top-hoop shot phases
 - `PlayerController` + `PlayerVisual`
   - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, row playback, deterministic variant resolution, and the intentionally oversized mobile-readable sprite presentation
   - keep direct player input movement separate from AI steering so user-controlled motion can stay sharp while AI route, defense, rebound, and catch/intercept movement eases into short corrections
@@ -96,6 +108,7 @@
 - `OpponentSimController`
   - ratings-driven off-screen possession resolution
   - returns log-oriented `events` plus presentation-oriented `visual_steps`; each possession has `1..4` visible steps, and the final step matches `points_scored`
+  - includes stable actor metadata on each visual step (`player_id`, `player_role`, and `actor_team`) so the presentation layer can place the correct ghost actor without changing the resolved sim result
 
 ## Data
 

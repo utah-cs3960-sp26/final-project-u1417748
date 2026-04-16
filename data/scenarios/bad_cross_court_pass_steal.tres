@@ -26,7 +26,7 @@ seconds = 0.9
 [sub_resource type="Resource" id="ScenarioAction_wait_resolve"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 4.3
+seconds = 6.0
 
 [sub_resource type="Resource" id="ScenarioExpectation_log"]
 script = ExtResource("3")

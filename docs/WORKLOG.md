@@ -2,6 +2,48 @@
 
 ## 2026-04-15
 
+### Phase-gated bottom net mask implemented
+
+- changed `NetCleanBottomHalf` from a permanently frontmost lower mask into an inactive/active z-state owned by `HoopView`
+- kept all four top-hoop net sprites on the same `30x28` registration transform, while the inactive state renders below airborne, rim-mouth, and generic `front_of_net` ball phases and the active state rises above `net_channel` plus made-shot net-exit follow-through
+- added a coordinator render-context flag so `net_channel` always activates the bottom-half mask, made-shot `front_of_net` after net entry keeps it active, and non-descending airborne `front_of_net` frames keep it inactive
+- expanded hoop render smoke coverage for inactive and active z snapshots, the non-descending airborne regression, dynamic made-shot mask activation, no post-clear re-entry, net swish activation, and four-layer `30x28` registration
+- reran validation after the phase-gated mask pass: boot smoke passed; full headless suite reported pure logic passes `1756`, scenarios `18`, balance `4`, failures `2`; the new phase-gated net assertions passed, with the remaining failures still limited to existing shot-followthrough checks
+
+### Four-layer top net depth implemented
+
+- added `NetCleanBottomHalf` as a fourth registered top-hoop overlay layer in `HoopView`, using the same `30x28` canvas, `1.6` authored scale, `Vector2(15, 4)` rim anchor, and `Vector2(0, 12)` net offset as `Net`, `NetClean`, and `NetBody`
+- shifted the shot-ball hoop phase z offsets so `rim_mouth`, `net_channel`, and the existing `front_of_net` follow-through phase render in front of `NetClean` while preserving `NetBody` above top-hoop shot phases; the later phase-gated pass above now controls when `NetCleanBottomHalf` rises in front
+- mirrored the new fallback phase z offsets in `BallController` so any non-`HoopView` ball depth path stays consistent with the top-hoop contract
+- added a `HoopView` layering snapshot for tests to inspect effective layer z values, bottom-half sprite presence, texture sizes, positions, and scale registration
+- expanded the hoop render smoke to assert the four-layer z band, shared `30x28` registration, made-shot `net_channel -> front_of_net` follow-through, no hoop-render re-entry after clear, and net swish activation
+- reran validation after the net layering pass: boot smoke passed; full headless suite reported pure logic passes `1745`, scenarios `18`, balance `4`, failures `2`; the new four-layer net assertions passed, with the remaining failures still limited to existing shot-followthrough checks
+
+### Direct `SHOOT` button now opens the timing bar before release
+
+- changed direct top-left `SHOOT` button taps to use a coordinator-owned two-tap timing mode: first tap enters `SHOT_AIM`, shows the top-row timing meter and trajectory preview, and holds the shooter in the aim pose
+- deferred the committed release row only for that direct-button path, then starts it when the second tap at the `SHOOT` button position commits the shot or when the meter times out into a late miss
+- kept drag-release shots, direct `DUNK`, pass controls, movement, and second-finger action taps on their existing paths
+- extended coordinator smoke coverage to assert first-tap meter visibility, no pending release past the authored release frame, second-tap release staging, and the isolated `direct_shoot_button` timing mode
+- reran validation after the direct-shoot timing pass: boot smoke passed; full headless suite reported pure logic `1738`, scenarios `18`, balance `4`, failures `2`, with the new direct-shoot assertions passing and the remaining failures still limited to existing shot-followthrough checks
+
+### Bottom backside hoop enlarged and moved above sprites
+
+- changed the opposite-side hoop from a `CourtView` draw call into a high-z `Sprite2D` child so entity sprites layer behind the bottom back-of-hoop art
+- added `CourtConfig.opposite_hoop_visual_scale_multiplier = 2.0` and `CourtConfig.opposite_hoop_z_index = 3000` so the larger size and render order stay tunable
+- extended the bottom-hoop snapshot and smoke coverage to assert doubled scale and z ordering above live/presentation entity sprites
+- reran validation after the hoop layering pass: boot smoke passed; full headless suite reported pure logic `1738`, scenarios `18`, balance `4`, failures `2`; the bottom-hoop scale/z-order checks passed, with the remaining failures still limited to existing shot-followthrough checks
+
+### Opponent sim court tableaux implemented and validated
+
+- normalized the new back-of-hoop asset into `assets/Court/HoopBodyBackNormalized.png` on a transparent `144x170` canvas while keeping the provided source art unchanged
+- added `CourtConfig.opposite_hoop_position` and updated `CourtView` to draw the bottom/opposite hoop behind gameplay entities with a smoke-test snapshot for projected rect and texture size
+- added `OpponentSimPresentation` as a dedicated `Entities` child that owns five AWY ghost players, five passive HOM defender ghosts, and a ghost ball for static bottom-half tableaux during `OPPONENT_SIM`
+- extended opponent visual-step data with `player_id`, `player_role`, and `actor_team` so the tableau layer can place the relevant actor while preserving the existing score/time resolution
+- integrated the tableau layer into `GameCoordinator`: live players and live ball hide during opponent sim, the banner and ghosts advance together, camera tracking snaps to the current actor/tableau center, and cleanup restores live entities on completion or reset paths
+- expanded deterministic smoke coverage for the bottom hoop, hidden live entities, visible ghost tableaux, bottom-half position bounds, auto/tap advance, pause freeze/resume, and exact once-only final score/time application
+- reran the full headless suite after the tableau pass: pure logic `1728`, scenarios `18`, balance `4`, failures `2`; all opponent-sim presentation checks passed, with the remaining failures limited to existing shot-followthrough smoke checks
+
 ### Opponent sim action banner implemented and validated
 
 - extended `OpponentSimController.run_possession()` so every opponent possession now returns deterministic `visual_steps` alongside `events`, `points_scored`, and `time_consumed`
@@ -18,7 +60,7 @@
 - documented the planned shift from instant opponent-sim jump cuts to `1..4` visible action beats shown in a centered black `80%` opacity banner
 - recorded the intended action vocabulary for setup, scoring, and no-score outcomes, with the final visible action required to match the resolved `points_scored`
 - added test-plan coverage for visual-step generation, deterministic score/no-score seeds, banner layout, one-second auto-advance, tap-to-advance, deferred score/clock application, and low-clock game-over resolution
-- noted that the opponent sim remains text-presented rather than a live animated defensive sequence
+- noted the then-current limitation that opponent sim remained text-presented rather than a live animated defensive sequence; this has since been superseded by static court tableaux
 
 ## 2026-04-14
 

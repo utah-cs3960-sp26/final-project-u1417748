@@ -3,6 +3,9 @@ extends Resource
 
 @export var court_rect: Rect2 = Rect2(120.0, 220.0, 840.0, 1480.0)
 @export var hoop_position: Vector2 = Vector2(540.0, -50.0)
+@export var opposite_hoop_position: Vector2 = Vector2(540.0, 1760.0)
+@export var opposite_hoop_visual_scale_multiplier: float = 2.0
+@export var opposite_hoop_z_index: int = 3000
 @export var three_point_radius: float = 840.0
 @export var rim_radius: float = 62.0
 @export var rim_inner_radius: float = 40.0

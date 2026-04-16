@@ -181,15 +181,52 @@ func _hash_to_index(seed_text: String, size: int) -> int:
 
 
 func _create_visual_step(kind: String, player: PlayerData, points: int, is_final: bool) -> Dictionary:
-	var player_name: String = player.display_name if player != null else "AWY"
+	var player_name: String = _get_visual_step_player_name(kind, player)
 	var text_value: String = _get_visual_step_text(kind, player_name)
+	var actor_team: String = _get_actor_team(kind)
+	var player_id_value: String = _get_player_id_value(player, actor_team, kind)
+	var player_role_value: String = _get_player_role_value(player, kind)
 	return {
 		"text": text_value,
 		"kind": kind,
 		"player": player_name,
 		"points": points,
 		"is_final": is_final,
+		"player_id": player_id_value,
+		"player_role": player_role_value,
+		"actor_team": actor_team,
 	}
+
+
+func _get_visual_step_player_name(kind: String, player: PlayerData) -> String:
+	if player != null:
+		return player.display_name
+	if kind == "defensive_board":
+		return "HOM"
+	return "AWY"
+
+
+func _get_actor_team(kind: String) -> String:
+	if kind == "defensive_board" or kind == "steal" or kind == "blocked_shot":
+		return "home"
+	return "away"
+
+
+func _get_player_id_value(player: PlayerData, actor_team: String, kind: String) -> String:
+	if actor_team == "home":
+		var role_suffix: String = player.role.to_lower() if player != null and player.role != "" else kind
+		return "hom_%s" % role_suffix
+	if player != null and player.player_id != "":
+		return player.player_id
+	return "awy_%s" % kind
+
+
+func _get_player_role_value(player: PlayerData, kind: String) -> String:
+	if player != null and player.role != "":
+		return player.role
+	if kind == "defensive_board":
+		return "C"
+	return "AWY"
 
 
 func _get_visual_step_text(kind: String, player_name: String) -> String:

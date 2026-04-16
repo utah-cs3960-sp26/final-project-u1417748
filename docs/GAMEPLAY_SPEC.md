@@ -53,7 +53,10 @@
 - `SHOT_AIM` is an armed timing phase, not a hold-and-drag phase.
 - Gameplay stays at normal speed while the shot is armed.
 - The ballhandler stops moving once shot mode is armed.
-- The committed shot row starts immediately when shot mode is armed.
+- Drag-release `shot_layout` entries start the committed shot row immediately when shot mode is armed.
+- A direct tap on the top-left `SHOOT` button uses an isolated two-tap timing mode: the first tap enters `SHOT_AIM`, shows the timing meter and preview dots, and holds the ballhandler in the aim pose instead of starting the release row.
+- In direct `SHOOT` button timing mode, the next tap starts the selected release row and samples the timing result; this includes tapping the `SHOOT` button again. If the bar finishes before that second tap, the shot resolves as a late miss.
+- Direct `SHOOT` button timing mode does not change the drag-release shot path, the `DUNK` button path, pass inputs, or movement input.
 - `shot_layout` keeps normal jumper / set-shot behavior outside the rim, and forces close finishes to resolve as layups instead of auto-promoting to dunks.
 - `dunk` commits a dunk only when the stricter dunk gates pass. If the player is close enough for a finish but not dunk-eligible, the request falls back to a layup. If the player is too far for any finish, the request is ignored and offense stays live.
 - If the committed family is a dunk, the game skips timed `SHOT_AIM`, never shows the shot meter, and immediately queues the authored dunk make flow.
@@ -90,12 +93,14 @@
 - A score only counts when the simulated ball is descending and crosses the scoring plane once.
 - Green makes no longer rely on a widened forced-score loophole. They must still enter the front-half score corridor; the shot solver is responsible for producing that path.
 - Rim and backboard collisions stay live.
-- Rendering around the hoop is phase-aware so the ball can sit in the correct depth band against the rear hoop, front rim lip, and front net body instead of relying on one generic depth sort.
+- Rendering around the hoop is phase-aware so the ball sits in front of `NetClean`, always behind `NetBody`, and behind `NetCleanBottomHalf` only while it is actively traveling through the net.
 
 ## Presentation
 
 - The court renders as a flat top-down rectangle with parallel sidelines.
 - The floor art keeps its original aspect ratio, scales to fill the full screen height, and crops extra width with an offensive-side bias instead of stretching.
+- The opposite-side bottom hoop is always visible at the bottom of the court using the normalized back-of-hoop art, rendered at `2.0x` the base hoop projection scale and layered in front of gameplay/presentation sprites so players and balls pass behind it.
+- The live top hoop uses four registered net layers, `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`, all aligned on the same 30x28 transparent canvas. `NetCleanBottomHalf` is a phase-gated lower mask: inactive below normal airborne/rim-approach balls, active above the ball during `net_channel` and the made-shot net-exit follow-through.
 - The textured scoreboard sits in a compact bottom-left card just above the `SHOOT` half of the control panel instead of occupying the top edge of the screen.
 - During `LIVE_OFFENSE`, the best pass target shows a persistent light-blue floor ring until a pass or shot begins.
 - Player sprites are intentionally enlarged so the ballhandler and nearby defenders are easy to read in portrait play.
@@ -140,6 +145,12 @@ Spacing nudges keep off-ball players from collapsing on the ballhandler.
 - can produce turnover, miss, 2PT, 3PT, offensive rebound, and second-chance points
 - presents `1..4` short action beats before the possession resolves on screen
 - each action beat appears in a centered horizontal black banner at `80%` opacity
+- each action beat also jump-cuts a static bottom-half court tableau around the opposite-side hoop
+- the tableau layer shows five AWY ghost players, five passive HOM defender ghosts, and a ghost ball, separate from live gameplay entities
+- live players and the live ball are hidden during `OPPONENT_SIM`, then restored when the next human offense begins
+- all opponent-sim tableau positions stay in the bottom half of the court; setup actions use guard, wing, and corner spacing, while finishes place the actor near the bottom lane and rim
+- movement between opponent actions is not animated; each beat deliberately snaps to the next static formation while lightweight in-place sprite frames may continue
+- during `OPPONENT_SIM`, camera tracking snaps to the current presentation actor or tableau center so each jump cut is immediately readable
 - the live scoreboard card and bottom control panel are hidden while opponent action text is visible
 - each action beat auto-advances after `1.0` second, and a screen press during `OPPONENT_SIM` advances to the next beat immediately
 - the final visible action is the outcome beat and must match the resolved score result

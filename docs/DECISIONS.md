@@ -1,5 +1,15 @@
 # Decisions
 
+## 2026-04-15
+
+### `NetCleanBottomHalf` is phase-gated; `front_of_net` is not always masked
+
+The live top hoop still uses four registered net layers: `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`. `front_of_net` remains a timing/render phase name, but it is no longer enough by itself to place the ball behind the bottom-half mask. `NetCleanBottomHalf` stays inactive below normal airborne, rim-mouth, and generic non-descending `front_of_net` ball frames, then rises above the ball only for `net_channel` and the contiguous made-shot `front_of_net` exit after the ball has entered the net. `NetBody` remains above all top-hoop shot phases.
+
+### Direct `SHOOT` taps now use an isolated two-tap timing mode
+
+The direct `SHOOT` button previously entered the same animation-gated timing path as a drag-release shot. For row-4 set shots, that made the authored release frame arrive before the player had a practical chance to see the side timing bar and tap the green window, so a plain button press usually became an automatic late miss. The current contract keeps drag-release shots animation-gated, but changes only direct top-left `SHOOT` button taps to a two-tap timing mode: the first tap enters `SHOT_AIM`, shows the meter and preview, and holds the shooter in the aim pose; the next timing tap starts the locked release row and resolves the shot quality. The path is keyed from the direct button metadata, so movement, pass buttons, drag-release `SHOOT`, and direct `DUNK` behavior stay independent.
+
 ## 2026-04-14
 
 ### The visible control panel now uses a split `SHOOT | DUNK` top row and the scoreboard lives above it

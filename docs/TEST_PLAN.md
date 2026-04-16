@@ -13,6 +13,7 @@ Covered by `tests/TestRunner.gd`:
 - top-left `SHOOT` release classification into `shot_layout`
 - top-right `DUNK` release classification into `dunk`
 - direct `SHOOT` / `DUNK` button taps without movement
+- direct `SHOOT` button two-tap timing: first tap shows the meter and aim pose with no pending release, then a second tap at the `SHOOT` button position commits the release
 - idle control-panel buttons sharing the neutral dark base color `#1b1d3a`
 - hovered / pressed action buttons swapping from the neutral base into their authored action color
 - `MOVE`-lane release cancellation
@@ -59,6 +60,8 @@ Covered by `tests/TestRunner.gd`:
 - the first `floor_drop` velocity sample staying aligned with the outgoing `net_exit` motion instead of jumping into a faster post-net descent
 - the first upward rendered-anchor motion being deferred until `floor_settle`
 - a single contiguous `front_of_net` follow-through window before the forced hoop render clears
+- four-layer top-hoop net registration and z ordering: all net textures `30x28`, `NetClean` below shot-ball phases, inactive `NetCleanBottomHalf` below airborne/rim/generic-front ball phases, active `NetCleanBottomHalf` above through-net ball phases, and `NetBody` above all top-hoop shot phases
+- non-descending airborne balls near the hoop can use the `front_of_net` render phase without activating the bottom-half net mask
 - forced hoop render clearing only after the rendered ball has crossed the front-net exit threshold
 - cleared follow-through never re-entering `net_channel` or `front_of_net`
 - made shots landing before opponent sim begins, and before buzzer-end game over
@@ -82,8 +85,15 @@ Covered by `tests/TestRunner.gd`:
 - opponent sim visual-step count clamped to `1..4`
 - opponent sim final visual action matching the resolved score/no-score result
 - opponent sim display text staying banner-ready and free of internal clock/debug-only lines
+- opponent sim visual steps carrying stable `player_id`, `player_role`, and `actor_team` metadata when applicable
+- bottom-hoop snapshot reporting a loaded normalized `144x170` texture anchored on the bottom court side
+- bottom-hoop snapshot reporting the doubled `2.0x` visual scale multiplier and an absolute z order above entity sprites
+- opponent sim visual snapshot reporting active state, current kind, actor role/team, ghost positions, ball ownership/visibility, and camera anchor
 - opponent sim presentation hiding the scoreboard and control panel while banner text is visible
+- opponent sim presentation hiding live players and live ball while ghost tableaux are visible
+- opponent sim tableaux keeping all ghost player positions in the bottom half of the court
 - opponent sim presentation restoring the scoreboard and controls when `LIVE_OFFENSE` resumes
+- opponent sim presentation restoring live players and live ball when `LIVE_OFFENSE` resumes
 - deterministic opponent sim seeds covering one-step score, multi-step score, and no-score outcomes
 - log file creation
 
@@ -108,6 +118,7 @@ Resource-backed scenarios under `data/scenarios/`:
 - opponent banner no-score turnover or steal
 - opponent banner tap-skip
 - opponent banner low-clock game-over
+- opponent tableau bottom-half render smoke
 - long-run no-softlock
 
 ### Balance Batches
@@ -189,6 +200,11 @@ Smoke game scene:
 - confirm a steal attempt only shows a defender stepping into the lane when that defender actually committed
 - confirm a steal shows the defender securing the ball before the opponent sim action banner takes over
 - confirm opponent possessions show a centered black horizontal action banner at about `80%` opacity
+- confirm the back of the opposite-side hoop is always visible at the bottom of the court behind players
+- confirm opponent possessions show five AWY ghost players, five HOM ghost defenders, and a ghost ball on the bottom half of the court
+- confirm live players and the live ball disappear while the opponent-sim tableaux are shown
+- confirm each opponent action beat jump-cuts to a new static formation without interpolated movement
+- confirm the camera snaps to the current opponent-sim actor or formation center on each action beat
 - confirm the scoreboard card and bottom controls disappear while opponent action text is displayed
 - confirm the banner action text is short, readable, and uses basketball language such as pass, jumper, layup, alley-oop, dunk, turnover, steal, miss, block, or defensive rebound
 - confirm each opponent action beat auto-advances after about one second
@@ -196,6 +212,7 @@ Smoke game scene:
 - confirm the final opponent action clearly explains whether AWY scored or failed to score
 - confirm AWY score and clock changes apply after the final opponent action, not when the first banner text appears
 - confirm the scoreboard and controls reappear when the new human possession begins
+- confirm live players and the live ball reappear when the new human possession begins
 - release from `MOVE` into the top-left `SHOOT` half and confirm shot mode arms at normal speed with the timing meter spanning the full top row plus visible preview dots on court
 - release from `MOVE` into the top-right `DUNK` half near the rim and confirm an eligible dunk skips the timing meter and enters the dunk finish flow
 - release from `MOVE` into the top-right `DUNK` half near the rim with a non-dunk finisher and confirm it falls back to a layup instead of a jumper
@@ -216,8 +233,8 @@ Smoke game scene:
 - score at least one basket
 - confirm the blue second-court art is visible, vertically oriented, full-height, and not stretched
 - confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
-- confirm the hoop body plus rear/full hoop, front rim lip, and front net body all stay aligned on the painted top-rim area
-- confirm normal makes render in front of the backboard, meet the rim plane, immediately turn downward into the hanging net during the guided descent, and only go behind the board when thrown over it
+- confirm the hoop body plus `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody` all stay aligned on the painted top-rim area
+- confirm airborne and rim-approach shots render in front of inactive `NetCleanBottomHalf`, while normal makes activate the bottom-half mask only as they enter `net_channel` and the made-shot `front_of_net` exit, with `NetBody` still above the ball throughout top-hoop shot phases
 - confirm the scored ball stays in one continuous downward motion from the net through the floor drop, with no upward pop before the floor bounce begins
 - confirm the score text does not appear while the ball is still above the rim or behind the backboard on a made shot
 - confirm only the currently controlled player shows the outline sheet

@@ -5,6 +5,9 @@
 [resource]
 script = ExtResource("1")
 hoop_position = Vector2(540, 160)
+opposite_hoop_position = Vector2(540, 1760)
+opposite_hoop_visual_scale_multiplier = 2.0
+opposite_hoop_z_index = 3000
 three_point_radius = 840.0
 backboard_y = 0.0
 over_backboard_z_threshold = 320.0

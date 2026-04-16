@@ -4,6 +4,7 @@ extends Node
 const PLAYER_SCENE: PackedScene = preload("res://scenes/entities/Player.tscn")
 const BALL_SCENE: PackedScene = preload("res://scenes/entities/Ball.tscn")
 const HOOP_SCENE: PackedScene = preload("res://scenes/entities/Hoop.tscn")
+const OPPONENT_SIM_PRESENTATION_SCENE: PackedScene = preload("res://scenes/entities/OpponentSimPresentation.tscn")
 const PLAYER_ANIMATION_CONFIG_SCRIPT = preload("res://scripts/config/PlayerAnimationConfig.gd")
 const PLAYER_VISUAL_REQUEST_SCRIPT = preload("res://scripts/entities/PlayerVisualRequest.gd")
 const INPUT_CONFIG_SCRIPT = preload("res://scripts/config/InputConfig.gd")
@@ -15,6 +16,8 @@ const SCORE_FOLLOWTHROUGH_HANDOFF_MAX_DURATION: float = 0.16
 const SCORE_FOLLOWTHROUGH_HANDOFF_DURATION_RATIO: float = 0.5
 const SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON: float = 0.75
 const SCORE_FOLLOWTHROUGH_PRE_BOUNCE_CONTINUITY_EPSILON: float = 0.1
+const SHOT_TIMING_MODE_ANIMATION_GATED: String = "animation_gated"
+const SHOT_TIMING_MODE_DIRECT_SHOOT_BUTTON: String = "direct_shoot_button"
 
 enum BallVisualMode {
 	HIDDEN_WHILE_OWNED,
@@ -71,6 +74,7 @@ var offense_players: Array[PlayerController] = []
 var defense_players: Array[PlayerController] = []
 var ball_node: BallController
 var hoop_node: HoopView
+var opponent_sim_presentation: Node
 var current_ballhandler: PlayerController
 var shot_owner: PlayerController
 var shot_had_rim_contact: bool = false
@@ -109,6 +113,7 @@ var finish_logic_center_screen_cached: Vector2 = Vector2.INF
 var defenders_disabled: bool = false
 var controls_visible: bool = true
 var opponent_sim_match_ui_hidden: bool = false
+var opponent_sim_live_entities_hidden: bool = false
 var pending_opponent_sim_result: Dictionary = {}
 var opponent_sim_visual_steps: Array[Dictionary] = []
 var opponent_sim_visual_index: int = -1
@@ -354,6 +359,10 @@ func _spawn_entities() -> void:
 	ball_node = BALL_SCENE.instantiate() as BallController
 	entities_node.add_child(ball_node)
 	ball_node.z_index = 6
+	opponent_sim_presentation = OPPONENT_SIM_PRESENTATION_SCENE.instantiate()
+	opponent_sim_presentation.name = "OpponentSimPresentation"
+	entities_node.add_child(opponent_sim_presentation)
+	opponent_sim_presentation.call("setup", home_team, away_team, court_config, court_projection, player_animation_config)
 	_sync_projection_visuals()
 
 
@@ -891,12 +900,53 @@ func _build_auto_dunk_make_action(shooter: PlayerController) -> Dictionary:
 	)
 
 
+func _should_use_direct_shoot_button_timing(details: Dictionary, control_intent: String) -> bool:
+	return control_intent == "shot_layout" \
+		and bool(details.get("direct_button_tap", false)) \
+		and str(details.get("release_zone", "")) == "shoot"
+
+
+func _configure_direct_shoot_button_timing(shooter: PlayerController) -> void:
+	if active_shot_sequence.is_empty():
+		return
+	active_shot_sequence["shot_timing_mode"] = SHOT_TIMING_MODE_DIRECT_SHOOT_BUTTON
+	active_shot_sequence["release_visual_deferred"] = true
+	active_shot_sequence["release_visual_started"] = false
+	var timing_profile: Dictionary = Dictionary(active_shot_sequence.get("timing_profile", {})).duplicate(true)
+	var animation_release_time: float = maxf(float(timing_profile.get("release_time_seconds", 0.0)), 0.0)
+	var button_meter_duration: float = maxf(float(shot_config.meter_cycle_duration if shot_config != null else 0.86), 0.1)
+	timing_profile["animation_release_time_seconds"] = animation_release_time
+	timing_profile["release_time_seconds"] = maxf(button_meter_duration, animation_release_time)
+	active_shot_sequence["timing_profile"] = timing_profile
+	if shooter != null:
+		shot_visual_locks.erase(shooter)
+
+
+func _active_shot_uses_direct_shoot_button_timing() -> bool:
+	return not active_shot_sequence.is_empty() \
+		and str(active_shot_sequence.get("shot_timing_mode", SHOT_TIMING_MODE_ANIMATION_GATED)) == SHOT_TIMING_MODE_DIRECT_SHOOT_BUTTON
+
+
+func _ensure_active_shot_release_visual_lock(shooter: PlayerController) -> void:
+	if shooter == null or active_shot_sequence.is_empty():
+		return
+	shot_visual_locks[shooter] = {
+		"family": str(active_shot_sequence.get("family", "jumper_release")),
+		"variant_index": int(active_shot_sequence.get("variant_index", 0)),
+		"mirror_west": bool(active_shot_sequence.get("mirror_west", false)),
+		"start_frame_override": int(active_shot_sequence.get("approach_start_frame", 1)),
+	}
+	active_shot_sequence["release_visual_deferred"] = false
+	active_shot_sequence["release_visual_started"] = true
+
+
 func _on_shot_mode_requested(details: Dictionary) -> void:
 	if context.current_state != GameState.State.LIVE_OFFENSE:
 		return
 	if current_ballhandler == null:
 		return
 	var control_intent: String = str(details.get("control_intent", "shot_layout"))
+	var use_direct_shoot_button_timing: bool = _should_use_direct_shoot_button_timing(details, control_intent)
 	default_pass_target = null
 	default_pass_target_details.clear()
 	if not _begin_active_shot_sequence(current_ballhandler, control_intent):
@@ -912,7 +962,10 @@ func _on_shot_mode_requested(details: Dictionary) -> void:
 	current_move_direction = Vector2.ZERO
 	current_move_magnitude = 0.0
 	context.gameplay_time_scale = 1.0
+	if use_direct_shoot_button_timing:
+		_configure_direct_shoot_button_timing(current_ballhandler)
 	var arm_payload: Dictionary = _build_shot_arm_log_payload(details)
+	arm_payload["shot_timing_mode"] = str(active_shot_sequence.get("shot_timing_mode", SHOT_TIMING_MODE_ANIMATION_GATED))
 	if _should_auto_commit_active_dunk():
 		shot_controller.begin_aim(current_ballhandler.world_position, _get_active_shot_timing_profile(), rng)
 		current_preview_points.clear()
@@ -1018,6 +1071,7 @@ func _begin_opponent_sim_sequence(result: Dictionary) -> void:
 	opponent_sim_visual_steps = _normalize_opponent_sim_visual_steps(result.get("visual_steps", []))
 	opponent_sim_visual_index = 0
 	_set_opponent_sim_match_ui_hidden(true)
+	_set_opponent_sim_live_entities_hidden(true)
 	_show_current_opponent_sim_step()
 
 
@@ -1031,6 +1085,7 @@ func _normalize_opponent_sim_visual_steps(raw_steps: Variant) -> Array[Dictionar
 				if text_value == "":
 					continue
 				step["text"] = text_value
+				_normalize_opponent_sim_visual_step_actor_fields(step)
 				step["is_final"] = false
 				steps.append(step)
 	if steps.is_empty():
@@ -1048,6 +1103,41 @@ func _normalize_opponent_sim_visual_steps(raw_steps: Variant) -> Array[Dictionar
 	return steps
 
 
+func _normalize_opponent_sim_visual_step_actor_fields(step: Dictionary) -> void:
+	var kind_value: String = str(step.get("kind", ""))
+	var actor_team: String = str(step.get("actor_team", "")).to_lower()
+	if actor_team == "":
+		actor_team = "home" if kind_value in ["steal", "blocked_shot", "defensive_board"] else "away"
+	if actor_team == "hom":
+		actor_team = "home"
+	elif actor_team == "awy":
+		actor_team = "away"
+	var player_role: String = str(step.get("player_role", ""))
+	if player_role == "" or not _is_known_player_role(player_role):
+		player_role = _infer_opponent_sim_player_role(step)
+	var player_id: String = str(step.get("player_id", ""))
+	if player_id == "":
+		player_id = "%s_%s" % ["hom" if actor_team == "home" else "awy", player_role.to_lower()]
+	step["actor_team"] = actor_team
+	step["player_role"] = player_role
+	step["player_id"] = player_id
+
+
+func _infer_opponent_sim_player_role(step: Dictionary) -> String:
+	var player_name: String = str(step.get("player", ""))
+	for player in away_team.players:
+		if player != null and player.display_name == player_name and player.role != "":
+			return player.role
+	for player in home_team.players:
+		if player != null and player.display_name == player_name and player.role != "":
+			return player.role
+	return "PG"
+
+
+func _is_known_player_role(role: String) -> bool:
+	return role in ["PG", "LW", "RW", "LC", "RC"]
+
+
 func _show_current_opponent_sim_step() -> void:
 	if opponent_sim_visual_steps.is_empty():
 		_complete_opponent_sim_sequence()
@@ -1058,6 +1148,9 @@ func _show_current_opponent_sim_step() -> void:
 	opponent_sim_visual_timer = maxf(float(opponent_sim_config.visual_step_duration), 0.05)
 	if opponent_sim_banner != null:
 		opponent_sim_banner.show_action(text_value)
+	if opponent_sim_presentation != null:
+		opponent_sim_presentation.call("show_step", step)
+	camera_tracking_signature = ""
 	log_writer.log_event(
 		"opponent_sim_visual_step",
 		{
@@ -1129,6 +1222,9 @@ func _clear_opponent_sim_sequence() -> void:
 	opponent_sim_visual_timer = 0.0
 	if opponent_sim_banner != null:
 		opponent_sim_banner.hide_banner()
+	if opponent_sim_presentation != null:
+		opponent_sim_presentation.call("hide_presentation")
+	_set_opponent_sim_live_entities_hidden(false)
 
 
 func _set_opponent_sim_match_ui_hidden(hidden: bool) -> void:
@@ -1148,6 +1244,18 @@ func _sync_match_ui_visibility() -> void:
 			control_panel.set_panel_state(_build_control_panel_state())
 		else:
 			control_panel.visible = controls_visible and not opponent_sim_match_ui_hidden
+
+
+func _set_opponent_sim_live_entities_hidden(hidden: bool) -> void:
+	opponent_sim_live_entities_hidden = hidden
+	for player in offense_players + defense_players:
+		if player != null:
+			player.visible = not hidden
+	if ball_node != null:
+		if hidden and ball_node.has_method("set_ball_visible"):
+			ball_node.call("set_ball_visible", false)
+		elif not hidden:
+			_sync_ball_visuals()
 
 
 func _begin_rebound(override_zone: Vector2 = Vector2.INF) -> void:
@@ -1188,6 +1296,7 @@ func _set_ballhandler(player: PlayerController) -> void:
 func _set_ball_visual_hidden(owner: PlayerController) -> void:
 	ball_visual_mode = BallVisualMode.HIDDEN_WHILE_OWNED
 	ball_visual_owner = owner
+	_set_bottom_half_net_mask_active(false)
 	if ball_node != null and ball_node.has_method("set_ball_visible"):
 		ball_node.call("set_ball_visible", false)
 
@@ -1206,6 +1315,7 @@ func _sync_ball_to_handler() -> void:
 func _sync_ball_to_player(player: PlayerController) -> void:
 	if player == null:
 		return
+	_set_bottom_half_net_mask_active(false)
 	ball_simulator.reset_to_possession(player.world_position)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(ball_simulator.position_xy)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(ball_simulator.position_xy)
@@ -1345,6 +1455,8 @@ func _clear_entity_children() -> void:
 		child.queue_free()
 	offense_players.clear()
 	defense_players.clear()
+	opponent_sim_presentation = null
+	opponent_sim_live_entities_hidden = false
 	player_visual_memory.clear()
 
 
@@ -1658,6 +1770,25 @@ func get_opponent_sim_sequence_snapshot() -> Dictionary:
 	}
 
 
+func get_opponent_sim_visual_snapshot() -> Dictionary:
+	var snapshot: Dictionary = {}
+	if opponent_sim_presentation != null:
+		var raw_snapshot: Variant = opponent_sim_presentation.call("get_visual_snapshot")
+		if raw_snapshot is Dictionary:
+			snapshot = raw_snapshot
+	var current_text: String = ""
+	if opponent_sim_visual_index >= 0 and opponent_sim_visual_index < opponent_sim_visual_steps.size():
+		current_text = str(opponent_sim_visual_steps[opponent_sim_visual_index].get("text", ""))
+	snapshot["current_text"] = current_text
+	snapshot["current_index"] = opponent_sim_visual_index
+	snapshot["action_count"] = opponent_sim_visual_steps.size()
+	snapshot["pending_points_scored"] = int(pending_opponent_sim_result.get("points_scored", 0))
+	snapshot["pending_time_consumed"] = float(pending_opponent_sim_result.get("time_consumed", 0.0))
+	snapshot["presentation_visible"] = opponent_sim_presentation != null and opponent_sim_presentation.visible
+	snapshot["live_entities_hidden"] = opponent_sim_live_entities_hidden
+	return snapshot
+
+
 func get_opponent_sim_banner_snapshot() -> Dictionary:
 	if opponent_sim_banner == null:
 		return {}
@@ -1886,6 +2017,8 @@ func _sync_projection_visuals(delta: float = 0.0) -> void:
 	_advance_active_dunk_root_motion(delta)
 	_maybe_commit_pending_shot_release()
 	_update_camera_tracking(delta)
+	if opponent_sim_presentation != null:
+		opponent_sim_presentation.call("sync_projection", delta)
 	if hoop_node != null:
 		hoop_node.set_projection(court_projection)
 		hoop_node.advance_visual_animation(delta)
@@ -1917,7 +2050,9 @@ func _update_camera_tracking(delta: float) -> void:
 	if tracking_target.is_empty():
 		return
 	var next_signature: String = str(tracking_target.get("signature", ""))
-	var should_snap: bool = next_signature.begins_with("ball") or next_signature == "score_followthrough_finish"
+	var should_snap: bool = next_signature.begins_with("ball") \
+		or next_signature.begins_with("opponent_sim") \
+		or next_signature == "score_followthrough_finish"
 	var base_target_screen: Vector2 = tracking_target.get("base_screen", court_projection.get_viewport_rect().get_center())
 	var post_camera_offset: Vector2 = tracking_target.get("post_camera_offset", Vector2.ZERO)
 	court_projection.update_camera_target(base_target_screen, delta, should_snap, post_camera_offset)
@@ -1930,6 +2065,8 @@ func _build_camera_tracking_target() -> Dictionary:
 	match context.current_state:
 		GameState.State.PASS_IN_FLIGHT, GameState.State.SHOT_IN_FLIGHT, GameState.State.REBOUND_LIVE:
 			return _build_ball_camera_tracking_target()
+		GameState.State.OPPONENT_SIM:
+			return _build_opponent_sim_camera_tracking_target()
 		GameState.State.STEAL_RESOLVE:
 			if current_steal_holder != null:
 				return _build_player_camera_tracking_target(current_steal_holder)
@@ -1983,6 +2120,21 @@ func _build_player_camera_tracking_target(player: PlayerController) -> Dictionar
 	}
 
 
+func _build_opponent_sim_camera_tracking_target() -> Dictionary:
+	if court_projection == null or court_config == null:
+		return {}
+	var camera_anchor_world: Vector2 = court_config.opposite_hoop_position
+	if opponent_sim_presentation != null:
+		camera_anchor_world = opponent_sim_presentation.call("get_camera_anchor_world")
+	if camera_anchor_world == Vector2.ZERO:
+		camera_anchor_world = court_config.opposite_hoop_position
+	return {
+		"base_screen": court_projection.player_tracking_anchor_base_screen(camera_anchor_world),
+		"post_camera_offset": Vector2.ZERO,
+		"signature": "opponent_sim_%d" % opponent_sim_visual_index,
+	}
+
+
 func _build_ball_camera_tracking_target() -> Dictionary:
 	if court_projection == null:
 		return {}
@@ -2002,8 +2154,10 @@ func _sync_ball_visuals() -> void:
 	if ball_visual_mode == BallVisualMode.HIDDEN_WHILE_OWNED:
 		if ball_visual_owner != null:
 			_sync_ball_to_player(ball_visual_owner)
-		elif ball_node.has_method("set_ball_visible"):
-			ball_node.call("set_ball_visible", false)
+		else:
+			_set_bottom_half_net_mask_active(false)
+			if ball_node.has_method("set_ball_visible"):
+				ball_node.call("set_ball_visible", false)
 		return
 	_sync_ball_world_visual(ball_simulator.position_xy, ball_simulator.z)
 
@@ -2016,6 +2170,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 	var resolved_render_context: Dictionary = render_context
 	if resolved_render_context.is_empty():
 		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
+	_set_bottom_half_net_mask_active(bool(resolved_render_context.get("bottom_half_net_mask_active", false)))
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
 	var screen_offset: Vector2 = _get_render_context_screen_offset(resolved_render_context)
 	var ball_anchor: Vector2 = _get_ball_screen_anchor_for_world(world_position, z_value, screen_offset)
@@ -2062,6 +2217,7 @@ func _get_live_ball_render_radius(z_ratio: float) -> float:
 func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
 	score_followthrough_state.clear()
 	current_ball_render_phase = ""
+	_set_bottom_half_net_mask_active(false)
 	_stop_score_followthrough_net_swish()
 	if reset_passed_flag:
 		last_scored_shot_passed_through_net = false
@@ -2147,6 +2303,7 @@ func _build_score_followthrough_visual() -> Dictionary:
 		"z": ball_simulator.z,
 		"render_phase": render_phase,
 		"z_index_override": int(render_context.get("z_index_override", BallController.NO_Z_INDEX_OVERRIDE)),
+		"bottom_half_net_mask_active": bool(render_context.get("bottom_half_net_mask_active", false)),
 		"screen_offset": _get_render_context_screen_offset(render_context),
 	}
 
@@ -2181,16 +2338,32 @@ func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_va
 		render_phase = hoop_node.get_ball_render_phase(world_position, z_value, vz_value < 0.0, false, ball_config.ball_radius)
 	if render_phase == "" and screen_drop_px <= 0.001:
 		return {}
+	var bottom_half_net_mask_active: bool = _should_activate_bottom_half_net_mask(render_phase, uses_explicit_hoop_phase)
 	var render_context: Dictionary = {
 		"screen_drop_px": screen_drop_px,
 		"screen_offset": Vector2(0.0, screen_drop_px),
 		"is_followthrough_handoff": false,
 		"uses_explicit_hoop_phase": uses_explicit_hoop_phase,
+		"bottom_half_net_mask_active": bottom_half_net_mask_active,
 	}
 	if render_phase != "":
 		render_context["render_phase"] = render_phase
 		render_context["z_index_override"] = hoop_node.get_ball_z_index_for_phase(render_phase)
 	return _apply_pre_bounce_render_continuity(world_position, z_value, render_context)
+
+
+func _should_activate_bottom_half_net_mask(render_phase: String, uses_explicit_hoop_phase: bool) -> bool:
+	if render_phase == HoopView.BALL_RENDER_PHASE_NET_CHANNEL:
+		return true
+	if render_phase != HoopView.BALL_RENDER_PHASE_FRONT_OF_NET:
+		return false
+	if uses_explicit_hoop_phase and ball_simulator.is_guided_make_profile():
+		return true
+	if bool(score_followthrough_state.get("active", false)) and last_scored_shot_passed_through_net:
+		return true
+	if bool(score_followthrough_state.get("handoff_active", false)):
+		return true
+	return false
 
 
 func _get_guided_make_terminal_screen_drop_px() -> float:
@@ -2317,6 +2490,7 @@ func _begin_score_followthrough_handoff() -> void:
 	score_followthrough_state["last_forced_z_override"] = hoop_node.get_ball_z_index_for_phase(handoff_phase)
 	score_followthrough_state["active"] = true
 	current_ball_render_phase = handoff_phase
+	_set_bottom_half_net_mask_active(true)
 	_stop_score_followthrough_net_swish()
 	_trace_score_followthrough("handoff_begin", {}, true)
 
@@ -2357,7 +2531,13 @@ func _advance_score_followthrough_handoff(delta: float) -> void:
 		score_followthrough_state["handoff_screen_offset"] = Vector2.ZERO
 		score_followthrough_state["active"] = false
 		current_ball_render_phase = ""
+		_set_bottom_half_net_mask_active(false)
 		_trace_score_followthrough("handoff_cleared", {}, true)
+
+
+func _set_bottom_half_net_mask_active(active: bool) -> void:
+	if hoop_node != null and hoop_node.has_method("set_bottom_half_net_mask_active"):
+		hoop_node.call("set_bottom_half_net_mask_active", active)
 
 
 func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bool:
@@ -2498,6 +2678,11 @@ func _resolve_player_animation_family(player: PlayerController) -> String:
 	var locked_shot_visual: Dictionary = _get_locked_shot_visual(player)
 	if not locked_shot_visual.is_empty():
 		return str(locked_shot_visual.get("family", "jumper_release"))
+	if player == current_ballhandler \
+			and context.current_state == GameState.State.SHOT_AIM \
+			and _has_active_shot_sequence_for_player(player) \
+			and bool(active_shot_sequence.get("release_visual_deferred", false)):
+		return "shot_aim"
 	if player.shot_pose_timer > 0.0:
 		return _resolve_shot_release_family(player)
 	if player.catch_pose_timer > 0.0:
@@ -2571,6 +2756,8 @@ func _get_locked_shot_visual(player: PlayerController) -> Dictionary:
 	if player == null:
 		return {}
 	if _has_active_shot_sequence_for_player(player):
+		if bool(active_shot_sequence.get("release_visual_deferred", false)):
+			return {}
 		return {
 			"family": str(active_shot_sequence.get("family", "jumper_release")),
 			"variant_index": int(active_shot_sequence.get("variant_index", 0)),
@@ -3216,6 +3403,9 @@ func _begin_active_shot_sequence(shooter: PlayerController, control_intent: Stri
 		"committed": false,
 		"launched": false,
 		"timing_result": "",
+		"shot_timing_mode": SHOT_TIMING_MODE_ANIMATION_GATED,
+		"release_visual_deferred": false,
+		"release_visual_started": true,
 		"finish_decision": shot_visual_decision.duplicate(true),
 	}
 	shot_visual_locks[shooter] = {
@@ -3376,6 +3566,8 @@ func _maybe_finish_active_shot_sequence() -> void:
 
 func _get_remaining_shot_pose_duration() -> float:
 	var full_duration: float = maxf(shot_controller.get_full_animation_duration_seconds(), 0.0)
+	if _active_shot_uses_direct_shoot_button_timing():
+		return maxf(full_duration + 0.02, 0.08)
 	var elapsed: float = 0.0
 	if not active_shot_sequence.is_empty():
 		var shooter: PlayerController = active_shot_sequence.get("player", null) as PlayerController
@@ -3416,6 +3608,7 @@ func _queue_shot_release(action: Dictionary, blocker: PlayerController = null) -
 	if active_shot_sequence.is_empty() or active_shot_sequence.get("player", null) != shooter:
 		_begin_active_shot_sequence(shooter)
 		shot_controller.begin_aim(shooter.world_position, _get_active_shot_timing_profile(), rng)
+	_ensure_active_shot_release_visual_lock(shooter)
 	var shot_pose_duration: float = _get_remaining_shot_pose_duration()
 	shot_owner = shooter
 	context.shot_value_pending = int(action.get("shot_value", 0))
@@ -3466,8 +3659,12 @@ func _maybe_commit_pending_shot_release() -> void:
 		if not pending_shot_release.is_empty():
 			_clear_pending_shot_release()
 		return
-	if context.current_state == GameState.State.SHOT_AIM and pending_shot_release.is_empty() and shooter.is_ball_release_ready():
-		_queue_auto_late_miss_release(shooter)
+	if context.current_state == GameState.State.SHOT_AIM and pending_shot_release.is_empty():
+		if _active_shot_uses_direct_shoot_button_timing():
+			if shot_controller.get_meter_progress() >= 0.999:
+				_queue_auto_late_miss_release(shooter)
+		elif shooter.is_ball_release_ready():
+			_queue_auto_late_miss_release(shooter)
 	if context.current_state != GameState.State.SHOT_RELEASE or pending_shot_release.is_empty():
 		return
 	shooter = pending_shot_release.get("player", null) as PlayerController
