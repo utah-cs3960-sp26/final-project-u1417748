@@ -35,13 +35,14 @@
 - owns the transient opponent-sim match-UI hide flag so the scoreboard and bottom control panel disappear while action text is visible and restore only when human offense resumes
 - owns the opponent-sim presentation layer lifecycle, hiding live players and live ball while AWY/HOM ghost tableaux play on the bottom half of the court, then restoring live entities on completion, game over, restart, or test reset
 - snaps the close camera to the current opponent-sim actor or tableau center during `OPPONENT_SIM` so static jump cuts are readable immediately
-- owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `available_play_rect`, `court_screen_rect`, `control_panel_rect`, `control_zone_rects`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
+- owns the responsive layout metrics contract for `viewport_rect`, `safe_rect`, `banner_rect`, `pause_button_rect`, `available_play_rect`, `court_screen_rect`, `control_panel_rect`, `control_zone_rects`, `presentation_scale`, and `ui_scale`, refreshing it from the live viewport and device safe area before resyncing presentation
 - defines `banner_rect` as the compact scoreboard-card bounds anchored above the control panel's left `SHOOT` half rather than as a top banner strip
+- defines `pause_button_rect` as the standalone mirrored pause-button bounds anchored above the control panel's right `DUNK` half
 - keeps gameplay coordinates in flat world space, then maps players, ball, hoop, preview points, and debug geometry into a flat rectangular screen-space court each frame
 - resolves the active close-camera target each frame, following the controlled ballhandler during owned possession and the rendered live ball during passes, shots, rebounds, and score follow-through
-- owns the made-shot render handoff that keeps the ball in a single contiguous `front_of_net` timing window after `net_exit`, activates the lower `NetCleanBottomHalf` mask only for through-net follow-through, freezes the guided terminal presentation drop through the full explicit hoop follow-through, clamps pre-bounce rendered anchors so `guided_descent -> net_exit -> floor_drop` never step upward on screen, and only releases back to plain world rendering after the ball has visibly cleared the hoop's front-net exit threshold
+- owns the made-shot render handoff that keeps the ball in a single contiguous `front_of_net` timing window after `net_exit`, activates the lower `NetCleanBottomHalf` and `NetBody` masks only for through-net follow-through, freezes the guided terminal presentation drop through the full explicit hoop follow-through, clamps pre-bounce rendered anchors so `guided_descent -> net_exit -> floor_drop` never step upward on screen, and only releases back to plain world rendering after the ball has visibly cleared the hoop's front-net exit threshold
 - commits any staged shot release before final projection sync so the first visible launched-ball frame already hands camera ownership from the player to the live ball
-- owns the explicit hoop render-phase contract so shot balls render in front of `NetClean`, behind `NetBody`, and only behind `NetCleanBottomHalf` while they are actually in the net channel or the contiguous made-shot net-exit follow-through
+- owns the explicit hoop render-phase contract so shot balls render in front of `NetClean`, and only behind `NetCleanBottomHalf` and `NetBody` while they are actually in the net channel or the contiguous made-shot net-exit follow-through
 - resolves sprite-facing and animation state for the player presentation layer without letting art drive gameplay logic
 - owns the full-sheet animation classifier, including family selection, deterministic variant locking, close-finish layup/dunk routing, westward mirroring, and controlled-player outline visibility
 - owns the `SHOT_RELEASE` staging state, the pending shot-release snapshot, and the presentation-only ball visibility mode that keeps the rendered world ball hidden while a player-held sprite already includes the ball
@@ -64,7 +65,7 @@
   - exposes a bottom-hoop snapshot so smoke tests can verify visibility, `144x170` texture size, projected rect, doubled scale multiplier, z order, and bottom-court anchor
   - also renders gameplay-only overlays like the light-blue focused-pass ring and trajectory dots while leaving joystick art and shot-meter rendering to the dedicated control panel
 - `HUD`
-  - renders the cropped textured scoreboard as a compact bottom-left card above the `SHOOT` half of the control panel, maps the live home score, clock, pause control, and away score into authored art zones, and exposes a layout snapshot used by smoke tests to verify those controls stay inside the board
+  - renders the cropped textured scoreboard as a compact bottom-left card above the `SHOOT` half of the control panel, maps the live home score, clock, and away score into authored art zones, renders a separate square pause icon button above the `DUNK` half, and exposes a layout snapshot used by smoke tests to verify both HUD elements stay inside the safe area
 - `OpponentSimBanner`
   - captures taps only while `OPPONENT_SIM` is presenting, renders a centered full-width black action banner at `80%` opacity, exposes layout/text snapshots for smoke coverage, and emits advance requests that move one visual step at a time
 - `OpponentSimPresentation`
@@ -74,7 +75,7 @@
   - keeps positions in court world space and resyncs projection each frame, but does not interpolate movement between steps
   - exposes a snapshot with current kind, actor role/team, ghost positions, ball owner/visibility, and camera anchor for deterministic smoke coverage
 - `ControlPanel`
-  - renders the visible bottom-third control panel, keeping every button on a shared dark neutral idle base until the active drag or a direct press swaps that zone into its action color, while also drawing the joystick art, pass badges, and the widened shot meter that spans the combined `SHOOT | DUNK` top row during `SHOT_AIM`
+  - renders the visible compact bottom-quarter control panel, keeping every button on a shared dark neutral idle base until the active drag or a direct press swaps that zone into its action color, while also drawing the joystick art, pass badges, small capped labels, and the widened shot meter that spans the combined `SHOOT | DUNK` top row during `SHOT_AIM`
 - `ShotController`
   - one-way shot-mode timing, decision-duration-vs-full-animation timing separation, tail-end green-window classification, stable aim-time miss variants, apex-driven launch profile generation, staged guided-make solve generation, and preview sampling
 - `PassController`
@@ -88,7 +89,7 @@
   - guided makes may still collide during approach, but only score once the simulator reports the planned guided-descent score gate crossing
 - `HoopView`
   - composes the hoop body plus a four-layer hoop stack around the gameplay rim anchor: `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`, with the four net textures sharing the same 30x28 registration transform
-  - exposes render-phase z-order helpers, a bottom-half mask active flag, and a layering snapshot so inactive `NetCleanBottomHalf` sits below airborne, rim-mouth, and generic front-net ball phases, then rises above only `net_channel` and through-net `front_of_net` phases while `NetBody` remains above all top-hoop shot phases
+  - exposes render-phase z-order helpers, through-net mask flags, and a layering snapshot so inactive `NetCleanBottomHalf` and `NetBody` sit below airborne, rim-mouth, and generic front-net ball phases, then rise above only `net_channel` and through-net `front_of_net` phases
 - `PlayerController` + `PlayerVisual`
   - keep simulation and presentation separate by letting the controller own gameplay state while a child visual node manages character-sheet selection, row playback, deterministic variant resolution, and the intentionally oversized mobile-readable sprite presentation
   - keep direct player input movement separate from AI steering so user-controlled motion can stay sharp while AI route, defense, rebound, and catch/intercept movement eases into short corrections

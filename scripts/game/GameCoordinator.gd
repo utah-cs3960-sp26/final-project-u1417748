@@ -222,6 +222,13 @@ func _build_layout_metrics() -> Dictionary:
 		control_panel_rect.position.y - 12.0 * ui_scale - board_height
 	)
 	var banner_rect: Rect2 = Rect2(Vector2(board_x, board_y), Vector2(board_width, board_height))
+	var pause_button_size: Vector2 = Vector2(board_height, board_height)
+	var pause_button_x: float = clampf(
+		control_panel_rect.end.x - pause_button_size.x,
+		safe_rect.position.x,
+		maxf(safe_rect.end.x - pause_button_size.x, safe_rect.position.x)
+	)
+	var pause_button_rect: Rect2 = Rect2(Vector2(pause_button_x, board_y), pause_button_size)
 	var play_inset: float = 12.0 * ui_scale
 	var play_top: float = safe_rect.position.y + play_inset
 	var play_bottom: float = maxf(safe_rect.end.y - play_inset, play_top)
@@ -235,6 +242,7 @@ func _build_layout_metrics() -> Dictionary:
 		"viewport_rect": viewport_rect,
 		"safe_rect": safe_rect,
 		"banner_rect": banner_rect,
+		"pause_button_rect": pause_button_rect,
 		"available_play_rect": available_play_rect,
 		"court_screen_rect": court_screen_rect,
 		"control_panel_rect": control_panel_rect,
@@ -247,7 +255,7 @@ func _build_layout_metrics() -> Dictionary:
 func _build_control_panel_rect(safe_rect: Rect2, ui_scale: float) -> Rect2:
 	var horizontal_margin: float = float(input_config.control_panel_horizontal_margin if input_config != null else 12.0) * ui_scale
 	var bottom_margin: float = float(input_config.control_panel_bottom_margin if input_config != null else 16.0) * ui_scale
-	var panel_height: float = safe_rect.size.y * float(input_config.control_panel_height_ratio if input_config != null else 0.33)
+	var panel_height: float = safe_rect.size.y * float(input_config.control_panel_height_ratio if input_config != null else 0.24)
 	return Rect2(
 		Vector2(safe_rect.position.x + horizontal_margin, safe_rect.end.y - panel_height - bottom_margin),
 		Vector2(maxf(safe_rect.size.x - horizontal_margin * 2.0, 1.0), maxf(panel_height, 1.0))
@@ -1296,7 +1304,7 @@ func _set_ballhandler(player: PlayerController) -> void:
 func _set_ball_visual_hidden(owner: PlayerController) -> void:
 	ball_visual_mode = BallVisualMode.HIDDEN_WHILE_OWNED
 	ball_visual_owner = owner
-	_set_bottom_half_net_mask_active(false)
+	_set_through_net_masks_active(false)
 	if ball_node != null and ball_node.has_method("set_ball_visible"):
 		ball_node.call("set_ball_visible", false)
 
@@ -1315,7 +1323,7 @@ func _sync_ball_to_handler() -> void:
 func _sync_ball_to_player(player: PlayerController) -> void:
 	if player == null:
 		return
-	_set_bottom_half_net_mask_active(false)
+	_set_through_net_masks_active(false)
 	ball_simulator.reset_to_possession(player.world_position)
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(ball_simulator.position_xy)
 	var shadow_anchor: Vector2 = court_projection.shadow_anchor(ball_simulator.position_xy)
@@ -2155,7 +2163,7 @@ func _sync_ball_visuals() -> void:
 		if ball_visual_owner != null:
 			_sync_ball_to_player(ball_visual_owner)
 		else:
-			_set_bottom_half_net_mask_active(false)
+			_set_through_net_masks_active(false)
 			if ball_node.has_method("set_ball_visible"):
 				ball_node.call("set_ball_visible", false)
 		return
@@ -2170,7 +2178,7 @@ func _sync_ball_world_visual(world_position: Vector2, z_value: float, render_con
 	var resolved_render_context: Dictionary = render_context
 	if resolved_render_context.is_empty():
 		resolved_render_context = _resolve_ball_render_context(world_position, z_value, ball_simulator.vz)
-	_set_bottom_half_net_mask_active(bool(resolved_render_context.get("bottom_half_net_mask_active", false)))
+	_set_through_net_masks_active(bool(resolved_render_context.get("through_net_masks_active", resolved_render_context.get("bottom_half_net_mask_active", false))))
 	var ground_anchor: Vector2 = court_projection.world_to_screen_ground(world_position)
 	var screen_offset: Vector2 = _get_render_context_screen_offset(resolved_render_context)
 	var ball_anchor: Vector2 = _get_ball_screen_anchor_for_world(world_position, z_value, screen_offset)
@@ -2217,7 +2225,7 @@ func _get_live_ball_render_radius(z_ratio: float) -> float:
 func _clear_score_followthrough(reset_passed_flag: bool = true) -> void:
 	score_followthrough_state.clear()
 	current_ball_render_phase = ""
-	_set_bottom_half_net_mask_active(false)
+	_set_through_net_masks_active(false)
 	_stop_score_followthrough_net_swish()
 	if reset_passed_flag:
 		last_scored_shot_passed_through_net = false
@@ -2304,6 +2312,8 @@ func _build_score_followthrough_visual() -> Dictionary:
 		"render_phase": render_phase,
 		"z_index_override": int(render_context.get("z_index_override", BallController.NO_Z_INDEX_OVERRIDE)),
 		"bottom_half_net_mask_active": bool(render_context.get("bottom_half_net_mask_active", false)),
+		"net_body_mask_active": bool(render_context.get("net_body_mask_active", false)),
+		"through_net_masks_active": bool(render_context.get("through_net_masks_active", false)),
 		"screen_offset": _get_render_context_screen_offset(render_context),
 	}
 
@@ -2338,13 +2348,15 @@ func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_va
 		render_phase = hoop_node.get_ball_render_phase(world_position, z_value, vz_value < 0.0, false, ball_config.ball_radius)
 	if render_phase == "" and screen_drop_px <= 0.001:
 		return {}
-	var bottom_half_net_mask_active: bool = _should_activate_bottom_half_net_mask(render_phase, uses_explicit_hoop_phase)
+	var through_net_masks_active: bool = _should_activate_through_net_masks(render_phase, uses_explicit_hoop_phase)
 	var render_context: Dictionary = {
 		"screen_drop_px": screen_drop_px,
 		"screen_offset": Vector2(0.0, screen_drop_px),
 		"is_followthrough_handoff": false,
 		"uses_explicit_hoop_phase": uses_explicit_hoop_phase,
-		"bottom_half_net_mask_active": bottom_half_net_mask_active,
+		"bottom_half_net_mask_active": through_net_masks_active,
+		"net_body_mask_active": through_net_masks_active,
+		"through_net_masks_active": through_net_masks_active,
 	}
 	if render_phase != "":
 		render_context["render_phase"] = render_phase
@@ -2352,7 +2364,7 @@ func _resolve_ball_render_context(world_position: Vector2, z_value: float, vz_va
 	return _apply_pre_bounce_render_continuity(world_position, z_value, render_context)
 
 
-func _should_activate_bottom_half_net_mask(render_phase: String, uses_explicit_hoop_phase: bool) -> bool:
+func _should_activate_through_net_masks(render_phase: String, uses_explicit_hoop_phase: bool) -> bool:
 	if render_phase == HoopView.BALL_RENDER_PHASE_NET_CHANNEL:
 		return true
 	if render_phase != HoopView.BALL_RENDER_PHASE_FRONT_OF_NET:
@@ -2490,7 +2502,7 @@ func _begin_score_followthrough_handoff() -> void:
 	score_followthrough_state["last_forced_z_override"] = hoop_node.get_ball_z_index_for_phase(handoff_phase)
 	score_followthrough_state["active"] = true
 	current_ball_render_phase = handoff_phase
-	_set_bottom_half_net_mask_active(true)
+	_set_through_net_masks_active(true)
 	_stop_score_followthrough_net_swish()
 	_trace_score_followthrough("handoff_begin", {}, true)
 
@@ -2531,13 +2543,26 @@ func _advance_score_followthrough_handoff(delta: float) -> void:
 		score_followthrough_state["handoff_screen_offset"] = Vector2.ZERO
 		score_followthrough_state["active"] = false
 		current_ball_render_phase = ""
-		_set_bottom_half_net_mask_active(false)
+		_set_through_net_masks_active(false)
 		_trace_score_followthrough("handoff_cleared", {}, true)
 
 
 func _set_bottom_half_net_mask_active(active: bool) -> void:
 	if hoop_node != null and hoop_node.has_method("set_bottom_half_net_mask_active"):
 		hoop_node.call("set_bottom_half_net_mask_active", active)
+
+
+func _set_net_body_mask_active(active: bool) -> void:
+	if hoop_node != null and hoop_node.has_method("set_net_body_mask_active"):
+		hoop_node.call("set_net_body_mask_active", active)
+
+
+func _set_through_net_masks_active(active: bool) -> void:
+	if hoop_node != null and hoop_node.has_method("set_through_net_masks_active"):
+		hoop_node.call("set_through_net_masks_active", active)
+		return
+	_set_bottom_half_net_mask_active(active)
+	_set_net_body_mask_active(active)
 
 
 func _is_ball_in_hoop_render_zone(world_position: Vector2, z_value: float) -> bool:

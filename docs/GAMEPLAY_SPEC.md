@@ -4,7 +4,7 @@
 
 1. Boot directly into a 3:00 offense-only match.
 2. Control the offensive ballhandler.
-3. Use the visible bottom-third control panel for movement, passes, shots, and dunks.
+3. Use the visible compact bottom-quarter control panel for movement, passes, shots, and dunks.
 4. Resolve score, miss, steal, out-of-bounds, or rebound.
 5. If defense gains possession, run the opponent sim, present its visible action beats, then reset to a new offensive possession.
 6. Finish the current live shot or rebound at the buzzer, then end the game.
@@ -13,7 +13,7 @@
 
 ### Movement
 
-- The bottom third of the screen is a visible control panel with a shorter top `SHOOT | DUNK` split row and a larger bottom `PASS | MOVE | PASS` row.
+- The bottom quarter of the screen is a visible compact control panel with a shorter top `SHOOT | DUNK` split row and a larger bottom `PASS | MOVE | PASS` row.
 - The center `MOVE` lane is intentionally wider than either `PASS` lane so movement has the largest touch target.
 - All four visible button zones use a shared dark neutral base color `#1b1d3a` while idle.
 - A button swaps into its action color only while a drag is hovering over that zone or while that button is being pressed directly.
@@ -93,15 +93,16 @@
 - A score only counts when the simulated ball is descending and crosses the scoring plane once.
 - Green makes no longer rely on a widened forced-score loophole. They must still enter the front-half score corridor; the shot solver is responsible for producing that path.
 - Rim and backboard collisions stay live.
-- Rendering around the hoop is phase-aware so the ball sits in front of `NetClean`, always behind `NetBody`, and behind `NetCleanBottomHalf` only while it is actively traveling through the net.
+- Rendering around the hoop is phase-aware so the ball sits in front of `NetClean`, `NetCleanBottomHalf`, and `NetBody` during normal airborne and rim-approach frames, then goes behind `NetCleanBottomHalf` and `NetBody` only while it is actively traveling through the net.
 
 ## Presentation
 
 - The court renders as a flat top-down rectangle with parallel sidelines.
 - The floor art keeps its original aspect ratio, scales to fill the full screen height, and crops extra width with an offensive-side bias instead of stretching.
 - The opposite-side bottom hoop is always visible at the bottom of the court using the normalized back-of-hoop art, rendered at `2.0x` the base hoop projection scale and layered in front of gameplay/presentation sprites so players and balls pass behind it.
-- The live top hoop uses four registered net layers, `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`, all aligned on the same 30x28 transparent canvas. `NetCleanBottomHalf` is a phase-gated lower mask: inactive below normal airborne/rim-approach balls, active above the ball during `net_channel` and the made-shot net-exit follow-through.
+- The live top hoop uses four registered net layers, `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`, all aligned on the same 30x28 transparent canvas. `NetCleanBottomHalf` and `NetBody` are phase-gated lower masks: inactive below normal airborne/rim-approach balls, active above the ball during `net_channel` and the made-shot net-exit follow-through.
 - The textured scoreboard sits in a compact bottom-left card just above the `SHOOT` half of the control panel instead of occupying the top edge of the screen.
+- A standalone square pause button with a two-bar icon sits bottom-right above the `DUNK` half and matches the scoreboard card height.
 - During `LIVE_OFFENSE`, the best pass target shows a persistent light-blue floor ring until a pass or shot begins.
 - Player sprites are intentionally enlarged so the ballhandler and nearby defenders are easy to read in portrait play.
 
@@ -151,14 +152,14 @@ Spacing nudges keep off-ball players from collapsing on the ballhandler.
 - all opponent-sim tableau positions stay in the bottom half of the court; setup actions use guard, wing, and corner spacing, while finishes place the actor near the bottom lane and rim
 - movement between opponent actions is not animated; each beat deliberately snaps to the next static formation while lightweight in-place sprite frames may continue
 - during `OPPONENT_SIM`, camera tracking snaps to the current presentation actor or tableau center so each jump cut is immediately readable
-- the live scoreboard card and bottom control panel are hidden while opponent action text is visible
+- the live scoreboard card, pause button, and bottom control panel are hidden while opponent action text is visible
 - each action beat auto-advances after `1.0` second, and a screen press during `OPPONENT_SIM` advances to the next beat immediately
 - the final visible action is the outcome beat and must match the resolved score result
 - scoring outcome beats include short basketball descriptions such as `Jump shot from {player}`, `Corner three from {player}`, `Layup from {player}`, `Alley-oop from {player}`, `Dunk from {player}`, `Putback from {player}`, and `Breakaway layup from {player}`
 - no-score outcome beats include short descriptions such as `Turnover from {player}`, `Steal from {player}`, `Missed jumper from {player}`, `Blocked shot from {player}`, and `Defensive board by HOM`
 - setup beats may include actions such as `Pass to {player}`, `Drive by {player}`, `Crossover from {player}`, `Kickout to {player}`, and `Pick-and-roll to {player}`
 - score and clock changes apply only after the final action beat completes or is skipped
-- the scoreboard and controls reappear only after the game resets into `LIVE_OFFENSE` with a human ballhandler
+- the scoreboard, pause button, and controls reappear only after the game resets into `LIVE_OFFENSE` with a human ballhandler
 - logs each possession sequence to `user://logs/`
 
 ## State Machine

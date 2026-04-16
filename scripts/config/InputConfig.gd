@@ -1,7 +1,7 @@
 class_name InputConfig
 extends Resource
 
-@export var control_panel_height_ratio: float = 0.33
+@export var control_panel_height_ratio: float = 0.24
 @export var control_panel_horizontal_margin: float = 12.0
 @export var control_panel_bottom_margin: float = 16.0
 @export var control_panel_gutter: float = 10.0

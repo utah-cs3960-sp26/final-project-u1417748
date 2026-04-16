@@ -1017,9 +1017,10 @@ func _run_pure_logic() -> void:
 		var timer_rect: Rect2 = hud_snapshot.get("timer_rect", Rect2())
 		var pause_rect: Rect2 = hud_snapshot.get("pause_rect", Rect2())
 		var away_rect: Rect2 = hud_snapshot.get("away_rect", Rect2())
-		for snapshot_key in ["home_rect", "timer_rect", "pause_rect", "away_rect"]:
+		for snapshot_key in ["home_rect", "timer_rect", "away_rect"]:
 			_assert_true(_rect_contains_rect(scoreboard_rect, hud_snapshot.get(snapshot_key, Rect2())), "%s fits inside scoreboard" % snapshot_key, str(hud_snapshot.get(snapshot_key, Rect2())))
-		_assert_true(pause_rect.position.y > timer_rect.position.y, "pause stays under timer on scoreboard", "%s %s" % [timer_rect, pause_rect])
+		_assert_true(pause_rect.size.x > 0.0 and pause_rect.size.y > 0.0, "pause button rect is populated", str(pause_rect))
+		_assert_true(not _rect_contains_rect(scoreboard_rect, pause_rect), "pause button no longer lives inside the scoreboard", "%s %s" % [scoreboard_rect, pause_rect])
 		_assert_true(home_rect.get_center().x < timer_rect.get_center().x, "home score stays left of timer", "%s %s" % [home_rect, timer_rect])
 		_assert_true(away_rect.get_center().x > timer_rect.get_center().x, "away score stays right of timer", "%s %s" % [away_rect, timer_rect])
 		if not smoke_layout.is_empty():
@@ -1027,10 +1028,17 @@ func _run_pure_logic() -> void:
 			var smoke_control_rect_for_board: Rect2 = smoke_layout.get("control_panel_rect", Rect2())
 			var smoke_control_zones_for_board: Dictionary = smoke_layout.get("control_zone_rects", {})
 			var smoke_shoot_rect_for_board: Rect2 = smoke_control_zones_for_board.get("shoot", Rect2())
+			var smoke_dunk_rect_for_pause: Rect2 = smoke_control_zones_for_board.get("dunk", Rect2())
 			_assert_true(_rect_contains_rect(smoke_safe_rect, scoreboard_rect), "scoreboard stays inside the safe area", "%s %s" % [scoreboard_rect, smoke_safe_rect])
+			_assert_true(_rect_contains_rect(smoke_safe_rect, pause_rect), "pause button stays inside the safe area", "%s %s" % [pause_rect, smoke_safe_rect])
 			_assert_true(absf(scoreboard_rect.position.x - smoke_shoot_rect_for_board.position.x) < 0.01, "scoreboard aligns to the shoot lane on the left edge", "%s %s" % [scoreboard_rect, smoke_shoot_rect_for_board])
 			_assert_true(absf(scoreboard_rect.size.x - smoke_shoot_rect_for_board.size.x) < 0.01, "scoreboard width matches the shoot lane", "%s %s" % [scoreboard_rect, smoke_shoot_rect_for_board])
 			_assert_true(scoreboard_rect.end.y <= smoke_control_rect_for_board.position.y - 0.01, "scoreboard sits above the control panel", "%s %s" % [scoreboard_rect, smoke_control_rect_for_board])
+			_assert_true(pause_rect.end.y <= smoke_control_rect_for_board.position.y - 0.01, "pause button sits above the control panel", "%s %s" % [pause_rect, smoke_control_rect_for_board])
+			_assert_true(absf(pause_rect.end.x - smoke_control_rect_for_board.end.x) < 0.01, "pause button aligns to the right edge of the control panel", "%s %s" % [pause_rect, smoke_control_rect_for_board])
+			_assert_true(absf(pause_rect.position.y - scoreboard_rect.position.y) < 0.01, "pause button shares the scoreboard top alignment", "%s %s" % [pause_rect, scoreboard_rect])
+			_assert_true(absf(pause_rect.size.y - scoreboard_rect.size.y) < 0.01, "pause button height matches the scoreboard card", "%s %s" % [pause_rect, scoreboard_rect])
+			_assert_true(pause_rect.position.x >= smoke_dunk_rect_for_pause.position.x - 0.01, "pause button sits on the dunk-side half", "%s %s" % [pause_rect, smoke_dunk_rect_for_pause])
 		var scoreboard_texture_size: Vector2 = smoke_coordinator.hud.get_scoreboard_texture_size()
 		var exact_trimmed_size: bool = scoreboard_texture_size.distance_to(Vector2(1098.0, 248.0)) < 0.01
 		var trimmed_aspect_matches: bool = scoreboard_texture_size.y > 0.0 and absf(scoreboard_texture_size.x / scoreboard_texture_size.y - (1098.0 / 248.0)) < 0.001
@@ -1044,6 +1052,7 @@ func _run_pure_logic() -> void:
 		_assert_true(not smoke_coordinator.are_controls_visible(), "pause toggle hides visible controls", str(smoke_coordinator.are_controls_visible()))
 		_assert_true(smoke_coordinator.control_panel != null and not smoke_coordinator.control_panel.visible, "control panel hides when show-controls is off", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else true))
 		_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible and smoke_coordinator.hud.get_layout_snapshot().get("scoreboard_rect", Rect2()).size.x > 0.0, "show-controls toggle leaves the scoreboard visible", str(smoke_coordinator.hud.get_layout_snapshot().get("scoreboard_rect", Rect2()) if smoke_coordinator.hud != null else Rect2()))
+		_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible and smoke_coordinator.hud.get_layout_snapshot().get("pause_rect", Rect2()).size.x > 0.0, "show-controls toggle leaves the pause button visible", str(smoke_coordinator.hud.get_layout_snapshot().get("pause_rect", Rect2()) if smoke_coordinator.hud != null else Rect2()))
 		smoke_coordinator.test_set_controls_visible(true)
 		_assert_true(smoke_coordinator.are_controls_visible(), "pause toggle re-shows visible controls", str(smoke_coordinator.are_controls_visible()))
 		_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "control panel shows again after the pause toggle", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
@@ -1083,13 +1092,17 @@ func _run_pure_logic() -> void:
 		var smoke_control_rect: Rect2 = smoke_layout_snapshot.get("control_panel_rect", Rect2())
 		var smoke_control_zones: Dictionary = smoke_layout_snapshot.get("control_zone_rects", {})
 		var smoke_viewport_rect: Rect2 = smoke_layout_snapshot.get("viewport_rect", Rect2())
+		var smoke_safe_rect_for_controls: Rect2 = smoke_layout_snapshot.get("safe_rect", smoke_viewport_rect)
 		var smoke_pass_left_rect: Rect2 = smoke_control_zones.get("pass_left", Rect2())
 		var smoke_pass_right_rect: Rect2 = smoke_control_zones.get("pass_right", Rect2())
 		var smoke_shoot_rect: Rect2 = smoke_control_zones.get("shoot", Rect2())
 		var smoke_dunk_rect: Rect2 = smoke_control_zones.get("dunk", Rect2())
 		var smoke_move_rect: Rect2 = smoke_control_zones.get("move", Rect2())
 		_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "bottom control panel is visible by default", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
-		_assert_true(smoke_control_rect.size.y >= smoke_viewport_rect.size.y * 0.3 and smoke_control_rect.end.y <= smoke_viewport_rect.end.y + 0.01, "control panel occupies the lower third of the viewport", "%s %s" % [smoke_control_rect, smoke_viewport_rect])
+		var expected_compact_control_height: float = smoke_safe_rect_for_controls.size.y * 0.24
+		var expected_compact_bottom_gap: float = 16.0 * float(smoke_layout_snapshot.get("ui_scale", 1.0))
+		_assert_true(absf(smoke_control_rect.size.y - expected_compact_control_height) <= maxf(1.0, smoke_safe_rect_for_controls.size.y * 0.01), "control panel occupies the compact lower quarter of the safe viewport", "%s %s" % [smoke_control_rect, smoke_safe_rect_for_controls])
+		_assert_true(absf(smoke_safe_rect_for_controls.end.y - smoke_control_rect.end.y - expected_compact_bottom_gap) <= 1.0, "control panel remains bottom anchored above the safe margin", "%s %s" % [smoke_control_rect, smoke_safe_rect_for_controls])
 		_assert_true(not smoke_control_zones.is_empty() and smoke_control_zones.has("move") and smoke_control_zones.has("shoot") and smoke_control_zones.has("dunk"), "control panel exposes authored zone rects", JSON.stringify(smoke_control_zones.keys()))
 		_assert_true(absf(smoke_shoot_rect.size.x - smoke_dunk_rect.size.x) < 0.01, "shoot and dunk split the top row evenly", "%s %s" % [smoke_shoot_rect, smoke_dunk_rect])
 		_assert_true(absf(smoke_shoot_rect.position.y - smoke_dunk_rect.position.y) < 0.01 and absf(smoke_shoot_rect.size.y - smoke_dunk_rect.size.y) < 0.01, "shoot and dunk share the same top-row band", "%s %s" % [smoke_shoot_rect, smoke_dunk_rect])
@@ -1098,6 +1111,14 @@ func _run_pure_logic() -> void:
 		_assert_true(smoke_move_rect.size.y > smoke_shoot_rect.size.y, "move row is taller than the shoot and dunk row", "%s %s" % [smoke_move_rect, smoke_shoot_rect])
 		_assert_true(absf(smoke_pass_left_rect.size.x - smoke_pass_right_rect.size.x) < 0.01, "pass lanes keep matched widths", "%s %s" % [smoke_pass_left_rect, smoke_pass_right_rect])
 		_assert_true(smoke_move_rect.size.x > smoke_pass_left_rect.size.x and smoke_move_rect.size.x > smoke_pass_right_rect.size.x, "move lane is wider than either pass lane", "%s %s %s" % [smoke_move_rect, smoke_pass_left_rect, smoke_pass_right_rect])
+		if smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.has_method("get_label_font_size_snapshot"):
+			var compact_label_fonts: Dictionary = smoke_coordinator.control_panel.call("get_label_font_size_snapshot")
+			var main_label_fonts_capped: bool = true
+			for label_key in ["shoot", "move", "pass_left", "pass_right", "dunk"]:
+				main_label_fonts_capped = main_label_fonts_capped and int(compact_label_fonts.get(label_key, 999)) <= 34
+			var focus_label_fonts_capped: bool = int(compact_label_fonts.get("pass_left_focus", 999)) <= 16 and int(compact_label_fonts.get("pass_right_focus", 999)) <= 16
+			_assert_true(main_label_fonts_capped, "main control labels stay capped for compact controls", JSON.stringify(compact_label_fonts))
+			_assert_true(focus_label_fonts_capped, "pass focus labels stay capped for compact controls", JSON.stringify(compact_label_fonts))
 		_assert_true(smoke_coordinator.current_ballhandler.get_screen_anchor().distance_to(smoke_viewport_center) < 0.01, "opening possession centers ballhandler", str(smoke_coordinator.current_ballhandler.get_screen_anchor()))
 		_assert_true(not smoke_coordinator.ball_node.is_ball_visible(), "held ball hidden while possessed", str(smoke_coordinator.ball_node.is_ball_visible()))
 		_assert_floor_marker_state(smoke_coordinator.current_ballhandler, true, "opening possession controlled floor marker")
@@ -2653,21 +2674,22 @@ func _run_hoop_render_phase_smoke() -> void:
 			]
 			var phases_above_clean: bool = true
 			var inactive_phases_above_bottom_half: bool = true
-			var phases_below_net_body: bool = true
+			var inactive_phases_above_net_body: bool = true
 			for phase_z in phase_z_values:
 				phases_above_clean = phases_above_clean and phase_z > clean_z
 				inactive_phases_above_bottom_half = inactive_phases_above_bottom_half and phase_z > bottom_half_z
-				phases_below_net_body = phases_below_net_body and phase_z < net_body_z
+				inactive_phases_above_net_body = inactive_phases_above_net_body and phase_z > net_body_z
 			_assert_true(bool(layering_snapshot.get("supports_four_layer_visuals", false)), "layering snapshot reports four-layer net", JSON.stringify(layering_snapshot))
 			_assert_true(back_z < body_z and body_z < net_z and net_z < clean_z, "rear hoop layers sit behind shot phases", JSON.stringify(layering_snapshot))
 			_assert_true(not bool(layering_snapshot.get("bottom_half_mask_active", true)), "bottom-half net mask starts inactive", JSON.stringify(layering_snapshot))
+			_assert_true(not bool(layering_snapshot.get("net_body_mask_active", true)), "NetBody mask starts inactive", JSON.stringify(layering_snapshot))
 			_assert_true(phases_above_clean, "shot ball phases render in front of NetClean", JSON.stringify(layering_snapshot))
 			_assert_true(inactive_phases_above_bottom_half, "inactive bottom-half net renders below airborne shot phases", JSON.stringify(layering_snapshot))
-			_assert_true(phases_below_net_body, "shot ball phases stay behind NetBody", JSON.stringify(layering_snapshot))
-			_assert_true(clean_z < bottom_half_z and bottom_half_z < net_body_z, "inactive NetCleanBottomHalf sits between NetClean and NetBody", JSON.stringify(layering_snapshot))
+			_assert_true(inactive_phases_above_net_body, "inactive NetBody renders below airborne shot phases", JSON.stringify(layering_snapshot))
+			_assert_true(clean_z < bottom_half_z and clean_z < net_body_z and bottom_half_z <= net_body_z, "inactive net masks sit above NetClean and below shot phases", JSON.stringify(layering_snapshot))
 			_assert_true(_net_layer_texture_sizes_are_registered(layers), "four net layers share 30x28 registration", JSON.stringify(layering_snapshot))
-			if smoke_coordinator.hoop_node.has_method("set_bottom_half_net_mask_active"):
-				smoke_coordinator.hoop_node.call("set_bottom_half_net_mask_active", true)
+			if smoke_coordinator.hoop_node.has_method("set_through_net_masks_active"):
+				smoke_coordinator.hoop_node.call("set_through_net_masks_active", true)
 				var active_snapshot: Dictionary = smoke_coordinator.hoop_node.call("get_layering_snapshot")
 				var active_layers: Dictionary = active_snapshot.get("layers", {})
 				var active_phases: Dictionary = active_snapshot.get("ball_phases", {})
@@ -2676,9 +2698,11 @@ func _run_hoop_render_phase_smoke() -> void:
 				var active_channel_z: int = int(active_phases.get("net_channel", -999999))
 				var active_front_z: int = int(active_phases.get("front_of_net", -999999))
 				_assert_true(bool(active_snapshot.get("bottom_half_mask_active", false)), "bottom-half net mask toggles active", JSON.stringify(active_snapshot))
+				_assert_true(bool(active_snapshot.get("net_body_mask_active", false)), "NetBody mask toggles active", JSON.stringify(active_snapshot))
 				_assert_true(active_channel_z < active_bottom_half_z and active_front_z < active_bottom_half_z, "active bottom-half net masks through-net ball phases", JSON.stringify(active_snapshot))
+				_assert_true(active_channel_z < active_net_body_z and active_front_z < active_net_body_z, "active NetBody masks through-net ball phases", JSON.stringify(active_snapshot))
 				_assert_true(active_bottom_half_z < active_net_body_z, "active NetCleanBottomHalf stays below NetBody", JSON.stringify(active_snapshot))
-				smoke_coordinator.hoop_node.call("set_bottom_half_net_mask_active", false)
+				smoke_coordinator.hoop_node.call("set_through_net_masks_active", false)
 		if smoke_coordinator.hoop_node.has_method("is_net_swish_active"):
 			_assert_true(not bool(smoke_coordinator.hoop_node.call("is_net_swish_active")), "net swish idle before score", "")
 	smoke_coordinator.begin_test_mode(1708)
@@ -2704,7 +2728,8 @@ func _run_hoop_render_phase_smoke() -> void:
 		var airborne_ball_z: int = int(airborne_phases.get(airborne_phase, -999999))
 		_assert_true(airborne_phase == "front_of_net", "non-descending airborne ball near hoop uses front phase", airborne_phase)
 		_assert_true(not bool(airborne_snapshot.get("bottom_half_mask_active", true)), "non-descending airborne ball keeps bottom-half mask inactive", JSON.stringify(airborne_snapshot))
-		_assert_true(airborne_bottom_half_z < airborne_ball_z and airborne_ball_z < airborne_net_body_z, "airborne front-phase ball renders above inactive bottom-half and below NetBody", JSON.stringify(airborne_snapshot))
+		_assert_true(not bool(airborne_snapshot.get("net_body_mask_active", true)), "non-descending airborne ball keeps NetBody mask inactive", JSON.stringify(airborne_snapshot))
+		_assert_true(airborne_bottom_half_z < airborne_ball_z and airborne_net_body_z < airborne_ball_z, "airborne front-phase ball renders above inactive net masks", JSON.stringify(airborne_snapshot))
 	var finish_center_screen_before_shot: Vector2 = Vector2.INF
 	if smoke_coordinator.hoop_node != null and smoke_coordinator.hoop_node.has_method("get_debug_finish_radius_center_screen"):
 		finish_center_screen_before_shot = smoke_coordinator.hoop_node.call("get_debug_finish_radius_center_screen")
@@ -2738,6 +2763,8 @@ func _run_hoop_render_phase_smoke() -> void:
 	var last_followthrough_anchor_y: float = INF
 	var net_channel_mask_active_seen: bool = false
 	var through_front_mask_active_seen: bool = false
+	var net_channel_net_body_active_seen: bool = false
+	var through_front_net_body_active_seen: bool = false
 	var active_mask_order_ok: bool = true
 	var active_mask_order_failure: Dictionary = {}
 	for frame in 180:
@@ -2758,14 +2785,17 @@ func _run_hoop_render_phase_smoke() -> void:
 				var dynamic_bottom_half_z: int = int(dynamic_layers.get("net_clean_bottom_half", {}).get("effective_z_index", -999999))
 				var dynamic_net_body_z: int = int(dynamic_layers.get("net_body", {}).get("effective_z_index", -999999))
 				var dynamic_mask_active: bool = bool(dynamic_layering_snapshot.get("bottom_half_mask_active", false))
+				var dynamic_net_body_active: bool = bool(dynamic_layering_snapshot.get("net_body_mask_active", false))
 				if phase == "net_channel":
 					net_channel_mask_active_seen = net_channel_mask_active_seen or dynamic_mask_active
-					if not dynamic_mask_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
+					net_channel_net_body_active_seen = net_channel_net_body_active_seen or dynamic_net_body_active
+					if not dynamic_mask_active or not dynamic_net_body_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
 						active_mask_order_ok = false
 						active_mask_order_failure = dynamic_layering_snapshot
 				if phase == "front_of_net" and first_phase_frame.has("net_channel"):
 					through_front_mask_active_seen = through_front_mask_active_seen or dynamic_mask_active
-					if not dynamic_mask_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
+					through_front_net_body_active_seen = through_front_net_body_active_seen or dynamic_net_body_active
+					if not dynamic_mask_active or not dynamic_net_body_active or not (dynamic_ball_z < dynamic_bottom_half_z and dynamic_ball_z < dynamic_net_body_z):
 						active_mask_order_ok = false
 						active_mask_order_failure = dynamic_layering_snapshot
 			if first_phase_frame.has("net_channel") and not is_inf(ball_anchor.y):
@@ -2822,7 +2852,9 @@ func _run_hoop_render_phase_smoke() -> void:
 		_assert_true(int(first_phase_frame["net_channel"]) < front_after_net_frame, "guided make phases stay ordered", str({"net_channel": first_phase_frame["net_channel"], "front_of_net": front_after_net_frame}))
 	_assert_true(net_channel_mask_active_seen, "bottom-half mask activates during net channel", str(first_phase_frame))
 	_assert_true(through_front_mask_active_seen, "bottom-half mask stays active during through-net front exit", str(first_phase_frame))
-	_assert_true(active_mask_order_ok, "active bottom-half mask renders above through-net ball phases", JSON.stringify(active_mask_order_failure))
+	_assert_true(net_channel_net_body_active_seen, "NetBody mask activates during net channel", str(first_phase_frame))
+	_assert_true(through_front_net_body_active_seen, "NetBody mask stays active during through-net front exit", str(first_phase_frame))
+	_assert_true(active_mask_order_ok, "active net masks render above through-net ball phases", JSON.stringify(active_mask_order_failure))
 	_assert_true(front_window_count <= 1, "made shot uses one contiguous front-of-net window", str(front_window_count))
 	_assert_true(through_net, "made shot records through-net follow-through", "")
 	_assert_true(score_seen, "made shot resolves during smoke test", "")

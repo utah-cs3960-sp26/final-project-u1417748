@@ -19,7 +19,9 @@ const REAR_HOOP_Z_INDEX: int = -8
 const FRONT_RIM_Z_INDEX: int = 3
 const BOTTOM_HALF_NET_INACTIVE_Z_INDEX: int = 4
 const BOTTOM_HALF_NET_ACTIVE_Z_INDEX: int = 8
-const FRONT_NET_Z_INDEX: int = 9
+const FRONT_NET_INACTIVE_Z_INDEX: int = BOTTOM_HALF_NET_INACTIVE_Z_INDEX
+const FRONT_NET_ACTIVE_Z_INDEX: int = 9
+const FRONT_NET_Z_INDEX: int = FRONT_NET_ACTIVE_Z_INDEX
 const BALL_RENDER_EXIT_SCREEN_MARGIN: float = 16.0
 
 @export var hoop_body_region: Rect2 = Rect2(1011.0, 17.0, 61.0, 95.0)
@@ -57,6 +59,7 @@ var _net_swish_elapsed: float = 0.0
 var _net_swish_duration: float = 0.0
 var _net_swish_direction: float = 1.0
 var _bottom_half_net_mask_active: bool = false
+var _net_body_mask_active: bool = false
 
 
 func setup(config_value: CourtConfig, projection_value = null) -> void:
@@ -190,16 +193,38 @@ func is_bottom_half_net_mask_active() -> bool:
 	return _bottom_half_net_mask_active
 
 
+func set_net_body_mask_active(active: bool) -> void:
+	if _net_body_mask_active == active:
+		return
+	_net_body_mask_active = active
+	_apply_front_net_z_index()
+
+
+func is_net_body_mask_active() -> bool:
+	return _net_body_mask_active
+
+
+func set_through_net_masks_active(active: bool) -> void:
+	set_bottom_half_net_mask_active(active)
+	set_net_body_mask_active(active)
+
+
 func get_layering_snapshot() -> Dictionary:
 	var base_depth: int = _get_hoop_depth_key()
 	var parent_z: int = z_index
 	return {
 		"supports_four_layer_visuals": supports_four_layer_visuals(),
 		"bottom_half_mask_active": _bottom_half_net_mask_active,
+		"net_body_mask_active": _net_body_mask_active,
+		"through_net_masks_active": _bottom_half_net_mask_active and _net_body_mask_active,
 		"bottom_half_net_inactive_z_index": BOTTOM_HALF_NET_INACTIVE_Z_INDEX,
 		"bottom_half_net_active_z_index": BOTTOM_HALF_NET_ACTIVE_Z_INDEX,
 		"bottom_half_net_inactive_effective_z_index": parent_z + BOTTOM_HALF_NET_INACTIVE_Z_INDEX,
 		"bottom_half_net_active_effective_z_index": parent_z + BOTTOM_HALF_NET_ACTIVE_Z_INDEX,
+		"front_net_inactive_z_index": FRONT_NET_INACTIVE_Z_INDEX,
+		"front_net_active_z_index": FRONT_NET_ACTIVE_Z_INDEX,
+		"front_net_inactive_effective_z_index": parent_z + FRONT_NET_INACTIVE_Z_INDEX,
+		"front_net_active_effective_z_index": parent_z + FRONT_NET_ACTIVE_Z_INDEX,
 		"base_depth": base_depth,
 		"parent_z_index": parent_z,
 		"layers": {
@@ -301,7 +326,7 @@ func _ensure_sprites() -> void:
 		_front_net_sprite.texture = _get_texture(hoop_front_net_texture_path)
 		_front_net_sprite.centered = false
 		_front_net_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_front_net_sprite.z_index = FRONT_NET_Z_INDEX
+		_apply_front_net_z_index()
 		add_child(_front_net_sprite)
 	_sync_sprite_positions()
 
@@ -336,6 +361,12 @@ func _apply_bottom_half_net_z_index() -> void:
 	_bottom_half_net_sprite.z_index = BOTTOM_HALF_NET_ACTIVE_Z_INDEX if _bottom_half_net_mask_active else BOTTOM_HALF_NET_INACTIVE_Z_INDEX
 
 
+func _apply_front_net_z_index() -> void:
+	if _front_net_sprite == null:
+		return
+	_front_net_sprite.z_index = FRONT_NET_ACTIVE_Z_INDEX if _net_body_mask_active else FRONT_NET_INACTIVE_Z_INDEX
+
+
 func _base_overlay_position(offset: Vector2, anchor: Vector2, scale_value: float) -> Vector2:
 	return offset - anchor * scale_value
 
@@ -343,6 +374,7 @@ func _base_overlay_position(offset: Vector2, anchor: Vector2, scale_value: float
 func _apply_front_net_transform() -> void:
 	if _front_net_sprite == null:
 		return
+	_apply_front_net_z_index()
 	var visual_scale: float = _get_visual_scale_multiplier()
 	var scaled_scale: float = hoop_front_net_scale * visual_scale
 	var base_position: Vector2 = _base_overlay_position(hoop_front_net_offset * visual_scale, hoop_front_net_rim_anchor, scaled_scale)

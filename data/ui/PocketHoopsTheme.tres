@@ -1,0 +1,6 @@
+[gd_resource type="Theme" load_steps=2 format=3]
+
+[ext_resource type="FontFile" uid="uid://cwuuy5c3m3y45" path="res://assets/fonts/pixeloid/PixeloidSans-Bold.ttf" id="1_pixeloid"]
+
+[resource]
+default_font = ExtResource("1_pixeloid")

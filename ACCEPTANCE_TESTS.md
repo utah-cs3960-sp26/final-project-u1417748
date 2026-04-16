@@ -147,10 +147,9 @@ At minimum validate in these contexts:
 2. Inspect the top of the screen.
 
 **Expected result**
-- A black top banner is visible.
-- Left side shows `HOM` and home score.
-- Center shows countdown timer and pause button.
-- Right side shows `AWY` and away score.
+- A compact scoreboard card is visible at the bottom left above `SHOOT`.
+- The scoreboard shows `HOM` and home score on the left, the countdown timer in the center, and `AWY` plus away score on the right.
+- A standalone square pause button with the two-bar pause icon is visible at the bottom right above `DUNK`.
 - Layout is readable in portrait orientation.
 
 **Fail if**

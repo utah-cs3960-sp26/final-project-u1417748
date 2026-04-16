@@ -487,11 +487,10 @@ Must include:
 - game title or placeholder title
 - Start Game button
 
-### Top banner
-The black top HUD banner must show:
-- left: `HOM` and home score
-- center: countdown timer and pause button
-- right: `AWY` and away score
+### HUD
+The in-match HUD must show:
+- a compact scoreboard card at the bottom left above `SHOOT`, with `HOM` and home score on the left, the countdown timer centered, and `AWY` plus away score on the right
+- a standalone square pause button at the bottom right above `DUNK`, using the two-bar pause icon instead of text
 
 ### Pause
 Pause must allow:

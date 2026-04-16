@@ -16,6 +16,8 @@ Covered by `tests/TestRunner.gd`:
 - direct `SHOOT` button two-tap timing: first tap shows the meter and aim pose with no pending release, then a second tap at the `SHOOT` button position commits the release
 - idle control-panel buttons sharing the neutral dark base color `#1b1d3a`
 - hovered / pressed action buttons swapping from the neutral base into their authored action color
+- compact control-panel height staying near `24%` of the safe viewport with bottom anchoring preserved
+- compact control-panel font caps: main labels at or below `34px`, pass-focus labels at or below `16px`
 - `MOVE`-lane release cancellation
 - short-drag rejection for panel actions
 - removed bottom dunk-strip rejection
@@ -60,8 +62,8 @@ Covered by `tests/TestRunner.gd`:
 - the first `floor_drop` velocity sample staying aligned with the outgoing `net_exit` motion instead of jumping into a faster post-net descent
 - the first upward rendered-anchor motion being deferred until `floor_settle`
 - a single contiguous `front_of_net` follow-through window before the forced hoop render clears
-- four-layer top-hoop net registration and z ordering: all net textures `30x28`, `NetClean` below shot-ball phases, inactive `NetCleanBottomHalf` below airborne/rim/generic-front ball phases, active `NetCleanBottomHalf` above through-net ball phases, and `NetBody` above all top-hoop shot phases
-- non-descending airborne balls near the hoop can use the `front_of_net` render phase without activating the bottom-half net mask
+- four-layer top-hoop net registration and z ordering: all net textures `30x28`, `NetClean` below shot-ball phases, inactive `NetCleanBottomHalf` and `NetBody` below airborne/rim/generic-front ball phases, and active `NetCleanBottomHalf` plus `NetBody` above through-net ball phases
+- non-descending airborne balls near the hoop can use the `front_of_net` render phase without activating the lower net masks
 - forced hoop render clearing only after the rendered ball has crossed the front-net exit threshold
 - cleared follow-through never re-entering `net_channel` or `front_of_net`
 - made shots landing before opponent sim begins, and before buzzer-end game over
@@ -184,9 +186,10 @@ Smoke game scene:
 ## Manual Smoke Checklist
 
 - run the project and confirm live gameplay appears immediately
-- confirm the bottom-third control panel is visible on match start with a shorter `SHOOT | DUNK` row above a larger `PASS | MOVE | PASS` row
+- confirm the compact bottom-quarter control panel is visible on match start with a shorter `SHOOT | DUNK` row above a larger `PASS | MOVE | PASS` row and small capped labels
 - confirm the center `MOVE` lane is visibly wider than either `PASS` lane
 - confirm the scoreboard card sits at the bottom left just above the `SHOOT` half instead of spanning the top edge
+- confirm a square pause button with a two-bar icon sits at the bottom right above the `DUNK` half and matches the scoreboard card height
 - move the ballhandler by dragging inside the center `MOVE` zone and confirm the visible joystick knob tracks the thumb
 - confirm tiny thumb movements inside the dead zone do not move the ballhandler
 - confirm a persistent light-blue ring marks the default pass target during `LIVE_OFFENSE`
@@ -205,13 +208,13 @@ Smoke game scene:
 - confirm live players and the live ball disappear while the opponent-sim tableaux are shown
 - confirm each opponent action beat jump-cuts to a new static formation without interpolated movement
 - confirm the camera snaps to the current opponent-sim actor or formation center on each action beat
-- confirm the scoreboard card and bottom controls disappear while opponent action text is displayed
+- confirm the scoreboard card, pause button, and bottom controls disappear while opponent action text is displayed
 - confirm the banner action text is short, readable, and uses basketball language such as pass, jumper, layup, alley-oop, dunk, turnover, steal, miss, block, or defensive rebound
 - confirm each opponent action beat auto-advances after about one second
 - confirm tapping the screen during the opponent banner advances one action beat, not the entire sequence
 - confirm the final opponent action clearly explains whether AWY scored or failed to score
 - confirm AWY score and clock changes apply after the final opponent action, not when the first banner text appears
-- confirm the scoreboard and controls reappear when the new human possession begins
+- confirm the scoreboard, pause button, and controls reappear when the new human possession begins
 - confirm live players and the live ball reappear when the new human possession begins
 - release from `MOVE` into the top-left `SHOOT` half and confirm shot mode arms at normal speed with the timing meter spanning the full top row plus visible preview dots on court
 - release from `MOVE` into the top-right `DUNK` half near the rim and confirm an eligible dunk skips the timing meter and enters the dunk finish flow
@@ -234,7 +237,7 @@ Smoke game scene:
 - confirm the blue second-court art is visible, vertically oriented, full-height, and not stretched
 - confirm the court is a perfect rectangle with parallel sidelines and no trapezoid stretch
 - confirm the hoop body plus `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody` all stay aligned on the painted top-rim area
-- confirm airborne and rim-approach shots render in front of inactive `NetCleanBottomHalf`, while normal makes activate the bottom-half mask only as they enter `net_channel` and the made-shot `front_of_net` exit, with `NetBody` still above the ball throughout top-hoop shot phases
+- confirm airborne and rim-approach shots render in front of inactive `NetCleanBottomHalf` and `NetBody`, while normal makes activate both lower net masks only as they enter `net_channel` and the made-shot `front_of_net` exit
 - confirm the scored ball stays in one continuous downward motion from the net through the floor drop, with no upward pop before the floor bounce begins
 - confirm the score text does not appear while the ball is still above the rim or behind the backboard on a made shot
 - confirm only the currently controlled player shows the outline sheet
@@ -244,6 +247,7 @@ Smoke game scene:
 - confirm close shots near the rim can show straight layups, side layups, straight dunks, or side dunks depending on approach and momentum
 - pause the match and confirm `Show Controls` hides the panel art while movement/pass/shoot/dunk hitboxes still work after resuming
 - confirm `Show Controls` does not hide the relocated scoreboard card
+- confirm `Show Controls` does not hide the relocated pause button
 - confirm `Show Controls` is runtime-only and starts visible again on a fresh match
 - confirm players are dramatically larger and easier to read than the earlier build
 - confirm the live ball shadow shrinks and the ball sprite grows as height increases

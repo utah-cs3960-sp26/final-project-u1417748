@@ -1,10 +1,20 @@
 # Decisions
 
+## 2026-04-16
+
+### Pause moved out of the scoreboard and now mirrors it on the right
+
+The compact scoreboard card already fit naturally above the left `SHOOT` half, but keeping the pause control inside that art forced extra text into the board and tied pause sizing to a narrow authored shelf. The current HUD contract removes pause from the scoreboard entirely and gives it its own square button above the right `DUNK` half, matched to the scoreboard card height and rendered as a two-bar icon instead of the word `Pause`. `banner_rect` still means the scoreboard art bounds, while the new `pause_button_rect` owns the mirrored pause placement. This was chosen to keep the scoreboard cleaner, make pause easier to hit, and create a balanced left-scoreboard / right-pause layout over the controls.
+
+### Bottom controls are compact and use small capped labels
+
+The visible control panel now uses `24%` of the safe viewport height instead of the previous lower-third footprint. The same top `SHOOT | DUNK` and bottom `PASS | MOVE | PASS` zones stay intact, the scoreboard remains anchored above the left `SHOOT` half, and the control hitboxes still match the visible zones. The label text is intentionally much smaller, capped at `34px` for main zone labels and `16px` for pass-focus labels, so the controls take less visual space without changing the control scheme.
+
 ## 2026-04-15
 
-### `NetCleanBottomHalf` is phase-gated; `front_of_net` is not always masked
+### `NetCleanBottomHalf` and `NetBody` are phase-gated; `front_of_net` is not always masked
 
-The live top hoop still uses four registered net layers: `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`. `front_of_net` remains a timing/render phase name, but it is no longer enough by itself to place the ball behind the bottom-half mask. `NetCleanBottomHalf` stays inactive below normal airborne, rim-mouth, and generic non-descending `front_of_net` ball frames, then rises above the ball only for `net_channel` and the contiguous made-shot `front_of_net` exit after the ball has entered the net. `NetBody` remains above all top-hoop shot phases.
+The live top hoop still uses four registered net layers: `Net`, `NetClean`, `NetCleanBottomHalf`, and `NetBody`. `front_of_net` remains a timing/render phase name, but it is no longer enough by itself to place the ball behind the lower net masks. `NetCleanBottomHalf` and `NetBody` stay inactive below normal airborne, rim-mouth, and generic non-descending `front_of_net` ball frames, then rise above the ball only for `net_channel` and the contiguous made-shot `front_of_net` exit after the ball has entered the net.
 
 ### Direct `SHOOT` taps now use an isolated two-tap timing mode
 
@@ -14,11 +24,11 @@ The direct `SHOOT` button previously entered the same animation-gated timing pat
 
 ### The visible control panel now uses a split `SHOOT | DUNK` top row and the scoreboard lives above it
 
-The first visible-panel pass replaced the old open-screen gestures, but its three-row layout still made `DUNK` travel farther than `SHOOT` and kept the scoreboard occupying the top edge of the screen. The current contract keeps the same bottom-third overlay and the same bottom `PASS | MOVE | PASS` row, but collapses the action row into a single exact `50/50` top split: top-left `SHOOT`, top-right `DUNK`. The removed bottom dunk strip does not keep any hitbox of its own; that reclaimed height goes into the new top row so both finish buttons read larger and faster to hit. The responsive HUD contract also changes here: `banner_rect` now means a compact scoreboard card anchored just above the left `SHOOT` half, not a full-width top banner. `Show Controls` remains presentation-only and hides only the panel art, not the relocated scoreboard. This was chosen to reduce thumb travel, keep shot and dunk options visually paired, and return the upper screen to gameplay instead of HUD chrome.
+The first visible-panel pass replaced the old open-screen gestures, but its three-row layout still made `DUNK` travel farther than `SHOOT` and kept the scoreboard occupying the top edge of the screen. That contract kept the same lower overlay and the same bottom `PASS | MOVE | PASS` row, but collapsed the action row into a single exact `50/50` top split: top-left `SHOOT`, top-right `DUNK`. The removed bottom dunk strip did not keep any hitbox of its own; that reclaimed height went into the new top row so both finish buttons read larger and faster to hit. The responsive HUD contract also changed here: `banner_rect` means a compact scoreboard card anchored just above the left `SHOOT` half, not a full-width top banner. `Show Controls` remains presentation-only and hides only the panel art, not the relocated scoreboard. This was chosen to reduce thumb travel, keep shot and dunk options visually paired, and return the upper screen to gameplay instead of HUD chrome.
 
 ### The control panel now biases space toward movement instead of the action buttons
 
-After the top-split pass, the action buttons still consumed too much of the bottom-third overlay relative to how often the player needs to steer. The current tuning trims the `SHOOT | DUNK` row down to two-thirds of its previous height, gives that reclaimed height to the bottom `PASS | MOVE | PASS` row, and also narrows each `PASS` lane to two-thirds of its previous width so the center `MOVE` lane inherits the freed width. This keeps the control scheme unchanged while making movement the largest touch target in the panel, which better matches actual play frequency and reduces accidental pass or finish selection during thumb repositioning.
+After the top-split pass, the action buttons still consumed too much of the visible overlay relative to how often the player needs to steer. That tuning trimmed the `SHOOT | DUNK` row down to two-thirds of its previous height, gave that reclaimed height to the bottom `PASS | MOVE | PASS` row, and also narrowed each `PASS` lane to two-thirds of its previous width so the center `MOVE` lane inherited the freed width. This kept the control scheme unchanged while making movement the largest touch target in the panel, which better matches actual play frequency and reduces accidental pass or finish selection during thumb repositioning.
 
 ### Action buttons now work as direct taps, including with a second finger during movement
 

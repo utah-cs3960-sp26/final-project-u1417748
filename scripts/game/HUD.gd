@@ -5,10 +5,12 @@ const SCOREBOARD_TEXTURE_PATH: String = "res://assets/Decor/scoreboard.png"
 const SCOREBOARD_ART_SIZE: Vector2 = Vector2(1098.0, 248.0)
 const HOME_SCORE_ZONE: Rect2 = Rect2(45.0, 88.0, 321.0, 102.0)
 const CLOCK_ZONE: Rect2 = Rect2(366.0, 44.0, 366.0, 76.0)
-const PAUSE_ZONE: Rect2 = Rect2(366.0, 174.0, 366.0, 40.0)
 const AWAY_SCORE_ZONE: Rect2 = Rect2(732.0, 88.0, 326.0, 102.0)
 const DISPLAY_TEXT_COLOR: Color = Color(0.96, 0.98, 0.88, 1.0)
 const DISPLAY_OUTLINE_COLOR: Color = Color(0.04, 0.04, 0.05, 0.94)
+const PAUSE_BUTTON_BASE_COLOR: Color = Color(0.11, 0.13, 0.18, 0.86)
+const PAUSE_BUTTON_HOVER_COLOR: Color = Color(0.17, 0.2, 0.28, 0.92)
+const PAUSE_BUTTON_PRESSED_COLOR: Color = Color(0.08, 0.1, 0.15, 0.96)
 
 signal pause_pressed()
 
@@ -16,6 +18,10 @@ var _scoreboard: TextureRect
 var _home_label: Label
 var _timer_label: Label
 var _pause_button: Button
+var _pause_bar_left_outline: ColorRect
+var _pause_bar_right_outline: ColorRect
+var _pause_bar_left_fill: ColorRect
+var _pause_bar_right_fill: ColorRect
 var _away_label: Label
 
 
@@ -40,18 +46,21 @@ func _build_ui() -> void:
 	add_child(_timer_label)
 
 	_pause_button = Button.new()
-	_pause_button.text = "Pause"
-	_pause_button.flat = true
-	_pause_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_pause_button.text = ""
 	_pause_button.focus_mode = Control.FOCUS_NONE
 	_pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
-	_pause_button.add_theme_color_override("font_color", DISPLAY_TEXT_COLOR)
-	_pause_button.add_theme_color_override("font_hover_color", DISPLAY_TEXT_COLOR)
-	_pause_button.add_theme_color_override("font_pressed_color", DISPLAY_TEXT_COLOR)
-	_pause_button.add_theme_color_override("font_focus_color", DISPLAY_TEXT_COLOR)
-	_pause_button.add_theme_color_override("font_outline_color", DISPLAY_OUTLINE_COLOR)
+	_pause_button.clip_contents = true
 	_pause_button.pressed.connect(func() -> void: pause_pressed.emit())
 	add_child(_pause_button)
+
+	_pause_bar_left_outline = _create_pause_bar(DISPLAY_OUTLINE_COLOR)
+	_pause_button.add_child(_pause_bar_left_outline)
+	_pause_bar_right_outline = _create_pause_bar(DISPLAY_OUTLINE_COLOR)
+	_pause_button.add_child(_pause_bar_right_outline)
+	_pause_bar_left_fill = _create_pause_bar(DISPLAY_TEXT_COLOR)
+	_pause_button.add_child(_pause_bar_left_fill)
+	_pause_bar_right_fill = _create_pause_bar(DISPLAY_TEXT_COLOR)
+	_pause_button.add_child(_pause_bar_right_fill)
 
 	_away_label = _create_display_label()
 	add_child(_away_label)
@@ -61,9 +70,9 @@ func apply_layout(layout_metrics: Dictionary) -> void:
 	if _scoreboard == null:
 		return
 	var banner_rect: Rect2 = layout_metrics.get("banner_rect", Rect2(Vector2.ZERO, SCOREBOARD_ART_SIZE))
+	var pause_rect: Rect2 = layout_metrics.get("pause_button_rect", Rect2())
 	var home_score_rect: Rect2 = _map_zone_to_banner(HOME_SCORE_ZONE, banner_rect)
 	var clock_rect: Rect2 = _map_zone_to_banner(CLOCK_ZONE, banner_rect)
-	var pause_rect: Rect2 = _map_zone_to_banner(PAUSE_ZONE, banner_rect)
 	var away_score_rect: Rect2 = _map_zone_to_banner(AWAY_SCORE_ZONE, banner_rect)
 
 	_scoreboard.position = banner_rect.position
@@ -76,8 +85,9 @@ func apply_layout(layout_metrics: Dictionary) -> void:
 	_pause_button.position = pause_rect.position
 	_pause_button.size = pause_rect.size
 	_pause_button.custom_minimum_size = pause_rect.size
-	_pause_button.add_theme_font_size_override("font_size", int(clampi(int(roundf(pause_rect.size.y * 0.55)), 16, 28)))
-	_pause_button.add_theme_constant_override("outline_size", 2)
+	_pause_button.visible = pause_rect.size.x > 0.0 and pause_rect.size.y > 0.0
+	_apply_pause_button_style(pause_rect.size)
+	_apply_pause_icon_layout(pause_rect.size)
 
 
 func update_display(_home_abbrev: String, home_score: int, _away_abbrev: String, away_score: int, time_remaining: float) -> void:
@@ -121,11 +131,70 @@ func _create_display_label() -> Label:
 	return label
 
 
+func _create_pause_bar(bar_color: Color) -> ColorRect:
+	var bar: ColorRect = ColorRect.new()
+	bar.color = bar_color
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return bar
+
+
 func _apply_label_layout(label: Label, rect: Rect2, font_size: int) -> void:
 	label.position = rect.position
 	label.size = rect.size
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_constant_override("outline_size", max(2, int(roundf(font_size * 0.08))))
+
+
+func _apply_pause_button_style(button_size: Vector2) -> void:
+	if _pause_button == null:
+		return
+	var corner_radius: int = int(roundf(minf(button_size.x, button_size.y) * 0.18))
+	var border_width: int = max(2, int(roundf(minf(button_size.x, button_size.y) * 0.045)))
+	_pause_button.add_theme_stylebox_override("normal", _build_pause_stylebox(PAUSE_BUTTON_BASE_COLOR, corner_radius, border_width))
+	_pause_button.add_theme_stylebox_override("hover", _build_pause_stylebox(PAUSE_BUTTON_HOVER_COLOR, corner_radius, border_width))
+	_pause_button.add_theme_stylebox_override("pressed", _build_pause_stylebox(PAUSE_BUTTON_PRESSED_COLOR, corner_radius, border_width))
+	_pause_button.add_theme_stylebox_override("focus", _build_pause_stylebox(PAUSE_BUTTON_HOVER_COLOR, corner_radius, border_width))
+
+
+func _build_pause_stylebox(fill_color: Color, corner_radius: int, border_width: int) -> StyleBoxFlat:
+	var stylebox: StyleBoxFlat = StyleBoxFlat.new()
+	stylebox.bg_color = fill_color
+	stylebox.border_color = DISPLAY_OUTLINE_COLOR
+	stylebox.border_width_left = border_width
+	stylebox.border_width_top = border_width
+	stylebox.border_width_right = border_width
+	stylebox.border_width_bottom = border_width
+	stylebox.corner_radius_top_left = corner_radius
+	stylebox.corner_radius_top_right = corner_radius
+	stylebox.corner_radius_bottom_right = corner_radius
+	stylebox.corner_radius_bottom_left = corner_radius
+	stylebox.anti_aliasing = true
+	return stylebox
+
+
+func _apply_pause_icon_layout(button_size: Vector2) -> void:
+	if _pause_button == null:
+		return
+	var fill_height: float = maxf(button_size.y * 0.44, 8.0)
+	var fill_width: float = maxf(button_size.x * 0.12, 4.0)
+	var fill_gap: float = maxf(button_size.x * 0.14, 5.0)
+	var total_width: float = fill_width * 2.0 + fill_gap
+	var start_x: float = (button_size.x - total_width) * 0.5
+	var start_y: float = (button_size.y - fill_height) * 0.5
+	var outline_padding: float = maxf(button_size.x * 0.028, 1.0)
+	var left_fill_rect: Rect2 = Rect2(Vector2(start_x, start_y), Vector2(fill_width, fill_height))
+	var right_fill_rect: Rect2 = Rect2(Vector2(start_x + fill_width + fill_gap, start_y), Vector2(fill_width, fill_height))
+	_apply_pause_bar_rect(_pause_bar_left_outline, left_fill_rect.grow(outline_padding))
+	_apply_pause_bar_rect(_pause_bar_right_outline, right_fill_rect.grow(outline_padding))
+	_apply_pause_bar_rect(_pause_bar_left_fill, left_fill_rect)
+	_apply_pause_bar_rect(_pause_bar_right_fill, right_fill_rect)
+
+
+func _apply_pause_bar_rect(bar: ColorRect, rect: Rect2) -> void:
+	if bar == null:
+		return
+	bar.position = rect.position
+	bar.size = rect.size
 
 
 func _map_zone_to_banner(zone: Rect2, banner_rect: Rect2) -> Rect2:

@@ -1,6 +1,37 @@
 # Worklog
 
+## 2026-04-16
+
+### Pause button mirrored to the bottom-right HUD corner
+
+- moved the live pause control out of the scoreboard art and added a dedicated `pause_button_rect` responsive-layout slot above the right `DUNK` half, with a square footprint that matches the scoreboard card height
+- replaced the old `Pause` text button with a standalone icon-only button that renders the pause symbol as two vertical bars over a bordered HUD tile using the same light text / dark outline palette as the scoreboard
+- updated HUD smoke coverage and manual test guidance so the scoreboard now owns only score and clock content, while the pause button is validated independently for safe-area containment, right-edge alignment, top alignment with the scoreboard, and height parity with the scoreboard card
+- reran the full headless suite after the mirrored-pause HUD pass: pure logic `1771`, scenarios `18`, balance `4`, failures `2`; the only remaining failures were the same existing shot-followthrough checks (`guided make bounce starts only after floor contact` and `straight dunk keeps moving through the landing after launch`)
+
+### Pixeloid project font theme applied
+
+- added `data/ui/PocketHoopsTheme.tres` as the shared project theme and set its default font to `assets/fonts/pixeloid/PixeloidSans-Bold.ttf`
+- wired `project.godot` so both the custom GUI theme and project custom font resolve to Pixeloid, covering scene-authored labels/buttons and dynamically created HUD, control-panel, overlay, player-debug, and banner text through Godot theme fallback
+- regenerated the missing Pixeloid imported font data locally after the first boot smoke exposed a stale `.import` reference
+- validated the change with a clean headless boot and a one-off theme assertion script using an explicit `/tmp` log file
+
+### Compact bottom controls implemented
+
+- reduced the visible control panel height from `33%` to `24%` of the safe viewport while keeping the same bottom anchoring, two-row split, pass lanes, move lane, and direct action hitboxes
+- reduced main control labels to low-30px sizing with a `34px` cap, reduced pass-focus labels to a `16px` cap, and lightened label outlines for the smaller text
+- added a control-panel font-size snapshot for smoke tests and updated the layout smoke to assert compact height, bottom anchoring, preserved zone geometry, and label caps
+- reran the full headless suite: pure logic `1765`, scenarios `18`, balance `4`, failures `2`; the compact-control assertions passed, with the remaining failures still limited to existing shot-followthrough checks
+
 ## 2026-04-15
+
+### Phase-gated full lower net masks implemented
+
+- changed `NetBody` from an always-front lower net layer into the same inactive/active through-net mask state used by `NetCleanBottomHalf`
+- kept `NetBody` aligned to the same `30x28` registration transform, with inactive `NetBody` below airborne, rim-mouth, and generic `front_of_net` ball phases and active `NetBody` above `net_channel` plus made-shot net-exit follow-through
+- updated the coordinator through-net render context so one mask flag activates and resets both lower net sprites together when the ball enters, exits, clears, becomes owned, or hides
+- expanded hoop render smoke coverage so inactive airborne/front frames must draw above both lower net masks, while `net_channel` and made-shot `front_of_net` must draw behind both active masks
+- reran validation after the NetBody phase-gating pass: boot smoke passed; full headless suite reported pure logic passes `1762`, scenarios `18`, balance `4`, failures `2`; the new lower-net mask assertions passed, with the remaining failures still limited to existing shot-followthrough checks
 
 ### Phase-gated bottom net mask implemented
 
@@ -118,15 +149,15 @@
 
 ### Split the action row into `SHOOT | DUNK` and moved the scoreboard above the left half
 
-- reshaped the visible bottom-third control panel from a three-row stack into a two-row layout with an exact `50/50` top `SHOOT | DUNK` split over the existing `PASS | MOVE | PASS` row, removing the old bottom full-width dunk strip entirely
+- reshaped the then-larger control panel from a three-row stack into a two-row layout with an exact `50/50` top `SHOOT | DUNK` split over the existing `PASS | MOVE | PASS` row, removing the old bottom full-width dunk strip entirely
 - kept the same gesture contract and coordinator-owned shot-family logic, but remapped `shot_layout` to the top-left half and `dunk` to the top-right half while making the old bottom-center dunk area inert
 - changed the responsive HUD contract so `banner_rect` now points to a compact bottom-left scoreboard card sized to the `SHOOT` half and anchored just above the control panel instead of reserving the top edge of the viewport
 - updated layout smoke coverage to assert the top-row split geometry, the absence of a bottom dunk band, scoreboard alignment above the `SHOOT` half, and `Show Controls` leaving the scoreboard visible while hiding only the panel art
 - reran the game-scene smoke boot plus the full headless suite after the top-split / scoreboard relocation pass: Pure logic `1605`, Scenarios `13`, Balance `4`, Failures `0`
 
-### Visible bottom-third control panel replaced the old open-screen offense gestures
+### Visible control panel replaced the old open-screen offense gestures
 
-- replaced the old open-court live-offense gesture model with a dedicated bottom-third panel: top `SHOOT`, middle `PASS | MOVE | PASS`, bottom `DUNK`
+- replaced the old open-court live-offense gesture model with the initial dedicated large control panel: top `SHOOT`, middle `PASS | MOVE | PASS`, bottom `DUNK`
 - refactored `InputController` to classify live-offense releases against coordinator-owned control-zone rects instead of viewport-wide tap / swipe rules, and made the center `MOVE` zone the required gesture origin
 - kept the coordinator as the single owner of the focused pass target, then routed both `PASS` lanes through that one highlighted receiver while removing direct teammate tap overrides from the live control path
 - added explicit `shot_layout` and `dunk` control intents so upward `SHOOT` releases now force close finishes to stay layups, while downward `DUNK` releases choose dunk when eligible, fall back to layup when only close-finish-eligible, and ignore far-from-rim attempts

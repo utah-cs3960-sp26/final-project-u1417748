@@ -22,6 +22,11 @@ const JOYSTICK_KNOB_COLOR: Color = Color("2d3158")
 const JOYSTICK_KNOB_HIGHLIGHT: Color = Color("b7bbd0")
 const JOYSTICK_RING_FILL_COLOR: Color = Color(0.61, 0.72, 1.0, 0.18)
 const JOYSTICK_RING_STROKE_COLOR: Color = Color(0.61, 0.72, 1.0, 0.82)
+const ZONE_LABEL_MIN_FONT_SIZE: int = 12
+const ZONE_LABEL_MAX_FONT_SIZE: int = 34
+const FOCUS_LABEL_MIN_FONT_SIZE: int = 10
+const FOCUS_LABEL_MAX_FONT_SIZE: int = 16
+const LABEL_OUTLINE_RATIO: float = 0.07
 
 var _layout_metrics: Dictionary = {}
 var _panel_state: Dictionary = {}
@@ -100,11 +105,11 @@ func _apply_label_layouts() -> void:
 	var zone_rects: Dictionary = _layout_metrics.get("control_zone_rects", {})
 	if zone_rects.is_empty():
 		return
-	_layout_zone_label(_shoot_label, zone_rects.get("shoot", Rect2()), 0.18, 0.48, 0.42)
-	_layout_zone_label(_move_label, zone_rects.get("move", Rect2()), 0.14, 0.26, 0.22)
-	_layout_zone_label(_pass_left_label, zone_rects.get("pass_left", Rect2()), 0.34, 0.42, 0.22)
-	_layout_zone_label(_pass_right_label, zone_rects.get("pass_right", Rect2()), 0.34, 0.42, 0.22)
-	_layout_zone_label(_dunk_label, zone_rects.get("dunk", Rect2()), 0.18, 0.48, 0.42)
+	_layout_zone_label(_shoot_label, zone_rects.get("shoot", Rect2()), 0.18, 0.48, 0.23)
+	_layout_zone_label(_move_label, zone_rects.get("move", Rect2()), 0.14, 0.26, 0.10)
+	_layout_zone_label(_pass_left_label, zone_rects.get("pass_left", Rect2()), 0.34, 0.42, 0.10)
+	_layout_zone_label(_pass_right_label, zone_rects.get("pass_right", Rect2()), 0.34, 0.42, 0.10)
+	_layout_zone_label(_dunk_label, zone_rects.get("dunk", Rect2()), 0.18, 0.48, 0.23)
 	_layout_focus_label(_pass_left_focus_label, zone_rects.get("pass_left", Rect2()))
 	_layout_focus_label(_pass_right_focus_label, zone_rects.get("pass_right", Rect2()))
 
@@ -118,9 +123,9 @@ func _layout_zone_label(label: Label, zone_rect: Rect2, top_ratio: float, height
 	)
 	label.position = label_rect.position
 	label.size = label_rect.size
-	var font_size: int = int(clampi(int(roundf(zone_rect.size.y * size_ratio)), 24, 82))
+	var font_size: int = int(clampi(int(roundf(zone_rect.size.y * size_ratio)), ZONE_LABEL_MIN_FONT_SIZE, ZONE_LABEL_MAX_FONT_SIZE))
 	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_constant_override("outline_size", max(2, int(roundf(font_size * 0.1))))
+	label.add_theme_constant_override("outline_size", _get_label_outline_size(font_size))
 
 
 func _layout_focus_label(label: Label, zone_rect: Rect2) -> void:
@@ -132,9 +137,31 @@ func _layout_focus_label(label: Label, zone_rect: Rect2) -> void:
 	)
 	label.position = label_rect.position
 	label.size = label_rect.size
-	var font_size: int = int(clampi(int(roundf(zone_rect.size.y * 0.12)), 15, 28))
+	var font_size: int = int(clampi(int(roundf(zone_rect.size.y * 0.05)), FOCUS_LABEL_MIN_FONT_SIZE, FOCUS_LABEL_MAX_FONT_SIZE))
 	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_constant_override("outline_size", max(2, int(roundf(font_size * 0.1))))
+	label.add_theme_constant_override("outline_size", _get_label_outline_size(font_size))
+
+
+func get_label_font_size_snapshot() -> Dictionary:
+	return {
+		"shoot": _get_label_font_size(_shoot_label),
+		"move": _get_label_font_size(_move_label),
+		"pass_left": _get_label_font_size(_pass_left_label),
+		"pass_right": _get_label_font_size(_pass_right_label),
+		"dunk": _get_label_font_size(_dunk_label),
+		"pass_left_focus": _get_label_font_size(_pass_left_focus_label),
+		"pass_right_focus": _get_label_font_size(_pass_right_focus_label),
+	}
+
+
+func _get_label_font_size(label: Label) -> int:
+	if label == null:
+		return 0
+	return label.get_theme_font_size("font_size")
+
+
+func _get_label_outline_size(font_size: int) -> int:
+	return max(1, int(roundf(float(font_size) * LABEL_OUTLINE_RATIO)))
 
 
 func _draw() -> void:

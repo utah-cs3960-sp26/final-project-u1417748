@@ -597,7 +597,7 @@ func _build_default_control_layout() -> Dictionary:
 	var ui_scale: float = clampf(viewport_size.x / DEFAULT_VIEWPORT_SIZE.x, 0.82, 1.0)
 	var horizontal_margin: float = (input_config.control_panel_horizontal_margin if input_config != null else 12.0) * ui_scale
 	var bottom_margin: float = (input_config.control_panel_bottom_margin if input_config != null else 16.0) * ui_scale
-	var panel_height: float = viewport_rect.size.y * (input_config.control_panel_height_ratio if input_config != null else 0.33)
+	var panel_height: float = viewport_rect.size.y * (input_config.control_panel_height_ratio if input_config != null else 0.24)
 	var panel_rect: Rect2 = Rect2(
 		Vector2(viewport_rect.position.x + horizontal_margin, viewport_rect.end.y - panel_height - bottom_margin),
 		Vector2(viewport_rect.size.x - horizontal_margin * 2.0, panel_height)
