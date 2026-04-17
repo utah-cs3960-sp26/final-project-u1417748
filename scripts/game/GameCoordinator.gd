@@ -173,11 +173,11 @@ func _load_resources() -> void:
 	difficulty_config = _load_or_default("res://data/config/DifficultyConfig.tres", DifficultyConfig.new()) as DifficultyConfig
 	player_animation_config = _load_or_default("res://data/config/PlayerAnimationConfig.tres", PLAYER_ANIMATION_CONFIG_SCRIPT.new())
 	debug_config = _load_or_default("res://data/config/DebugConfig.tres", DebugConfig.new()) as DebugConfig
-	home_team = _load_or_default("res://data/teams/HOM.tres", TeamData.new()) as TeamData
-	away_team = _load_or_default("res://data/teams/AWY.tres", TeamData.new()) as TeamData
-	if home_team.players.is_empty():
+	home_team = _resolve_team_from_roster(true)
+	away_team = _resolve_team_from_roster(false)
+	if home_team == null or home_team.players.is_empty():
 		home_team = _create_default_team(true)
-	if away_team.players.is_empty():
+	if away_team == null or away_team.players.is_empty():
 		away_team = _create_default_team(false)
 
 
@@ -388,19 +388,18 @@ func _wire_input_and_ui() -> void:
 	opponent_sim_banner.advance_requested.connect(_on_opponent_sim_advance_requested)
 	hud.pause_pressed.connect(_toggle_pause)
 	pause_overlay.resume_pressed.connect(_resume_from_pause)
-	pause_overlay.show_controls_toggled.connect(_on_pause_overlay_show_controls_toggled)
-	pause_overlay.no_defenders_toggled.connect(_on_pause_overlay_no_defenders_toggled)
 	pause_overlay.restart_pressed.connect(_start_new_match)
 	pause_overlay.quit_pressed.connect(_quit_game)
-	pause_overlay.set_no_defenders_enabled(defenders_disabled)
-	pause_overlay.set_controls_visible_enabled(controls_visible)
 	game_over_overlay.restart_pressed.connect(_start_new_match)
 	game_over_overlay.quit_pressed.connect(_quit_game)
+	var settings_node: Node = get_node_or_null("/root/GameSettings")
+	if settings_node != null and not settings_node.changed.is_connected(_on_game_settings_changed):
+		settings_node.changed.connect(_on_game_settings_changed)
+	_apply_game_settings()
 
 
 func _start_new_match() -> void:
 	context.reset(game_config.match_length_seconds, game_config.default_seed)
-	controls_visible = game_config.show_controls_by_default
 	rng.reseed(context.current_seed)
 	_reseed_visual_rng(context.current_seed)
 	if court_projection != null:
@@ -439,8 +438,9 @@ func _start_new_match() -> void:
 	_change_state(GameState.State.LIVE_OFFENSE)
 	_update_hud()
 	pause_overlay.visible = false
-	pause_overlay.set_no_defenders_enabled(defenders_disabled)
-	pause_overlay.set_controls_visible_enabled(controls_visible)
+	if pause_overlay.has_method("close_settings"):
+		pause_overlay.close_settings()
+	_apply_game_settings()
 	game_over_overlay.visible = false
 
 
@@ -1050,13 +1050,13 @@ func _toggle_pause() -> void:
 		return
 	context.previous_state = context.current_state
 	_change_state(GameState.State.PAUSED)
-	pause_overlay.set_no_defenders_enabled(defenders_disabled)
-	pause_overlay.set_controls_visible_enabled(controls_visible)
 	pause_overlay.visible = true
 	log_writer.log_match("Paused")
 
 
 func _resume_from_pause() -> void:
+	if pause_overlay.has_method("close_settings"):
+		pause_overlay.close_settings()
 	pause_overlay.visible = false
 	_change_state(context.previous_state if context.previous_state != GameState.State.PAUSED else GameState.State.LIVE_OFFENSE)
 	log_writer.log_match("Resumed")
@@ -1456,6 +1456,16 @@ func _load_or_default(path: String, fallback: Resource) -> Resource:
 	if loaded == null:
 		return fallback
 	return loaded
+
+
+func _resolve_team_from_roster(is_home: bool) -> TeamData:
+	var roster: Node = get_node_or_null("/root/TeamRoster")
+	if roster == null:
+		var fallback_path: String = "res://data/teams/HOM.tres" if is_home else "res://data/teams/AWY.tres"
+		return _load_or_default(fallback_path, TeamData.new()) as TeamData
+	if is_home:
+		return roster.get_home_team() as TeamData
+	return roster.get_away_team() as TeamData
 
 
 func _clear_entity_children() -> void:
@@ -3536,18 +3546,35 @@ func _has_active_defenders() -> bool:
 	return not _get_active_defenders().is_empty()
 
 
-func _on_pause_overlay_no_defenders_toggled(enabled: bool) -> void:
-	_set_defenders_disabled(enabled)
+func _on_game_settings_changed(key: String, value: bool) -> void:
+	match key:
+		"show_controls":
+			_set_controls_visible(value)
+		"no_defenders":
+			_set_defenders_disabled(value)
+		"show_debug":
+			if debug_config != null:
+				debug_config.debug_overlay_enabled = value
+			if debug_overlay != null:
+				debug_overlay.visible = value
+				debug_overlay.queue_redraw()
 
 
-func _on_pause_overlay_show_controls_toggled(enabled: bool) -> void:
-	_set_controls_visible(enabled)
+func _apply_game_settings() -> void:
+	var settings_node: Node = get_node_or_null("/root/GameSettings")
+	if settings_node == null:
+		return
+	_set_controls_visible(bool(settings_node.show_controls))
+	_set_defenders_disabled(bool(settings_node.no_defenders))
+	if debug_config != null:
+		debug_config.debug_overlay_enabled = bool(settings_node.show_debug)
+	if debug_overlay != null:
+		debug_overlay.visible = bool(settings_node.show_debug)
+		debug_overlay.queue_redraw()
 
 
 func _set_defenders_disabled(enabled: bool) -> void:
 	if defenders_disabled == enabled:
-		if pause_overlay != null:
-			pause_overlay.set_no_defenders_enabled(defenders_disabled)
 		return
 	defenders_disabled = enabled
 	_refresh_defender_mode(not defenders_disabled)
@@ -3557,9 +3584,6 @@ func _set_defenders_disabled(enabled: bool) -> void:
 
 
 func _refresh_defender_mode(reposition_defenders: bool = false) -> void:
-	if pause_overlay != null:
-		pause_overlay.set_no_defenders_enabled(defenders_disabled)
-		pause_overlay.set_controls_visible_enabled(controls_visible)
 	if defenders_disabled:
 		defense_controller.assignments.clear()
 		_clear_active_pass_interceptor()
@@ -3578,13 +3602,9 @@ func _refresh_defender_mode(reposition_defenders: bool = false) -> void:
 
 func _set_controls_visible(enabled: bool) -> void:
 	if controls_visible == enabled:
-		if pause_overlay != null:
-			pause_overlay.set_controls_visible_enabled(controls_visible)
 		_sync_match_ui_visibility()
 		return
 	controls_visible = enabled
-	if pause_overlay != null:
-		pause_overlay.set_controls_visible_enabled(controls_visible)
 	_sync_match_ui_visibility()
 	log_writer.log_event("controls_visibility_toggled", {"controls_visible": controls_visible})
 	log_writer.log_match("Controls %s" % ("shown" if controls_visible else "hidden"))

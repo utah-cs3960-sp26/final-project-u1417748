@@ -33,9 +33,14 @@ func setup(coordinator_node: Node, config_value: DebugConfig) -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F3 and debug_config != null:
-		debug_config.debug_overlay_enabled = not debug_config.debug_overlay_enabled
-		visible = debug_config.debug_overlay_enabled
-		queue_redraw()
+		var next_enabled: bool = not debug_config.debug_overlay_enabled
+		var settings_node: Node = get_node_or_null("/root/GameSettings")
+		if settings_node != null:
+			settings_node.set_show_debug(next_enabled)
+		else:
+			debug_config.debug_overlay_enabled = next_enabled
+			visible = next_enabled
+			queue_redraw()
 
 
 func _process(_delta: float) -> void:

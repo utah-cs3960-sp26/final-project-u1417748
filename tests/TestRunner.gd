@@ -945,7 +945,7 @@ func _run_pure_logic() -> void:
 	log_writer.log_match("hello")
 	var file_path: String = ProjectSettings.globalize_path("user://logs/test_check_match.log")
 	_assert_true(FileAccess.file_exists(file_path), "logs written", file_path)
-	_assert_true(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/GameRoot.tscn", "gameplay boot scene", "")
+	_assert_true(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/MainMenu.tscn", "boot scene is main menu", str(ProjectSettings.get_setting("application/run/main_scene")))
 	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
 	var game_root: Node2D = game_root_scene.instantiate() as Node2D
 	add_child(game_root)
@@ -978,7 +978,7 @@ func _run_pure_logic() -> void:
 				break
 	_assert_true(home_visual_ok, "player art smoke", "")
 	if smoke_coordinator != null and smoke_coordinator.debug_overlay != null and smoke_coordinator.debug_config != null:
-		_assert_true(smoke_coordinator.debug_overlay.visible, "debug overlay defaults on in normal play", str(smoke_coordinator.debug_overlay.visible))
+		_assert_true(not smoke_coordinator.debug_overlay.visible, "debug overlay defaults off (settings-controlled)", str(smoke_coordinator.debug_overlay.visible))
 		_assert_true(not smoke_coordinator.debug_config.show_catch_radii, "default teammate catch rings stay hidden", str(smoke_coordinator.debug_config.show_catch_radii))
 		_assert_true(smoke_coordinator.debug_config.show_finish_radii, "finish radius debug rings default on when overlay is shown", str(smoke_coordinator.debug_config.show_finish_radii))
 		var finish_ring_snapshot: Dictionary = smoke_coordinator.get_debug_snapshot()
@@ -1046,8 +1046,8 @@ func _run_pure_logic() -> void:
 	if smoke_coordinator != null and smoke_coordinator.pause_overlay != null:
 		smoke_coordinator.test_toggle_pause()
 		_assert_true(smoke_coordinator.pause_overlay.visible, "pause overlay opens for debug toggles", str(smoke_coordinator.pause_overlay.visible))
-		_assert_true(smoke_coordinator.pause_overlay.is_controls_visible_enabled(), "show-controls pause toggle starts enabled", str(smoke_coordinator.pause_overlay.is_controls_visible_enabled()))
-		_assert_true(not smoke_coordinator.pause_overlay.is_no_defenders_enabled(), "no-defenders pause toggle starts disabled", str(smoke_coordinator.pause_overlay.is_no_defenders_enabled()))
+		_assert_true(smoke_coordinator.are_controls_visible(), "show-controls defaults on", str(smoke_coordinator.are_controls_visible()))
+		_assert_true(not smoke_coordinator.are_defenders_disabled(), "no-defenders defaults off", str(smoke_coordinator.are_defenders_disabled()))
 		smoke_coordinator.test_set_controls_visible(false)
 		_assert_true(not smoke_coordinator.are_controls_visible(), "pause toggle hides visible controls", str(smoke_coordinator.are_controls_visible()))
 		_assert_true(smoke_coordinator.control_panel != null and not smoke_coordinator.control_panel.visible, "control panel hides when show-controls is off", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else true))

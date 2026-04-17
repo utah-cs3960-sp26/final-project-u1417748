@@ -1,8 +1,8 @@
 class_name PlayerController
 extends Node2D
 
-const LABEL_POSITION: Vector2 = Vector2(-48.0, -134.0)
-const LABEL_SIZE: Vector2 = Vector2(96.0, 24.0)
+const LABEL_POSITION: Vector2 = Vector2(-64.0, 36.0)
+const LABEL_SIZE: Vector2 = Vector2(128.0, 28.0)
 const BASE_INPUT_HIT_RADIUS: float = 84.0
 const SCREEN_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -44.0)
 const BALL_ANCHOR_OFFSET: Vector2 = Vector2(24.0, -82.0)
@@ -40,8 +40,10 @@ func _ready() -> void:
 		_label.position = LABEL_POSITION
 		_label.size = LABEL_SIZE
 		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_label.add_theme_font_size_override("font_size", 12)
-		_label.visible = OS.is_debug_build()
+		_label.add_theme_font_size_override("font_size", 14)
+		_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
+		_label.add_theme_constant_override("outline_size", 4)
+		_label.visible = false
 		add_child(_label)
 	_update_label()
 
@@ -61,13 +63,12 @@ func setup(data: PlayerData, offense_flag: bool, color_value: Color, animation_c
 func _update_label() -> void:
 	if _label == null or player_data == null:
 		return
-	_label.text = player_data.role
-	_label.add_theme_color_override("font_color", Color(0.96, 0.95, 0.85))
+	_label.text = player_data.display_name
+	_label.add_theme_color_override("font_color", Color(0.98, 0.98, 0.94))
 
 
 func _draw() -> void:
-	if is_controlled:
-		draw_polyline(_build_control_marker_points(), CONTROL_MARKER_COLOR, CONTROL_MARKER_WIDTH, true)
+	pass
 
 
 func set_controlled(value: bool) -> void:
@@ -77,6 +78,8 @@ func set_controlled(value: bool) -> void:
 
 func set_has_ball(value: bool) -> void:
 	has_ball = value
+	if _label != null:
+		_label.visible = value
 	queue_redraw()
 
 

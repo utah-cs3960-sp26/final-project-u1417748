@@ -11,9 +11,14 @@ config_version=5
 [application]
 
 config/name="Pocket Hoops"
-run/main_scene="res://scenes/GameRoot.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.6")
 config/icon="res://icon.svg"
+
+[autoload]
+
+TeamRoster="*res://scripts/game/TeamRoster.gd"
+GameSettings="*res://scripts/game/GameSettings.gd"
 
 [display]
 
