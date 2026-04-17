@@ -1,5 +1,106 @@
 # Test Results
 
+## Menu Background Reuse Validation
+
+`TeamScreen.tscn` and `SettingsScreen.tscn` now use the same cached rotated court backdrop as `MainMenu.tscn`. Moving between the menu, team page, and settings page preserves one shared start-page background selection instead of reusing only the flat default court art.
+
+## Environment
+
+- Date: 2026-04-17
+- Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
+- Engine used for validation: Godot 4.6.1 stable
+
+## Commands Run
+
+Gameplay boot smoke:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit
+```
+
+Automated suite:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
+```
+
+## Automated Result
+
+Boot smoke status: pass
+
+- The project still boots headlessly after the shared menu-background change.
+
+Full suite status: fail, with the menu-background assertions passing
+
+- Pure logic passes: 1802
+- Scenarios: 18 / 18
+- Balance: 4 / 4
+- Failures: 6
+- Current failing checks:
+  - `guided make bounce starts only after floor contact`
+  - `straight dunk keeps moving through the landing after launch`
+  - `Opponent Banner Game Over`
+  - `Opponent Banner Multi-Step Score`
+  - `Opponent Banner One-Step Score`
+  - `Opponent Banner Tap Skip`
+
+Shared menu-background assertions passed:
+
+- `main menu exposes a court background node`
+- `shared menu background chooses a source image`
+- `team screen reuses the main menu background texture`
+- `team screen keeps the shared menu background selection`
+- `settings screen reuses the main menu background texture`
+- `settings screen keeps the shared menu background selection`
+
+## Pause Overlay Centering And Quit Validation
+
+The in-game pause menu now resolves its own viewport-sized root rect and explicitly places the pause panel within the responsive safe rect instead of depending on deferred container layout under `CanvasLayer`. The pause card is intentionally raised `100px` above the safe-rect center, and the in-match `Quit Game` action now routes back to `MainMenu.tscn`.
+
+## Environment
+
+- Date: 2026-04-17
+- Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
+- Engine used for validation: Godot 4.6.1 stable
+
+## Commands Run
+
+Gameplay boot smoke:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --quit
+```
+
+Automated suite:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
+```
+
+## Automated Result
+
+Boot smoke status: pass
+
+- The project still boots headlessly after the pause overlay layout change.
+
+Full suite status: fail, with pause overlay centering and quit-path coverage passing
+
+- Pure logic passes: 1778
+- Scenarios: 18 / 18
+- Balance: 4 / 4
+- Failures: 2
+- The same pre-existing followthrough failures remain:
+  - `guided make bounce starts only after floor contact`
+  - `straight dunk keeps moving through the landing after launch`
+
+Pause overlay-specific smoke coverage passed:
+
+- `pause quit targets the main menu scene`
+- `pause overlay root matches the viewport`
+- `pause overlay tracks the responsive safe rect`
+- `pause panel stays inside the safe area`
+- `pause panel stays centered on screen with the raised offset`
+
 ## Pixeloid Font Theme Validation
 
 The project GUI theme now resolves all default control text to `assets/fonts/pixeloid/PixeloidSans-Bold.ttf`. The shared theme and project custom font setting both point at the same font asset.

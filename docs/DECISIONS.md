@@ -98,11 +98,23 @@ Gameplay, AI, ball physics, hoop resolution, and authored scenarios still operat
 
 At this stage of development, the shot interaction no longer used opposite-drag aiming or a live trajectory preview. Holding on the current ballhandler entered slow-motion shot aim and showed a bottom timing meter made of rectangular red and green zones. Releasing in green guaranteed a make; releasing in red caused a miss or a contest-driven block. This was the control truth for the repo at that time and was later superseded by the one-thumb armed shot-timing flow documented below.
 
+## 2026-04-17
+
+### In-match `Quit Game` now returns to `MainMenu`
+
+The repo once removed the runtime menu and used `SceneTree.quit()` from pause and game-over overlays. That is no longer the right fit for the current project state because `MainMenu.tscn` is again the configured `run/main_scene` and the game is still structured as a mobile-first build where direct process exits are unreliable or discouraged.
+
+`Quit Game` from in-match overlays now means "leave the current match and return to the main menu." This keeps the label short for players while making the button work consistently in the current desktop demo flow and in future mobile packaging.
+
+### Pause menu positioning is now manual and intentionally raised
+
+`PauseOverlay` no longer relies on deferred container centering under `CanvasLayer`. It now resolves its own viewport-sized root rect from the coordinator's responsive layout pass, positions the card explicitly inside the safe rect, and raises the card by `100px` above the safe-rect center. This was chosen because explicit rect math is easier to validate in smoke tests and avoids top-left placement regressions.
+
 ## 2026-04-08
 
 ### Gameplay is now the default boot target
 
-The project no longer uses a runtime start screen. `GameRoot.tscn` is now the default `run/main_scene`, and pause/game-over overlays expose `Quit Game` instead of routing back to an otherwise dead menu scene. This keeps manual layout checks and headless smoke validation focused on the actual gameplay screen.
+At that stage, the project no longer used a runtime start screen. `GameRoot.tscn` was the default `run/main_scene`, and pause/game-over overlays exposed `Quit Game` instead of routing back to an otherwise dead menu scene. This later became outdated once `MainMenu.tscn` returned as the configured boot scene; see the 2026-04-17 decision above for the current behavior.
 
 ### Green meter releases are now absolute
 

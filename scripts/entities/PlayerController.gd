@@ -1,7 +1,7 @@
 class_name PlayerController
 extends Node2D
 
-const LABEL_POSITION: Vector2 = Vector2(-64.0, 36.0)
+const LABEL_POSITION: Vector2 = Vector2(-64.0, 7.0)
 const LABEL_SIZE: Vector2 = Vector2(128.0, 28.0)
 const BASE_INPUT_HIT_RADIUS: float = 84.0
 const SCREEN_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -44.0)

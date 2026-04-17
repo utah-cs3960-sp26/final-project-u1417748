@@ -2,16 +2,19 @@ class_name TeamScreen
 extends Control
 
 const CHARACTER_TEXTURE: Texture2D = preload("res://assets/Character/Character1_NEW.png")
+const MENU_BACKGROUND_SCRIPT: GDScript = preload("res://scripts/game/MenuBackground.gd")
 const FRAME_SIZE: Vector2i = Vector2i(64, 64)
 const IDLE_ROW_INDEX: int = 1
 const SPRITE_DISPLAY_SIZE: Vector2 = Vector2(160, 160)
 const CARD_WIDTH: float = 192.0
 
+@onready var _court_background: TextureRect = $CourtBackground
 @onready var _cards_container: HBoxContainer = %CardsContainer
 @onready var _back_button: Button = %BackButton
 
 
 func _ready() -> void:
+	MENU_BACKGROUND_SCRIPT.apply_to(_court_background)
 	_back_button.pressed.connect(_on_back_pressed)
 	_populate_cards()
 

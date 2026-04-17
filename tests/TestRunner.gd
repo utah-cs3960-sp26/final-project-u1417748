@@ -2,6 +2,7 @@ class_name TestRunner
 extends Node
 
 const COURT_PROJECTION_SCRIPT = preload("res://scripts/game/CourtProjection.gd")
+const MENU_BACKGROUND_SCRIPT: GDScript = preload("res://scripts/game/MenuBackground.gd")
 
 var pure_logic_results: Array[Dictionary] = []
 var scenario_results: Array[Dictionary] = []
@@ -914,7 +915,7 @@ func _run_pure_logic() -> void:
 	_assert_true(sim_result["time_consumed"] > 0.0, "opponent sim consumes time", "")
 	_assert_true(sim_result.has("visual_steps"), "opponent sim returns visual steps", JSON.stringify(sim_result))
 	var visual_steps: Array = sim_result.get("visual_steps", [])
-	_assert_true(visual_steps.size() >= 1 and visual_steps.size() <= 4, "opponent sim visual step count is 1-4", str(visual_steps.size()))
+	_assert_true(visual_steps.size() >= 1 and visual_steps.size() <= 5, "opponent sim visual step count is 1-5", str(visual_steps.size()))
 	if not visual_steps.is_empty():
 		for visual_step_value in visual_steps:
 			var visual_step: Dictionary = visual_step_value
@@ -931,11 +932,12 @@ func _run_pure_logic() -> void:
 			_assert_true(not step_text.to_lower().contains("clock"), "opponent sim visual step omits clock text", step_text)
 			_assert_true(not step_text.to_lower().contains("debug"), "opponent sim visual step omits debug text", step_text)
 			_assert_true(not step_text.to_lower().contains("seed"), "opponent sim visual step omits seed text", step_text)
-			if int(visual_step.get("points", 0)) > 0:
-				_assert_true(bool(visual_step.get("is_final", false)), "scoring opponent sim visual step is final", JSON.stringify(visual_step))
 		var final_step: Dictionary = visual_steps[-1]
 		_assert_true(bool(final_step.get("is_final", false)), "opponent sim final visual step marked final", JSON.stringify(final_step))
 		_assert_true(int(final_step.get("points", 0)) == int(sim_result.get("points_scored", 0)), "opponent sim final visual step matches points", JSON.stringify({"final": final_step, "result": sim_result}))
+		if int(sim_result.get("points_scored", 0)) > 0:
+			_assert_true(str(final_step.get("kind", "")) == "score", "scoring opponent sim ends with score step", JSON.stringify(final_step))
+			_assert_true(str(final_step.get("text", "")) == "%d points!" % int(sim_result.get("points_scored", 0)), "scoring opponent sim score step text matches points", JSON.stringify(final_step))
 	rng.reseed(9)
 	var repeat_sim_result: Dictionary = sim_controller.run_possession(away_team, home_team, 180.0, rng)
 	_assert_true(JSON.stringify(repeat_sim_result.get("visual_steps", [])) == JSON.stringify(sim_result.get("visual_steps", [])), "opponent sim visual steps are deterministic by seed", "")
@@ -946,6 +948,47 @@ func _run_pure_logic() -> void:
 	var file_path: String = ProjectSettings.globalize_path("user://logs/test_check_match.log")
 	_assert_true(FileAccess.file_exists(file_path), "logs written", file_path)
 	_assert_true(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/MainMenu.tscn", "boot scene is main menu", str(ProjectSettings.get_setting("application/run/main_scene")))
+	MENU_BACKGROUND_SCRIPT.reset_for_tests()
+	var main_menu_scene: PackedScene = load("res://scenes/MainMenu.tscn")
+	var main_menu: Control = main_menu_scene.instantiate() as Control
+	add_child(main_menu)
+	await get_tree().process_frame
+	var main_menu_background: TextureRect = main_menu.get_node_or_null("CourtBackground") as TextureRect
+	var main_menu_texture: Texture2D = main_menu_background.texture if main_menu_background != null else null
+	var shared_menu_source_path: String = MENU_BACKGROUND_SCRIPT.get_source_path()
+	_assert_true(main_menu_background != null, "main menu exposes a court background node", "")
+	_assert_true(main_menu_texture != null, "main menu background texture exists", "")
+	_assert_true(not shared_menu_source_path.is_empty(), "shared menu background chooses a source image", shared_menu_source_path)
+	var team_screen_scene: PackedScene = load("res://scenes/TeamScreen.tscn")
+	var team_screen: Control = team_screen_scene.instantiate() as Control
+	add_child(team_screen)
+	await get_tree().process_frame
+	var team_background: TextureRect = team_screen.get_node_or_null("CourtBackground") as TextureRect
+	var team_texture: Texture2D = team_background.texture if team_background != null else null
+	_assert_true(team_background != null, "team screen exposes a court background node", "")
+	_assert_true(
+		team_texture != null and main_menu_texture != null and team_texture.get_rid() == main_menu_texture.get_rid(),
+		"team screen reuses the main menu background texture",
+		"%s %s" % [team_texture.get_rid() if team_texture != null else RID(), main_menu_texture.get_rid() if main_menu_texture != null else RID()]
+	)
+	_assert_true(MENU_BACKGROUND_SCRIPT.get_source_path() == shared_menu_source_path, "team screen keeps the shared menu background selection", MENU_BACKGROUND_SCRIPT.get_source_path())
+	var settings_screen_scene: PackedScene = load("res://scenes/SettingsScreen.tscn")
+	var settings_screen: Control = settings_screen_scene.instantiate() as Control
+	add_child(settings_screen)
+	await get_tree().process_frame
+	var settings_background: TextureRect = settings_screen.get_node_or_null("CourtBackground") as TextureRect
+	var settings_texture: Texture2D = settings_background.texture if settings_background != null else null
+	_assert_true(settings_background != null, "settings screen exposes a court background node", "")
+	_assert_true(
+		settings_texture != null and main_menu_texture != null and settings_texture.get_rid() == main_menu_texture.get_rid(),
+		"settings screen reuses the main menu background texture",
+		"%s %s" % [settings_texture.get_rid() if settings_texture != null else RID(), main_menu_texture.get_rid() if main_menu_texture != null else RID()]
+	)
+	_assert_true(MENU_BACKGROUND_SCRIPT.get_source_path() == shared_menu_source_path, "settings screen keeps the shared menu background selection", MENU_BACKGROUND_SCRIPT.get_source_path())
+	main_menu.queue_free()
+	team_screen.queue_free()
+	settings_screen.queue_free()
+	await get_tree().process_frame
 	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
 	var game_root: Node2D = game_root_scene.instantiate() as Node2D
 	add_child(game_root)
@@ -1046,6 +1089,35 @@ func _run_pure_logic() -> void:
 	if smoke_coordinator != null and smoke_coordinator.pause_overlay != null:
 		smoke_coordinator.test_toggle_pause()
 		_assert_true(smoke_coordinator.pause_overlay.visible, "pause overlay opens for debug toggles", str(smoke_coordinator.pause_overlay.visible))
+		_assert_true(
+			smoke_coordinator.test_get_quit_scene_path() == "res://scenes/MainMenu.tscn",
+			"pause quit targets the main menu scene",
+			smoke_coordinator.test_get_quit_scene_path()
+		)
+		var pause_overlay_snapshot: Dictionary = smoke_coordinator.pause_overlay.get_layout_snapshot()
+		var pause_root_rect: Rect2 = pause_overlay_snapshot.get("root_rect", Rect2())
+		var pause_panel_rect: Rect2 = pause_overlay_snapshot.get("panel_rect", Rect2())
+		var pause_safe_rect: Rect2 = pause_overlay_snapshot.get("safe_rect", Rect2())
+		if not smoke_layout.is_empty():
+			var pause_viewport_rect: Rect2 = smoke_layout.get("viewport_rect", Rect2())
+			var expected_pause_safe_rect: Rect2 = smoke_layout.get("safe_rect", pause_viewport_rect)
+			_assert_true(
+				pause_root_rect.position.distance_to(pause_viewport_rect.position) < 0.01 and pause_root_rect.size.distance_to(pause_viewport_rect.size) < 0.01,
+				"pause overlay root matches the viewport",
+				"%s %s" % [pause_root_rect, pause_viewport_rect]
+			)
+			_assert_true(
+				pause_safe_rect.position.distance_to(expected_pause_safe_rect.position) < 0.01 and pause_safe_rect.size.distance_to(expected_pause_safe_rect.size) < 0.01,
+				"pause overlay tracks the responsive safe rect",
+				"%s %s" % [pause_safe_rect, expected_pause_safe_rect]
+			)
+			_assert_true(_rect_contains_rect(expected_pause_safe_rect, pause_panel_rect), "pause panel stays inside the safe area", "%s %s" % [pause_panel_rect, expected_pause_safe_rect])
+			var expected_pause_panel_center: Vector2 = expected_pause_safe_rect.get_center() - Vector2(0.0, 100.0)
+			_assert_true(
+				absf(pause_panel_rect.get_center().x - expected_pause_panel_center.x) <= 1.0 and absf(pause_panel_rect.get_center().y - expected_pause_panel_center.y) <= 1.0,
+				"pause panel stays centered on screen with the raised offset",
+				"%s %s" % [pause_panel_rect, expected_pause_panel_center]
+			)
 		_assert_true(smoke_coordinator.are_controls_visible(), "show-controls defaults on", str(smoke_coordinator.are_controls_visible()))
 		_assert_true(not smoke_coordinator.are_defenders_disabled(), "no-defenders defaults off", str(smoke_coordinator.are_defenders_disabled()))
 		smoke_coordinator.test_set_controls_visible(false)
@@ -1921,6 +1993,7 @@ func _run_pure_logic() -> void:
 	await _run_hoop_render_phase_smoke()
 	await _run_dunk_auto_finish_floor_smoke()
 	await _run_opponent_sim_banner_smoke()
+	await _run_score_banner_smoke()
 
 
 func _run_scenarios() -> void:
@@ -1991,7 +2064,8 @@ func _run_opponent_sim_banner_smoke() -> void:
 	var bottom_hoop_snapshot: Dictionary = _get_bottom_hoop_snapshot(smoke_court_view)
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner holds opponent sim state", smoke_coordinator.get_state_name())
 	_assert_true(bool(sequence_snapshot.get("active", false)), "opponent sim banner sequence active", JSON.stringify(sequence_snapshot))
-	_assert_true(int(sequence_snapshot.get("action_count", 0)) == 3, "opponent sim banner uses configured step count", JSON.stringify(sequence_snapshot))
+	var expected_action_count: int = 3 + (1 if int(sequence_snapshot.get("pending_points_scored", 0)) > 0 else 0)
+	_assert_true(int(sequence_snapshot.get("action_count", 0)) == expected_action_count, "opponent sim banner uses configured step count", JSON.stringify(sequence_snapshot))
 	_assert_true(int(sequence_snapshot.get("current_index", -1)) == 0, "opponent sim banner starts at first step", JSON.stringify(sequence_snapshot))
 	_assert_true(smoke_coordinator.context.away_score == away_before, "opponent sim score deferred during banner", str(smoke_coordinator.context.away_score))
 	_assert_true(absf(smoke_coordinator.context.match_time_remaining - clock_before) < 0.001, "opponent sim clock deferred during banner", str(smoke_coordinator.context.match_time_remaining))
@@ -2055,7 +2129,10 @@ func _run_opponent_sim_banner_smoke() -> void:
 	smoke_coordinator.test_toggle_pause()
 	await get_tree().process_frame
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM, "opponent sim banner resumes opponent sim state", smoke_coordinator.get_state_name())
-	smoke_coordinator.test_advance_opponent_sim_sequence()
+	var advance_guard: int = 0
+	while smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM and advance_guard < 6:
+		smoke_coordinator.test_advance_opponent_sim_sequence()
+		advance_guard += 1
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "opponent sim banner final tap returns to offense", smoke_coordinator.get_state_name())
 	visual_snapshot = _get_opponent_visual_snapshot(smoke_coordinator)
 	_assert_true(smoke_coordinator.context.away_score == away_before + pending_points, "opponent sim banner applies pending score once", "%d + %d -> %d" % [away_before, pending_points, smoke_coordinator.context.away_score])
@@ -2070,6 +2147,62 @@ func _run_opponent_sim_banner_smoke() -> void:
 	_assert_true(_bottom_hoop_snapshot_is_valid(_get_bottom_hoop_snapshot(smoke_court_view), smoke_coordinator), "bottom hoop stays anchored after cleanup", "")
 	_assert_true(smoke_coordinator.hud != null and smoke_coordinator.hud.visible, "opponent sim banner restores scoreboard when offense resumes", str(smoke_coordinator.hud.visible if smoke_coordinator.hud != null else false))
 	_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "opponent sim banner restores controls when offense resumes", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
+	game_root.queue_free()
+	await get_tree().process_frame
+
+
+func _run_score_banner_smoke() -> void:
+	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
+	var game_root: Node2D = game_root_scene.instantiate() as Node2D
+	add_child(game_root)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var smoke_coordinator: GameCoordinator = game_root.get_node("GameCoordinator") as GameCoordinator
+	_assert_true(smoke_coordinator != null and smoke_coordinator.opponent_sim_banner != null, "score banner smoke coordinator exists", "")
+	if smoke_coordinator == null or smoke_coordinator.opponent_sim_banner == null:
+		game_root.queue_free()
+		await get_tree().process_frame
+		return
+	smoke_coordinator.begin_test_mode(4242)
+	smoke_coordinator.apply_test_setup(4, 6, 30.0)
+	var away_before: int = smoke_coordinator.context.away_score
+	smoke_coordinator.test_force_opponent_sim_result(3, 2, 4.0)
+	await get_tree().process_frame
+	var sequence_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+	_assert_true(int(sequence_snapshot.get("action_count", 0)) == 3, "forced scoring sim appends score step", JSON.stringify(sequence_snapshot))
+	var advance_guard: int = 0
+	while smoke_coordinator.context.current_state == GameState.State.OPPONENT_SIM and advance_guard < 8:
+		var before_snapshot: Dictionary = smoke_coordinator.get_opponent_sim_sequence_snapshot()
+		var is_last_step: bool = int(before_snapshot.get("current_index", -1)) == int(before_snapshot.get("action_count", 0)) - 1
+		if is_last_step:
+			var final_banner: Dictionary = smoke_coordinator.get_opponent_sim_banner_snapshot()
+			_assert_true(bool(final_banner.get("is_score", false)), "opponent sim final banner uses score mode", JSON.stringify(final_banner))
+			_assert_true(str(final_banner.get("text", "")) == "3 points!", "opponent sim score banner shows 3 points", JSON.stringify(final_banner))
+			_assert_true(bool(final_banner.get("jitter_enabled", false)), "opponent sim 3pt score banner enables jitter", JSON.stringify(final_banner))
+		smoke_coordinator.test_advance_opponent_sim_sequence()
+		advance_guard += 1
+	_assert_true(smoke_coordinator.context.current_state == GameState.State.LIVE_OFFENSE, "forced scoring sim returns to offense", smoke_coordinator.get_state_name())
+	_assert_true(smoke_coordinator.context.away_score == away_before + 3, "forced scoring sim applies 3 points", "%d -> %d" % [away_before, smoke_coordinator.context.away_score])
+	_assert_true(not bool(smoke_coordinator.get_opponent_sim_banner_snapshot().get("visible", true)), "forced scoring sim banner hides after completion", JSON.stringify(smoke_coordinator.get_opponent_sim_banner_snapshot()))
+
+	var banner: OpponentSimBanner = smoke_coordinator.opponent_sim_banner
+	banner.show_score(2, false)
+	await get_tree().process_frame
+	var two_pt_snapshot: Dictionary = banner.get_layout_snapshot()
+	_assert_true(bool(two_pt_snapshot.get("visible", false)), "player 2pt score banner visible", JSON.stringify(two_pt_snapshot))
+	_assert_true(bool(two_pt_snapshot.get("is_score", false)), "player 2pt score banner uses score mode", JSON.stringify(two_pt_snapshot))
+	_assert_true(str(two_pt_snapshot.get("text", "")) == "2 points!", "player 2pt score banner text matches", JSON.stringify(two_pt_snapshot))
+	_assert_true(not bool(two_pt_snapshot.get("jitter_enabled", true)), "player 2pt score banner does not jitter", JSON.stringify(two_pt_snapshot))
+	banner.hide_banner()
+
+	banner.show_score(3, false)
+	await get_tree().process_frame
+	var three_pt_snapshot: Dictionary = banner.get_layout_snapshot()
+	_assert_true(bool(three_pt_snapshot.get("jitter_enabled", false)) and banner.is_jitter_active(), "player 3pt score banner enables jitter", JSON.stringify(three_pt_snapshot))
+	_assert_true(str(three_pt_snapshot.get("text", "")) == "3 points!", "player 3pt score banner text matches", JSON.stringify(three_pt_snapshot))
+	banner.hide_banner()
+	var hidden_snapshot: Dictionary = banner.get_layout_snapshot()
+	_assert_true(not bool(hidden_snapshot.get("visible", true)), "score banner hides on request", JSON.stringify(hidden_snapshot))
 	game_root.queue_free()
 	await get_tree().process_frame
 

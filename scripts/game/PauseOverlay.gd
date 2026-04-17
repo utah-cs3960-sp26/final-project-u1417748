@@ -2,12 +2,18 @@ class_name PauseOverlay
 extends Control
 
 const SETTINGS_PANEL_SCENE: PackedScene = preload("res://scenes/ui/SettingsPanel.tscn")
+const DEFAULT_VIEWPORT_SIZE: Vector2 = Vector2(1080.0, 1920.0)
+const PANEL_TARGET_WIDTH: float = 820.0
+const PANEL_MIN_SIDE_PADDING: float = 24.0
+const PANEL_MAX_SIDE_PADDING: float = 72.0
+const PANEL_RAISE_OFFSET: float = 100.0
 
 signal resume_pressed()
 signal restart_pressed()
 signal quit_pressed()
 signal settings_pressed()
 
+var _center_container: Control
 var _panel_container: PanelContainer
 var _resume_button: Button
 var _restart_button: Button
@@ -15,12 +21,31 @@ var _settings_button: Button
 var _quit_button: Button
 var _settings_modal: Control
 var _settings_panel_instance: PanelContainer
+var _resolved_viewport_rect: Rect2 = Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE)
+var _resolved_safe_rect: Rect2 = Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE)
 
 
 func _ready() -> void:
-	anchors_preset = PRESET_FULL_RECT
 	visible = false
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build_ui()
+	_apply_viewport_layout()
+
+
+func apply_layout(layout_metrics: Dictionary) -> void:
+	var viewport_rect: Rect2 = layout_metrics.get("viewport_rect", Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE))
+	var safe_rect: Rect2 = layout_metrics.get("safe_rect", viewport_rect)
+	_apply_layout_rects(viewport_rect, safe_rect)
+
+
+func get_layout_snapshot() -> Dictionary:
+	return {
+		"root_rect": get_global_rect(),
+		"viewport_rect": _resolved_viewport_rect,
+		"safe_rect": _resolved_safe_rect,
+		"panel_rect": _panel_container.get_global_rect() if _panel_container != null else Rect2(),
+		"visible": visible,
+	}
 
 
 func _build_ui() -> void:
@@ -29,17 +54,12 @@ func _build_ui() -> void:
 	dim.anchors_preset = PRESET_FULL_RECT
 	add_child(dim)
 
-	var center: CenterContainer = CenterContainer.new()
-	center.anchors_preset = PRESET_FULL_RECT
-	center.offset_left = 0.0
-	center.offset_top = 0.0
-	center.offset_right = 0.0
-	center.offset_bottom = 0.0
-	add_child(center)
+	_center_container = Control.new()
+	add_child(_center_container)
 
 	_panel_container = PanelContainer.new()
-	_panel_container.custom_minimum_size = Vector2(820.0, 0.0)
-	center.add_child(_panel_container)
+	_panel_container.custom_minimum_size = Vector2(PANEL_TARGET_WIDTH, 0.0)
+	_center_container.add_child(_panel_container)
 
 	var inner_margin: MarginContainer = MarginContainer.new()
 	inner_margin.add_theme_constant_override("margin_left", 56)
@@ -121,3 +141,49 @@ func close_settings() -> void:
 		_settings_modal.queue_free()
 	_settings_modal = null
 	_settings_panel_instance = null
+
+
+func _apply_viewport_layout() -> void:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		_apply_layout_rects(Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE), Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE))
+		return
+	var viewport_rect: Rect2 = viewport.get_visible_rect()
+	_apply_layout_rects(viewport_rect, viewport_rect)
+
+
+func _apply_layout_rects(viewport_rect: Rect2, safe_rect: Rect2) -> void:
+	var resolved_viewport_rect: Rect2 = viewport_rect
+	if resolved_viewport_rect.size.x <= 0.0 or resolved_viewport_rect.size.y <= 0.0:
+		resolved_viewport_rect = Rect2(Vector2.ZERO, DEFAULT_VIEWPORT_SIZE)
+
+	var resolved_safe_rect: Rect2 = safe_rect
+	if resolved_safe_rect.size.x <= 0.0 or resolved_safe_rect.size.y <= 0.0:
+		resolved_safe_rect = resolved_viewport_rect
+
+	_resolved_viewport_rect = resolved_viewport_rect
+	_resolved_safe_rect = resolved_safe_rect
+
+	set_anchors_preset(PRESET_TOP_LEFT)
+	position = resolved_viewport_rect.position
+	size = resolved_viewport_rect.size
+	custom_minimum_size = resolved_viewport_rect.size
+
+	if _center_container == null:
+		return
+
+	_center_container.set_anchors_preset(PRESET_TOP_LEFT)
+	_center_container.position = resolved_safe_rect.position - resolved_viewport_rect.position
+	_center_container.size = resolved_safe_rect.size
+	_center_container.custom_minimum_size = resolved_safe_rect.size
+
+	if _panel_container != null:
+		var horizontal_padding: float = clampf(resolved_safe_rect.size.x * 0.05, PANEL_MIN_SIDE_PADDING, PANEL_MAX_SIDE_PADDING)
+		var panel_width: float = minf(PANEL_TARGET_WIDTH, maxf(resolved_safe_rect.size.x - horizontal_padding * 2.0, 320.0))
+		_panel_container.custom_minimum_size = Vector2(panel_width, 0.0)
+		var panel_size: Vector2 = _panel_container.get_combined_minimum_size()
+		var panel_x: float = maxf((resolved_safe_rect.size.x - panel_size.x) * 0.5, 0.0)
+		var centered_y: float = (resolved_safe_rect.size.y - panel_size.y) * 0.5 - PANEL_RAISE_OFFSET
+		var panel_y: float = clampf(centered_y, 0.0, maxf(resolved_safe_rect.size.y - panel_size.y, 0.0))
+		_panel_container.position = Vector2(panel_x, panel_y)
+		_panel_container.size = panel_size

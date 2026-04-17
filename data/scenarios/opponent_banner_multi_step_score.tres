@@ -16,7 +16,7 @@ value = {
 [sub_resource type="Resource" id="Action_wait"]
 script = ExtResource("2")
 kind = "wait"
-seconds = 4.2
+seconds = 5.4
 
 [sub_resource type="Resource" id="Expectation_state"]
 script = ExtResource("3")

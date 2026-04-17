@@ -18,6 +18,7 @@ const SCORE_FOLLOWTHROUGH_HANDOFF_CLEAR_EPSILON: float = 0.75
 const SCORE_FOLLOWTHROUGH_PRE_BOUNCE_CONTINUITY_EPSILON: float = 0.1
 const SHOT_TIMING_MODE_ANIMATION_GATED: String = "animation_gated"
 const SHOT_TIMING_MODE_DIRECT_SHOOT_BUTTON: String = "direct_shoot_button"
+const MAIN_MENU_SCENE_PATH: String = "res://scenes/MainMenu.tscn"
 
 enum BallVisualMode {
 	HIDDEN_WHILE_OWNED,
@@ -118,6 +119,8 @@ var pending_opponent_sim_result: Dictionary = {}
 var opponent_sim_visual_steps: Array[Dictionary] = []
 var opponent_sim_visual_index: int = -1
 var opponent_sim_visual_timer: float = 0.0
+var player_score_banner_timer: float = 0.0
+const PLAYER_SCORE_BANNER_DURATION: float = 1.0
 
 
 func _ready() -> void:
@@ -197,6 +200,8 @@ func _apply_responsive_layout(sync_visuals: bool = true) -> void:
 		control_panel.apply_layout(layout_metrics)
 	if opponent_sim_banner != null:
 		opponent_sim_banner.apply_layout(layout_metrics)
+	if pause_overlay != null:
+		pause_overlay.apply_layout(layout_metrics)
 	if input_controller != null:
 		input_controller.set_control_layout(layout_metrics)
 	if sync_visuals:
@@ -521,6 +526,7 @@ func _process(delta: float) -> void:
 			_update_rebound_live(scaled_delta)
 		GameState.State.OPPONENT_SIM:
 			_update_opponent_sim_sequence(scaled_delta)
+	_update_player_score_banner(scaled_delta)
 	_sync_projection_visuals(scaled_delta)
 
 
@@ -713,7 +719,7 @@ func _update_shot_in_flight(delta: float) -> void:
 		"score":
 			ball_simulator.already_scored = true
 			context.home_score += context.shot_value_pending
-			_show_feedback("SWISH!" if not shot_had_rim_contact else "BUCKET!", Color(0.44, 1.0, 0.58))
+			_show_player_score_banner(context.shot_value_pending)
 			log_writer.log_match("Score %d points" % context.shot_value_pending)
 			_update_hud()
 			_begin_score_followthrough(interaction)
@@ -1078,6 +1084,7 @@ func _begin_opponent_sim_sequence(result: Dictionary) -> void:
 	pending_opponent_sim_result = result.duplicate(true)
 	opponent_sim_visual_steps = _normalize_opponent_sim_visual_steps(result.get("visual_steps", []))
 	opponent_sim_visual_index = 0
+	player_score_banner_timer = 0.0
 	_set_opponent_sim_match_ui_hidden(true)
 	_set_opponent_sim_live_entities_hidden(true)
 	_show_current_opponent_sim_step()
@@ -1104,7 +1111,7 @@ func _normalize_opponent_sim_visual_steps(raw_steps: Variant) -> Array[Dictionar
 			"points": 0,
 			"is_final": true,
 		})
-	while steps.size() > 4:
+	while steps.size() > 5:
 		steps.pop_back()
 	for index in steps.size():
 		steps[index]["is_final"] = index == steps.size() - 1
@@ -1153,9 +1160,14 @@ func _show_current_opponent_sim_step() -> void:
 	opponent_sim_visual_index = clampi(opponent_sim_visual_index, 0, opponent_sim_visual_steps.size() - 1)
 	var step: Dictionary = opponent_sim_visual_steps[opponent_sim_visual_index]
 	var text_value: String = str(step.get("text", ""))
+	var step_kind: String = str(step.get("kind", ""))
+	var step_points: int = int(step.get("points", 0))
 	opponent_sim_visual_timer = maxf(float(opponent_sim_config.visual_step_duration), 0.05)
 	if opponent_sim_banner != null:
-		opponent_sim_banner.show_action(text_value)
+		if step_kind == "score" and step_points > 0:
+			opponent_sim_banner.show_score(step_points)
+		else:
+			opponent_sim_banner.show_action(text_value)
 	if opponent_sim_presentation != null:
 		opponent_sim_presentation.call("show_step", step)
 	camera_tracking_signature = ""
@@ -1285,7 +1297,14 @@ func _finish_game() -> void:
 
 
 func _quit_game() -> void:
-	get_tree().quit()
+	if pause_overlay != null and pause_overlay.has_method("close_settings"):
+		pause_overlay.close_settings()
+	if pause_overlay != null:
+		pause_overlay.visible = false
+	if game_over_overlay != null:
+		game_over_overlay.visible = false
+	log_writer.log_match("Quit to main menu")
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 
 
 func _set_ballhandler(player: PlayerController) -> void:
@@ -1368,6 +1387,27 @@ func _show_feedback(text_value: String, color_value: Color) -> void:
 	context.last_feedback_text = text_value
 	feedback_text.show_feedback(text_value, color_value, 1.0)
 	log_writer.log_event("feedback", {"text": text_value})
+
+
+func _show_player_score_banner(points: int) -> void:
+	if points <= 0:
+		return
+	if opponent_sim_banner != null:
+		opponent_sim_banner.show_score(points, false)
+	player_score_banner_timer = PLAYER_SCORE_BANNER_DURATION
+	log_writer.log_event("player_score_banner", {"points": points})
+
+
+func _update_player_score_banner(delta: float) -> void:
+	if player_score_banner_timer <= 0.0:
+		return
+	player_score_banner_timer = maxf(player_score_banner_timer - delta, 0.0)
+	if player_score_banner_timer > 0.0:
+		return
+	if context.current_state == GameState.State.OPPONENT_SIM:
+		return
+	if opponent_sim_banner != null and opponent_sim_banner.is_score_display():
+		opponent_sim_banner.hide_banner()
 
 
 func _clamp_to_court(player: PlayerController) -> void:
@@ -1847,6 +1887,10 @@ func test_set_controls_visible(enabled: bool) -> void:
 	_set_controls_visible(enabled)
 
 
+func test_get_quit_scene_path() -> String:
+	return MAIN_MENU_SCENE_PATH
+
+
 func test_force_opponent_sim() -> void:
 	_run_opponent_possession()
 
@@ -1876,8 +1920,16 @@ func test_force_opponent_sim_result(points_scored: int = 0, action_count: int = 
 		"kind": final_kind,
 		"player": "AWY",
 		"points": points_scored,
-		"is_final": true,
+		"is_final": points_scored <= 0,
 	})
+	if points_scored > 0:
+		steps.append({
+			"text": "%d points!" % points_scored,
+			"kind": "score",
+			"player": "AWY",
+			"points": points_scored,
+			"is_final": true,
+		})
 	_clear_steal_resolve()
 	_clear_pending_shot_release()
 	_clear_active_shot_sequence()

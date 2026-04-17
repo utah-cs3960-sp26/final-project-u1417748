@@ -122,6 +122,20 @@ func _build_visual_steps(
 		var setup_kind: String = _choose_setup_kind(setup_seed)
 		steps.append(_create_visual_step(setup_kind, setup_actor, 0, false))
 	steps.append(_create_visual_step(_choose_final_kind(final_kind, seed_text), final_player, points, true))
+	if points > 0:
+		var prior_step: Dictionary = steps[steps.size() - 1]
+		prior_step["is_final"] = false
+		var score_step: Dictionary = {
+			"text": "%d points!" % points,
+			"kind": "score",
+			"player": prior_step.get("player", ""),
+			"points": points,
+			"is_final": true,
+			"player_id": prior_step.get("player_id", ""),
+			"player_role": prior_step.get("player_role", ""),
+			"actor_team": "away",
+		}
+		steps.append(score_step)
 	return steps
 
 

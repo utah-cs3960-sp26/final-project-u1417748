@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-04-17
+
+### Menu screens now reuse the main-menu start background
+
+- extracted a shared `MenuBackground.gd` helper that keeps one cached rotated court-background texture for the menu flow instead of letting each screen manage its own backdrop independently
+- wired `MainMenu`, `TeamScreen`, and `SettingsScreen` through that helper so the Team and Settings pages now show the same start-page background art selection as the current main menu
+- added headless smoke coverage that instantiates all three scenes and asserts the Team and Settings screens reuse the exact same background texture resource and selected source image as the main menu
+- changed the opponent-sim score banner's score wrapper from `CanvasGroup` to `Control` so the current headless suite can complete on the local Godot `4.6.1` runtime instead of failing immediately on unsupported `mouse_filter` / `size` assignments
+- reran validation after the menu-background pass: boot smoke passed; the full suite now reports pure logic `1802`, scenarios `18`, balance `4`, failures `6`
+- the new shared-background assertions passed; the current failing checks are `guided make bounce starts only after floor contact`, `straight dunk keeps moving through the landing after launch`, `Opponent Banner Game Over`, `Opponent Banner Multi-Step Score`, `Opponent Banner One-Step Score`, and `Opponent Banner Tap Skip`
+
+### Pause overlay now centers against the full responsive viewport
+
+- changed `PauseOverlay` so it no longer relies on container auto-layout under `CanvasLayer`; it now resolves an explicit viewport-sized root rect and a safe-rect-scoped panel placement during the coordinator's responsive layout pass
+- kept the dimmer and modal behavior the same, but moved the pause card to a deterministic centered rect so the menu no longer opens from the top-left corner on runtime pause
+- raised the pause card by `100px` relative to the safe-rect center while still clamping it fully inside the visible safe area
+- changed the in-match `Quit Game` path from a direct `SceneTree.quit()` call to `MainMenu.tscn`, which matches the repo's current `run/main_scene` and works for both desktop and mobile-style flows
+- added smoke coverage for the pause overlay root rect, safe-rect sync, safe-area containment, raised-card positioning, and the pause quit target scene path to prevent future HUD/layout changes from regressing the pause menu behavior
+- reran headless validation after the pause centering and quit-path fix: boot smoke passed; the full suite still reported the same two pre-existing followthrough failures (`guided make bounce starts only after floor contact` and `straight dunk keeps moving through the landing after launch`), while the new pause overlay and quit-target checks passed
+
 ## 2026-04-16
 
 ### Pause button mirrored to the bottom-right HUD corner
