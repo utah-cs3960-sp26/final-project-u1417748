@@ -10,3 +10,4 @@ extends Resource
 @export var show_rebound_zone: bool = false
 @export var show_shot_preview_data: bool = true
 @export var show_finish_radii: bool = true
+@export var show_three_point_line: bool = true

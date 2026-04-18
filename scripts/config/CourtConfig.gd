@@ -7,6 +7,9 @@ extends Resource
 @export var opposite_hoop_visual_scale_multiplier: float = 2.0
 @export var opposite_hoop_z_index: int = 3000
 @export var three_point_radius: float = 840.0
+@export var three_point_sideline_offset: float = 140.0
+@export var three_point_straight_extension: float = 50.0
+@export var three_point_peak_extension: float = 150.0
 @export var rim_radius: float = 62.0
 @export var rim_inner_radius: float = 40.0
 @export var rim_height: float = 185.0
@@ -63,4 +66,32 @@ func is_in_bounds(position_xy: Vector2) -> bool:
 
 
 func is_three_point(position_xy: Vector2) -> bool:
-	return position_xy.distance_to(hoop_position) > three_point_radius
+	if position_xy.x <= court_rect.position.x + three_point_sideline_offset:
+		return true
+	if position_xy.x >= court_rect.end.x - three_point_sideline_offset:
+		return true
+	var center: Vector2 = three_point_arc_center(hoop_position)
+	var radii: Vector2 = three_point_arc_radii()
+	var nx: float = (position_xy.x - center.x) / maxf(radii.x, 0.001)
+	var ny: float = (position_xy.y - center.y) / maxf(radii.y, 0.001)
+	return nx * nx + ny * ny > 1.0
+
+
+func three_point_arc_center(hoop_pos: Vector2) -> Vector2:
+	var court_center_y: float = court_rect.get_center().y
+	var direction_sign: float = signf(court_center_y - hoop_pos.y)
+	if direction_sign == 0.0:
+		direction_sign = 1.0
+	return hoop_pos + Vector2(0.0, direction_sign * three_point_straight_extension)
+
+
+func three_point_arc_radii() -> Vector2:
+	if three_point_peak_extension <= 0.0:
+		return Vector2(three_point_radius, three_point_radius)
+	var dx: float = maxf(hoop_position.x - (court_rect.position.x + three_point_sideline_offset), 0.0)
+	dx = minf(dx, three_point_radius - 1.0)
+	var dy: float = sqrt(maxf(three_point_radius * three_point_radius - dx * dx, 0.0))
+	var ry: float = three_point_radius + three_point_peak_extension
+	var denom: float = sqrt(maxf(ry * ry - dy * dy, 1.0))
+	var rx: float = dx * ry / denom
+	return Vector2(rx, ry)

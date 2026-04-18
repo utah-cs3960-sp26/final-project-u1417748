@@ -124,3 +124,9 @@ func _draw() -> void:
 		if finish_radius_center != Vector2.INF:
 			draw_circle(finish_radius_center, 8.0, Color(0.02, 0.02, 0.03, 0.95))
 			draw_circle(finish_radius_center, 5.0, Color(1.0, 1.0, 1.0, 0.96))
+	if debug_config.show_three_point_line:
+		for arc in snapshot.get("three_point_arcs", []):
+			if arc.size() < 2:
+				continue
+			draw_polyline(arc, Color(0.02, 0.02, 0.03, 0.95), 7.0)
+			draw_polyline(arc, Color(1.0, 0.25, 0.95, 1.0), 4.0)

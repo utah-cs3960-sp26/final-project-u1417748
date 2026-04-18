@@ -1612,6 +1612,11 @@ func get_debug_snapshot() -> Dictionary:
 				"radius": radius_value,
 				"points": court_projection.project_circle(finish_center_world, radius_value, 0.0, 72),
 			})
+	var three_point_arcs: Array[PackedVector2Array] = []
+	if court_projection != null and court_config != null:
+		var court_rect_for_arcs: Rect2 = court_config.court_rect
+		three_point_arcs.append(_build_three_point_line(court_config.hoop_position, court_rect_for_arcs.position.y))
+		three_point_arcs.append(_build_three_point_line(court_config.opposite_hoop_position, court_rect_for_arcs.end.y))
 	return {
 		"state_name": GameState.state_name(context.current_state),
 		"clock_text": _format_clock_text(context.match_time_remaining),
@@ -1636,7 +1641,41 @@ func get_debug_snapshot() -> Dictionary:
 		"shot_preview": current_preview_points,
 		"finish_radius_rings": finish_radius_rings,
 		"finish_radius_center": finish_radius_center,
+		"three_point_arcs": three_point_arcs,
 	}
+
+
+func _build_three_point_line(hoop_pos: Vector2, baseline_y: float) -> PackedVector2Array:
+	var rect: Rect2 = court_config.court_rect
+	var offset: float = court_config.three_point_sideline_offset
+	var arc_center: Vector2 = court_config.three_point_arc_center(hoop_pos)
+	var radii: Vector2 = court_config.three_point_arc_radii()
+	var rx: float = maxf(radii.x, 0.001)
+	var ry: float = maxf(radii.y, 0.001)
+	var left_x: float = rect.position.x + offset
+	var right_x: float = rect.end.x - offset
+	var y_sign: float = signf(baseline_y - hoop_pos.y)
+	if y_sign == 0.0:
+		y_sign = 1.0
+	var cos_left: float = (left_x - arc_center.x) / rx
+	var cos_right: float = (right_x - arc_center.x) / rx
+	var sin_left: float = sqrt(maxf(1.0 - cos_left * cos_left, 0.0)) * y_sign
+	var sin_right: float = sqrt(maxf(1.0 - cos_right * cos_right, 0.0)) * y_sign
+	var arc_y_left: float = arc_center.y + ry * sin_left
+	var arc_y_right: float = arc_center.y + ry * sin_right
+	var world_points: Array[Vector2] = []
+	world_points.append(Vector2(left_x, baseline_y))
+	world_points.append(Vector2(left_x, arc_y_left))
+	var start_angle: float = atan2(sin_left, cos_left)
+	var end_angle: float = atan2(sin_right, cos_right)
+	var steps: int = 48
+	for i in steps + 1:
+		var t: float = float(i) / float(steps)
+		var a: float = lerpf(start_angle, end_angle, t)
+		world_points.append(arc_center + Vector2(cos(a) * rx, sin(a) * ry))
+	world_points.append(Vector2(right_x, arc_y_right))
+	world_points.append(Vector2(right_x, baseline_y))
+	return court_projection.project_polyline(world_points)
 
 
 func get_finish_logic_center_world() -> Vector2:
