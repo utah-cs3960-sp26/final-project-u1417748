@@ -267,13 +267,7 @@ func _sync_bottom_hoop_sprite() -> void:
 
 
 func _get_active_court_source_region() -> Rect2:
-	var display_size: Vector2 = court_screen_rect.size if court_screen_rect.size.x > 0.0 and court_screen_rect.size.y > 0.0 else _get_viewport_size()
-	if display_size.x <= 0.0 or display_size.y <= 0.0:
-		return court_variant_source_region
-	var full_region: Rect2 = court_variant_source_region
-	var visible_source_depth: float = minf(full_region.size.x, full_region.size.y * display_size.y / maxf(display_size.x, 1.0))
-	visible_source_depth = clampf(visible_source_depth, 1.0, full_region.size.x)
-	return Rect2(full_region.position, Vector2(visible_source_depth, full_region.size.y))
+	return court_variant_source_region
 
 
 func _project_ground(world_position: Vector2) -> Vector2:
