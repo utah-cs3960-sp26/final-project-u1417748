@@ -1,5 +1,35 @@
 # Test Results
 
+## Shot Timing Bar Centering Validation
+
+The visible shot-timing bar now keeps its existing full-width action-row sizing, but it draws at the center of the safe viewport during `SHOT_AIM` instead of sitting inside the top `SHOOT | DUNK` control row. The new smoke coverage asserts both safe-area containment and centered placement.
+
+## Environment
+
+- Date: 2026-04-17
+- Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
+- Engine used for validation: Godot 4.6.1 stable
+
+## Commands Run
+
+Automated suite:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
+```
+
+## Automated Result
+
+Full suite status: fail, with the new centered-meter assertions passing
+
+- Pure logic passes: 1803
+- Scenarios: 18 / 18
+- Balance: 4 / 4
+- Failures: 2
+- Current failing checks:
+  - `guided make bounce starts only after floor contact`
+  - `straight dunk keeps moving through the landing after launch`
+
 ## Menu Background Reuse Validation
 
 `TeamScreen.tscn` and `SettingsScreen.tscn` now use the same cached rotated court backdrop as `MainMenu.tscn`. Moving between the menu, team page, and settings page preserves one shared start-page background selection instead of reusing only the flat default court art.

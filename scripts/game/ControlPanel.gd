@@ -206,7 +206,7 @@ func _draw() -> void:
 	_draw_pass_focus_badge(zone_rects.get("pass_left", Rect2()), pass_available, highlight_zone == "pass_left")
 	_draw_pass_focus_badge(zone_rects.get("pass_right", Rect2()), pass_available, highlight_zone == "pass_right")
 	_draw_joystick(zone_rects.get("move", Rect2()))
-	_draw_shot_meter(_get_top_action_rect(zone_rects))
+	_draw_shot_meter(_get_top_action_rect(zone_rects), _get_shot_meter_container_rect())
 
 
 func _draw_zone(zone_rect: Rect2, zone_visual_state: Dictionary) -> void:
@@ -314,7 +314,17 @@ func get_shot_meter_bar_rect_snapshot() -> Rect2:
 	var zone_rects: Dictionary = _layout_metrics.get("control_zone_rects", {})
 	if zone_rects.is_empty():
 		return Rect2()
-	return _compute_shot_meter_rect(_get_top_action_rect(zone_rects), _panel_state.get("shot_meter", {}))
+	return _compute_shot_meter_rect(_get_top_action_rect(zone_rects), _get_shot_meter_container_rect(), _panel_state.get("shot_meter", {}))
+
+
+func _get_shot_meter_container_rect() -> Rect2:
+	var safe_rect: Rect2 = _layout_metrics.get("safe_rect", Rect2())
+	if safe_rect.size.x > 0.0 and safe_rect.size.y > 0.0:
+		return safe_rect
+	var viewport_rect: Rect2 = _layout_metrics.get("viewport_rect", Rect2())
+	if viewport_rect.size.x > 0.0 and viewport_rect.size.y > 0.0:
+		return viewport_rect
+	return Rect2(Vector2.ZERO, size)
 
 
 func _get_top_action_rect(zone_rects: Dictionary) -> Rect2:
@@ -330,8 +340,10 @@ func _get_top_action_rect(zone_rects: Dictionary) -> Rect2:
 	)
 
 
-func _compute_shot_meter_rect(action_rect: Rect2, shot_meter: Dictionary) -> Rect2:
+func _compute_shot_meter_rect(action_rect: Rect2, container_rect: Rect2, shot_meter: Dictionary) -> Rect2:
 	if action_rect.size.x <= 0.0 or action_rect.size.y <= 0.0:
+		return Rect2()
+	if container_rect.size.x <= 0.0 or container_rect.size.y <= 0.0:
 		return Rect2()
 	if not bool(shot_meter.get("visible", false)):
 		return Rect2()
@@ -339,14 +351,14 @@ func _compute_shot_meter_rect(action_rect: Rect2, shot_meter: Dictionary) -> Rec
 	var meter_width: float = maxf(action_rect.size.x - padding_x * 2.0, 1.0)
 	var meter_height: float = minf(maxf(float(shot_meter.get("height", 42.0)), action_rect.size.y * 0.22), action_rect.size.y * 0.34)
 	return Rect2(
-		Vector2(action_rect.get_center().x - meter_width * 0.5, action_rect.end.y - meter_height - action_rect.size.y * 0.12),
+		Vector2(container_rect.get_center().x - meter_width * 0.5, container_rect.get_center().y - meter_height * 0.5),
 		Vector2(meter_width, meter_height)
 	)
 
 
-func _draw_shot_meter(action_rect: Rect2) -> void:
+func _draw_shot_meter(action_rect: Rect2, container_rect: Rect2) -> void:
 	var shot_meter: Dictionary = _panel_state.get("shot_meter", {})
-	var bar_rect: Rect2 = _compute_shot_meter_rect(action_rect, shot_meter)
+	var bar_rect: Rect2 = _compute_shot_meter_rect(action_rect, container_rect, shot_meter)
 	if bar_rect.size.x <= 0.0 or bar_rect.size.y <= 0.0:
 		return
 	var marker_width: float = minf(float(shot_meter.get("marker_width", 20.0)), bar_rect.size.x * 0.18)

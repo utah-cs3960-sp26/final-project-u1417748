@@ -1271,15 +1271,12 @@ func _run_pure_logic() -> void:
 	smoke_coordinator.test_set_controls_visible(true)
 	_reset_visual_test_state(smoke_coordinator)
 	var smoke_control_layout: Dictionary = smoke_coordinator.input_controller.get_control_layout_snapshot()
+	var smoke_layout_for_meter: Dictionary = smoke_coordinator.get_layout_metrics_snapshot()
+	var smoke_safe_rect_for_meter: Rect2 = smoke_layout_for_meter.get("safe_rect", Rect2())
 	var smoke_control_zone_rects: Dictionary = smoke_control_layout.get("control_zone_rects", {})
 	var smoke_move_center: Vector2 = smoke_control_zone_rects.get("move", Rect2()).get_center()
 	var smoke_shoot_center: Vector2 = smoke_control_zone_rects.get("shoot", Rect2()).get_center()
 	var smoke_shoot_rect_for_meter: Rect2 = smoke_control_zone_rects.get("shoot", Rect2())
-	var smoke_dunk_rect_for_meter: Rect2 = smoke_control_zone_rects.get("dunk", Rect2())
-	var smoke_top_action_rect: Rect2 = Rect2(
-		smoke_shoot_rect_for_meter.position,
-		Vector2(maxf(smoke_dunk_rect_for_meter.end.x - smoke_shoot_rect_for_meter.position.x, 1.0), smoke_shoot_rect_for_meter.size.y)
-	)
 	if smoke_coordinator.control_panel != null:
 		smoke_coordinator.control_panel.set_panel_state(smoke_coordinator._build_control_panel_state())
 		var neutral_shoot_visual: Dictionary = smoke_coordinator.control_panel.get_zone_visual_state_snapshot("shoot")
@@ -1350,7 +1347,8 @@ func _run_pure_logic() -> void:
 		)
 		var panel_meter_rect: Rect2 = smoke_coordinator.control_panel.get_shot_meter_bar_rect_snapshot()
 		_assert_true(panel_meter_rect.size.x > smoke_shoot_rect_for_meter.size.x, "control-panel shot meter spans beyond the shoot button into the dunk half", "%s %s" % [panel_meter_rect, smoke_shoot_rect_for_meter])
-		_assert_true(panel_meter_rect.position.x >= smoke_top_action_rect.position.x - 0.01 and panel_meter_rect.end.x <= smoke_top_action_rect.end.x + 0.01, "control-panel shot meter stays inside the full top action row", "%s %s" % [panel_meter_rect, smoke_top_action_rect])
+		_assert_true(_rect_contains_rect(smoke_safe_rect_for_meter, panel_meter_rect), "control-panel shot meter stays inside the safe area", "%s %s" % [panel_meter_rect, smoke_safe_rect_for_meter])
+		_assert_true(absf(panel_meter_rect.get_center().x - smoke_safe_rect_for_meter.get_center().x) <= 1.0 and absf(panel_meter_rect.get_center().y - smoke_safe_rect_for_meter.get_center().y) <= 1.0, "control-panel shot meter centers in the middle of the safe viewport during shot aim", "%s %s" % [panel_meter_rect, smoke_safe_rect_for_meter])
 	for _direct_shoot_hold_frame in 25:
 		await get_tree().process_frame
 	_assert_true(smoke_coordinator.context.current_state == GameState.State.SHOT_AIM, "direct shoot button timing waits for a second tap past the authored release frame", smoke_coordinator.get_state_name())

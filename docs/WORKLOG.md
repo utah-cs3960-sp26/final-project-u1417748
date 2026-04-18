@@ -2,6 +2,12 @@
 
 ## 2026-04-17
 
+### Shot timing bar now centers in the live viewport
+
+- changed `ControlPanel` so the visible shot-timing bar keeps its existing full-width top-action sizing but now draws at the safe viewport center instead of inside the top `SHOOT | DUNK` row
+- kept the control panel hitboxes and action-row visuals unchanged; only the bar presentation moved so the green window is easier to read while aiming
+- updated headless smoke coverage to assert the timing bar stays inside the safe area and snaps to the safe-rect center during `SHOT_AIM`
+
 ### Menu screens now reuse the main-menu start background
 
 - extracted a shared `MenuBackground.gd` helper that keeps one cached rotated court-background texture for the menu flow instead of letting each screen manage its own backdrop independently
