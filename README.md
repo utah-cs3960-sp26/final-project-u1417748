@@ -1,5 +1,10 @@
 # Pocket Hoops
 
+## YouTube Video Link:
+
+https://youtu.be/nu1xFx_FX7k
+
+
 ## Proposal (Week 12)
 
 ### What are you going to build? What are the features you intend to show off? What kind of agentic loop are you going to use to make this happen? What will be the feedback mechanisms that you will tell the agent to use, to ensure a quality product?
@@ -21,25 +26,21 @@ The dumbest things my agent loop did this week were assuming it knows the detail
 
 The smartest thing its done is get the arch for a more arcadic style shot right while still being accurate. Since it's a top down view, a shot would likely just look like a straight line, but I wanted to dramaticize the effect so adding a big arch and curve to the shot which AMP/Codex were able to achieve very well through creating a physics based environment. 
 
+## Responses (Week 14)
+
+
+The final product is very similar to the proposal from a week 12. This finished product is still a pixel, retro, themed basketball game that has the core mechanics of movement, passing, and shooting. It has an automatic defense system and a simulated offense for the opponents team to help the game feel much more fluid and that player constantly be playing offense rather then bothering with any defense. I could not reach my stretch goal of a fast break mechanic as I ran into many bugs when implementing the other parts so I had to prioritize the core functionality and other aspects of the game that would make it feel more complete. I also added a "shop" which wasn't in the original proposal as it shows a way the game could be built on and in the future add a leveling system. 
+
+The agentic methodologies I used also differed from the original proposal. I ended up using Codex a lot more then AMP because Codex has a "planning" mode which handled more complex and big implementations better since it would ask clarifying questions which would catch some obvious edge cases. 
+
+For the agentic loop, I initially started with AMP and the while loop with a PROMPT.md file like how we did with the simulation project, however, it quickly ran into a lot of issues, especially revolving around the ball trajectories when shooting. This cause me to re-plan and start with Codex which has a planning mode and I found building in smaller steps with each planned out and ran through CodeX performed better then AMP. This was because AMP decided anything I said was truth and wouldn't question an approach while CodeX would ask me for clarifications if I proposed an approach that would contradict an already implemented feature. So my method was a lot of individual planned out threads working concurrently on very separate features to cover the most amount of ground while not breaking what another agent wrote. 
+
+You can view it here:
+
+https://youtu.be/nu1xFx_FX7k
+
 
 ------
-
-
-## Status
-
-- The project now boots directly into a playable match for faster gameplay and layout validation.
-- Live offense, release-to-pass input, tap-to-arm shot timing, scoring, rebounds, pause, game over, and opponent sim are implemented.
-- Mobile controls now use a one-thumb lower-zone gesture model: drag to move, release off-center to pass if a teammate is locked, quick tap to arm shot mode, then tap anywhere to lock timing.
-- Human shots now use an apex-driven launch solver with above-floor release height, longer airtime, and more dramatic on-screen arc lift.
-- Green makes now use a staged guided-make profile: the ballistic arc ends on the rim plane inside the legal front-half mouth, then the live simulator immediately drives the downward descent through the cylinder and net before the score resolves.
-- The terminal green-make path now applies a visual-only screen drop of about 60px so the final approach and descent read lower on screen without changing solver output, score legality, or hoop geometry.
-- Made baskets now use a three-piece hoop stack so the handoff can read at the rim, slip behind the hanging net during the swish, and only render behind the board when the path actually goes over it.
-- Rendering now uses a flat top-down rectangular projection: gameplay stays on a flat court plane while players, ball, hoop, preview dots, shadows, and debug geometry stay screen-faithful without the stretched trapezoid look.
-- Action input is projection-aware, so the invisible movement zone, release-to-pass preview, and tap-to-arm shot flow all line up with the projected screen positions the player actually sees.
-- The floor now renders from the blue second-court atlas variant as a rotated full-height crop that preserves the source art ratio, fills the screen vertically, and reveals part of the opposite side without stretching.
-- Player presentation is intentionally oversized for mobile readability, with a slightly closer default framing than the earlier build.
-- Gameplay tuning is resource-backed under `data/config/`.
-- Deterministic pure-logic, scenario, and balance tests are implemented under `tests/`.
 
 ## Run
 
@@ -54,33 +55,6 @@ Headless automated tests:
 ```bash
 '/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
 ```
-
-## Controls
-
-- Move: drag anywhere in the lower `35%` of the screen; a faint temporary anchor appears under the thumb. `WASD` / arrow keys still work in debug.
-- Pass: while moving, the best teammate inside the directional cone gets a filled preview ring. Releasing off-center passes only if that preview is locked.
-- Shoot: a strong upward swipe that finishes in the top half arms shot mode. If that committed family is a dunk, the game skips the timing phase entirely and goes straight into the staged dunk release.
-- Shot feel: non-dunk shots use a mostly red meter with a smaller green chunk; tapping on green always scores through a planned downward swish path and cannot be blocked, tapping on red causes a miss or a block if the contest wins, and failing to tap before the bar ends counts as a late miss.
-- Dunk feel: eligible live dunks do not show a shot bar, do not require a green hit, and currently auto-commit into a guaranteed make while still honoring the authored rim-contact hold and straight-through finish.
-- Shot preview: non-dunk armed shot mode shows preview dots for the release path. Green preview dots show the guaranteed-make arc, and red preview dots show the deterministic miss path that would be launched if tapped immediately.
-- Made shots now hold on-screen briefly after the simulator-owned descent so the ball can fully clear the net before the possession resets.
-- Made shot visuals now use explicit hoop depth phases so the ball can read in front of the backboard, at the rim-plane handoff, behind the hanging net, or behind the board only when it truly goes over it.
-- The final green-make approach and descent now render about 60px lower on screen as a visual-only terminal drop, but the legal score corridor and hoop geometry are unchanged.
-- Pause: HUD pause button or `P` / `Esc`.
-- Debug overlay: `F3`.
-
-## Layout
-
-- `scenes/`: game root, entity scenes, UI scenes, debug scenes
-- `scripts/game/`: coordinator, HUD, overlays, court view
-- `scripts/input/`: invisible-zone gesture input and debug input
-- `scripts/gameplay/`: shot, pass, ball, hoop, rebound systems
-- `scripts/ai/`: routes, spacing, defense, opponent sim
-- `scripts/entities/`: player and team resources/controllers
-- `scripts/debug/`: debug overlay plus wrappers for harness utilities
-- `data/`: config resources, teams, scenario resources, balance resources
-- `tests/`: headless harness, scenario runner, balance batches
-- `docs/`: brief, spec, architecture, decisions, worklog, test plan, results
 
 ## Docs
 
