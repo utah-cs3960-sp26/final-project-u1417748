@@ -1,5 +1,33 @@
 # Worklog
 
+## 2026-04-19
+
+### Session shop, coins, bench, and roster drag/drop are now live on the team flow
+
+- extended the `TeamRoster` autoload into the session-scoped source of truth for pre-match roster state: it now seeds `1000` demo coins, fixed starter slots, an empty purchased bench, and a four-player featured `ShopCatalog`
+- added `purchase_cost` to `PlayerData`, authored `data/teams/ShopCatalog.tres`, and implemented one-time purchase, insufficient-funds rejection, duplicate-purchase rejection, starter/bench swap, and derived gameplay-team generation in `TeamRoster`
+- rebuilt `TeamScreen` around reusable player cards, a shared top-right coin badge, explicit starters and bench sections, a bottom `Back | Shop` action row, and an explicit drag controller that uses padded hover targeting plus tweened overlay-card swap animation
+- added `ShopScreen` with the shared menu background, shared coin badge, featured high-OVR player cards, and live `Buy` / `Purchased` / `Too Expensive` states that update immediately after each purchase
+- kept match integration role-stable by having `GameCoordinator` continue to request the home team from `TeamRoster.get_home_team()`, which now derives the current starters into the fixed gameplay slot order `PG/LW/RW/LC/RC`
+- expanded `tests/TestRunner.gd` with session-roster logic coverage, team/shop UI snapshots, padded hover-target smoke, and a fresh-match integration check that confirms a swapped-in featured player appears in gameplay
+- reran the headless suite after the shop/bench pass: the new roster/shop checks passed; the suite still exits non-zero because of the current pre-existing failures `scenario Buzzer Shot Completion state expected GAME_OVER got SHOT_IN_FLIGHT`, `scenario Contested Green Release Scores home score expected 2 got 3`, `guided make bounce starts only after floor contact`, `outside arc three`, and `straight dunk keeps moving through the landing after launch`
+
+### Team page roster now uses horizontal starters and bench strips
+
+- replaced the crowded wrapped-row roster layout with two dedicated horizontal `ScrollContainer` strips so the five starter cards stay in one swipeable `STARTERS` row and purchased players live in their own `BENCH` row
+- widened the roster strips to the full phone column and kept `Back`, `Shop`, and `Back To Team` inset from the screen edges so the carousel viewport matches the phone width and the nav buttons stay anchored without touching the device bounds
+- split roster touch behavior by intent: card-body drags now belong to explicit horizontal strip scrolling, while lineup and bench cards now expose a near-full-width bottom drag strip under `OVR` that starts the existing padded-hover swap flow
+- increased the `STARTERS` and `BENCH` section heights so each strip shows a full card without vertical clipping, aligned both section headers to the same left column as `TEAM`, added a `20px` gap between the subtitle and `STARTERS`, centered the empty-bench placeholder against the full screen width, and raised the bottom team/shop buttons so they sit `50px` above the screen edge with `30px` side insets instead of hugging the section stack
+- moved the empty-bench message out of the bench container and into a viewport-width overlay band aligned to the bench strip so “Buy a featured player...” now centers against the actual phone width instead of any narrower content parent
+- trimmed the shop catalog down to four featured players and rebalanced their prices so the insufficient-funds logic still has deterministic coverage
+- updated smoke coverage to lock the full-width carousel snapshot, starter-strip swipe scrolling, the flush bottom-bar placement, the four-offer shop layout, and the body-vs-handle drag behavior without changing the underlying roster or gameplay APIs
+
+### Main menu quit button removed
+
+- removed the home-screen `Quit Game` button from `MainMenu.tscn` and dropped the matching `SceneTree.quit()` handler from `MainMenu.gd`
+- left the in-match pause and game-over quit flow unchanged; those still return to `MainMenu.tscn` instead of exiting the process
+- added a main-menu smoke assertion so future scene edits fail tests if a `QuitButton` is reintroduced on the home screen
+
 ## 2026-04-17
 
 ### Shot timing bar now centers in the live viewport

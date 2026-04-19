@@ -4,6 +4,7 @@ extends Resource
 @export var player_id: String = ""
 @export var display_name: String = "Player"
 @export var role: String = "PG"
+@export var purchase_cost: int = 0
 @export var speed: int = 70
 @export var acceleration: int = 70
 @export var handle: int = 70

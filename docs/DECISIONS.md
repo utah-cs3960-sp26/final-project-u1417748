@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-04-19
+
+### Team management now uses a session-only roster shop with fixed gameplay slots
+
+The menu-side team flow no longer treats the authored `HOM.tres` roster as the only playable home lineup. `TeamRoster` now owns a session-scoped runtime state made of three collections: fixed starter slots, a purchased bench, and a curated featured-player shop catalog. The demo economy starts each reset at `1000` coins, featured players cost roughly `210-250` coins, and purchases are one-time only for the current session.
+
+This was kept session-only on purpose. The demo needed a believable shop and bench-management loop without introducing persistence, save migration, or long-lived economy state before the class-demo build is stable.
+
+### Swapped-in players keep their own identity, but gameplay keeps the slot role
+
+A purchased player can now be dragged from the bench into any one of the five starter slots on the team page. That starter card shows both the player's natural role and the fixed slot they currently occupy. When gameplay starts, `TeamRoster.get_home_team()` derives a fresh five-player `TeamData` from the current starter assignments and rewrites only the live slot role to `PG/LW/RW/LC/RC`.
+
+This keeps current route anchors, defensive assignments, possession logic, and matchup assumptions stable even if, for example, a natural `LC` is swapped into the `PG` slot. The alternative would have been to refactor gameplay around dynamic natural roles, which is outside the current demo scope.
+
+### Team-page roster management uses horizontal strips plus handle-only swapping
+
+The earlier team-page pass wrapped the starter cards into multiple rows, but that made the portrait screen feel crowded and pushed the bench too far down. The current team-page contract uses two separate horizontal strips instead: one `STARTERS` strip for the fixed five lineup slots and one `BENCH` strip for purchased players. Both strips now span the phone-width roster column, are sized tall enough to show a full card without vertical clipping, align their section labels with the title column, keep a `20px` gap below the subtitle before `STARTERS`, center the empty-bench placeholder against the screen, and keep the bottom `Back | Shop` bar inset `50px` above the phone edge with `30px` side padding.
+
+Horizontal scrolling and drag-to-swap compete for the same touch gesture, so swapping no longer starts from the card body. Lineup and bench cards now expose a near-full-width bottom drag strip under the `OVR` line; swiping anywhere else on the card body scrolls the strip, while pressing that bottom strip starts the existing padded-hover drag/drop flow. This was chosen to keep the roster readable on mobile while preserving reliable touch scrolling and animated starter-bench swaps.
+
 ## 2026-04-16
 
 ### Pause moved out of the scoreboard and now mirrors it on the right

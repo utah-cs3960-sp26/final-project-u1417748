@@ -948,6 +948,81 @@ func _run_pure_logic() -> void:
 	var file_path: String = ProjectSettings.globalize_path("user://logs/test_check_match.log")
 	_assert_true(FileAccess.file_exists(file_path), "logs written", file_path)
 	_assert_true(ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/MainMenu.tscn", "boot scene is main menu", str(ProjectSettings.get_setting("application/run/main_scene")))
+	TeamRoster.reset_demo_state()
+	_assert_true(TeamRoster.get_coin_balance() == 1000, "team roster starts with 1000 demo coins", str(TeamRoster.get_coin_balance()))
+	var initial_lineup_slots: Array[Dictionary] = TeamRoster.get_home_lineup_slots()
+	var initial_slot_roles: Array[String] = []
+	for slot_data in initial_lineup_slots:
+		initial_slot_roles.append(str(slot_data.get("slot_role", "")))
+	_assert_true(
+		initial_lineup_slots.size() == 5 and JSON.stringify(initial_slot_roles) == JSON.stringify(["PG", "LW", "RW", "LC", "RC"]),
+		"team roster seeds five fixed starter slots",
+		JSON.stringify(initial_slot_roles)
+	)
+	_assert_true(TeamRoster.get_home_bench_players().is_empty(), "team roster starts with an empty bench", "")
+	var initial_shop_players: Array[PlayerData] = TeamRoster.get_shop_players()
+	var titan_offer: PlayerData = _find_roster_player_by_id(initial_shop_players, "shop_lc_titan")
+	_assert_true(initial_shop_players.size() == 4, "team roster loads four featured shop players", str(initial_shop_players.size()))
+	_assert_true(titan_offer != null and titan_offer.purchase_cost == 250, "best featured player costs 250 coins", str(titan_offer.purchase_cost if titan_offer != null else -1))
+	var purchase_result: Dictionary = TeamRoster.purchase_shop_player("shop_lc_titan")
+	_assert_true(bool(purchase_result.get("success", false)), "shop purchase succeeds once for a valid player", JSON.stringify(purchase_result))
+	_assert_true(TeamRoster.get_coin_balance() == 750, "successful purchase deducts coins", str(TeamRoster.get_coin_balance()))
+	var purchased_bench: Array[PlayerData] = TeamRoster.get_home_bench_players()
+	_assert_true(
+		purchased_bench.size() == 1 and purchased_bench[0].player_id == "shop_lc_titan",
+		"purchased player is added to the bench",
+		purchased_bench[0].player_id if not purchased_bench.is_empty() else ""
+	)
+	var duplicate_purchase_result: Dictionary = TeamRoster.purchase_shop_player("shop_lc_titan")
+	_assert_true(
+		not bool(duplicate_purchase_result.get("success", true)) and str(duplicate_purchase_result.get("reason", "")) == "already_purchased",
+		"duplicate shop purchase fails cleanly",
+		JSON.stringify(duplicate_purchase_result)
+	)
+	TeamRoster.reset_demo_state()
+	for spend_id in ["shop_lc_titan", "shop_pg_nova", "shop_rw_orbit"]:
+		TeamRoster.purchase_shop_player(spend_id)
+	var insufficient_purchase_result: Dictionary = TeamRoster.purchase_shop_player("shop_lw_glitch")
+	_assert_true(
+		not bool(insufficient_purchase_result.get("success", true)) and str(insufficient_purchase_result.get("reason", "")) == "insufficient_funds",
+		"insufficient funds purchase fails cleanly",
+		JSON.stringify(insufficient_purchase_result)
+	)
+	TeamRoster.reset_demo_state()
+	var original_pg_slot: Dictionary = _find_roster_slot_by_role(TeamRoster.get_home_lineup_slots(), "PG")
+	var original_pg_player: PlayerData = original_pg_slot.get("player", null) as PlayerData
+	TeamRoster.purchase_shop_player("shop_lc_titan")
+	var lineup_swap_succeeded: bool = TeamRoster.swap_lineup_slot_with_bench("PG", "shop_lc_titan")
+	_assert_true(lineup_swap_succeeded, "bench player can swap into a starter slot", "")
+	var swapped_pg_slot: Dictionary = _find_roster_slot_by_role(TeamRoster.get_home_lineup_slots(), "PG")
+	var swapped_pg_player: PlayerData = swapped_pg_slot.get("player", null) as PlayerData
+	var swapped_bench: Array[PlayerData] = TeamRoster.get_home_bench_players()
+	_assert_true(swapped_pg_player != null and swapped_pg_player.player_id == "shop_lc_titan", "starter slot now holds the swapped bench player", swapped_pg_player.player_id if swapped_pg_player != null else "")
+	_assert_true(
+		swapped_bench.size() == 1 and original_pg_player != null and swapped_bench[0].player_id == original_pg_player.player_id,
+		"displaced starter returns to the bench at the same bench index",
+		swapped_bench[0].player_id if not swapped_bench.is_empty() else ""
+	)
+	var runtime_home_team: TeamData = TeamRoster.get_home_team()
+	var runtime_home_roles: Array[String] = []
+	for player_data in runtime_home_team.players:
+		runtime_home_roles.append(player_data.role)
+	_assert_true(
+		runtime_home_team.players.size() == 5 and JSON.stringify(runtime_home_roles) == JSON.stringify(["PG", "LW", "RW", "LC", "RC"]),
+		"derived gameplay team always stays in fixed PG/LW/RW/LC/RC slot order",
+		JSON.stringify(runtime_home_roles)
+	)
+	var runtime_pg_player: PlayerData = runtime_home_team.get_player_by_role("PG")
+	_assert_true(
+		runtime_pg_player != null and runtime_pg_player.display_name == "Titan" and runtime_pg_player.role == "PG" and runtime_pg_player.dunk == titan_offer.dunk,
+		"derived gameplay team keeps fixed slot role while inheriting the swapped player's identity and ratings",
+		JSON.stringify({
+			"display_name": runtime_pg_player.display_name if runtime_pg_player != null else "",
+			"role": runtime_pg_player.role if runtime_pg_player != null else "",
+			"dunk": runtime_pg_player.dunk if runtime_pg_player != null else -1,
+		})
+	)
+	TeamRoster.reset_demo_state()
 	MENU_BACKGROUND_SCRIPT.reset_for_tests()
 	var main_menu_scene: PackedScene = load("res://scenes/MainMenu.tscn")
 	var main_menu: Control = main_menu_scene.instantiate() as Control
@@ -958,9 +1033,10 @@ func _run_pure_logic() -> void:
 	var shared_menu_source_path: String = MENU_BACKGROUND_SCRIPT.get_source_path()
 	_assert_true(main_menu_background != null, "main menu exposes a court background node", "")
 	_assert_true(main_menu_texture != null, "main menu background texture exists", "")
+	_assert_true(main_menu.get_node_or_null("ButtonStack/QuitButton") == null, "main menu omits a quit button", "")
 	_assert_true(not shared_menu_source_path.is_empty(), "shared menu background chooses a source image", shared_menu_source_path)
 	var team_screen_scene: PackedScene = load("res://scenes/TeamScreen.tscn")
-	var team_screen: Control = team_screen_scene.instantiate() as Control
+	var team_screen: TeamScreen = team_screen_scene.instantiate() as TeamScreen
 	add_child(team_screen)
 	await get_tree().process_frame
 	var team_background: TextureRect = team_screen.get_node_or_null("CourtBackground") as TextureRect
@@ -972,6 +1048,112 @@ func _run_pure_logic() -> void:
 		"%s %s" % [team_texture.get_rid() if team_texture != null else RID(), main_menu_texture.get_rid() if main_menu_texture != null else RID()]
 	)
 	_assert_true(MENU_BACKGROUND_SCRIPT.get_source_path() == shared_menu_source_path, "team screen keeps the shared menu background selection", MENU_BACKGROUND_SCRIPT.get_source_path())
+	var team_layout_snapshot: Dictionary = team_screen.get_card_layout_snapshot() if team_screen != null else {}
+	var team_sprite_display_size: Vector2 = team_layout_snapshot.get("sprite_display_size", Vector2.ZERO)
+	_assert_true(
+		bool(team_layout_snapshot.get("starters_horizontal_scroll", false)) and bool(team_layout_snapshot.get("bench_horizontal_scroll", false)),
+		"team screen uses horizontal starter and bench strips",
+		JSON.stringify(team_layout_snapshot)
+	)
+	_assert_true(
+		bool(team_layout_snapshot.get("carousel_matches_phone_width", false)),
+		"team screen stretches the roster carousels to the phone width",
+		JSON.stringify(team_layout_snapshot)
+	)
+	_assert_true(
+		team_sprite_display_size.x >= 320.0 and team_sprite_display_size.y >= 320.0,
+		"team screen keeps enlarged player sprite slots",
+		str(team_sprite_display_size)
+	)
+	_assert_true(int(team_layout_snapshot.get("starter_card_count", 0)) == 5, "team screen renders five starters", JSON.stringify(team_layout_snapshot))
+	_assert_true(int(team_layout_snapshot.get("bench_count", -1)) == 0 and bool(team_layout_snapshot.get("bench_placeholder_visible", false)), "team screen shows an empty-bench placeholder before purchases", JSON.stringify(team_layout_snapshot))
+	_assert_true(bool(team_layout_snapshot.get("has_shop_button", false)), "team screen exposes a shop button", JSON.stringify(team_layout_snapshot))
+	_assert_true(str(team_layout_snapshot.get("coin_balance_text", "")) == "1000", "team screen coin badge starts at 1000", JSON.stringify(team_layout_snapshot))
+	_assert_true(absf(float(team_layout_snapshot.get("bottom_bar_gap", -1.0)) - 50.0) < 0.5, "team screen keeps the bottom action bar 50px above the screen edge", JSON.stringify(team_layout_snapshot))
+	_assert_true(absf(float(team_layout_snapshot.get("bottom_bar_side_inset", -1.0)) - 30.0) < 0.5, "team screen keeps the bottom action bar 30px from the screen sides", JSON.stringify(team_layout_snapshot))
+	_assert_true(bool(team_layout_snapshot.get("headers_align_with_title", false)), "team screen section headers align with the title column", JSON.stringify(team_layout_snapshot))
+	_assert_true(float(team_layout_snapshot.get("subtitle_to_starters_gap", 0.0)) >= 19.5, "team screen keeps at least 20px between the subtitle and STARTERS", JSON.stringify(team_layout_snapshot))
+	_assert_true(bool(team_layout_snapshot.get("bench_placeholder_centered", false)), "team screen centers the empty bench placeholder against the screen", JSON.stringify(team_layout_snapshot))
+	_assert_true(bool(team_layout_snapshot.get("starters_viewport_fits_card", false)), "team screen starters section is tall enough to show a full card", JSON.stringify(team_layout_snapshot))
+	_assert_true(bool(team_layout_snapshot.get("body_swipe_scroll_passthrough", false)), "team screen lets card bodies pass swipe input through to the carousel", JSON.stringify(team_layout_snapshot))
+	_assert_true(team_screen.debug_simulate_strip_swipe("starters", -240.0) > 0.0, "team screen starters carousel actually scrolls on swipe", JSON.stringify(team_layout_snapshot))
+	var shop_screen_scene: PackedScene = load("res://scenes/ShopScreen.tscn")
+	var shop_screen = shop_screen_scene.instantiate()
+	add_child(shop_screen)
+	await get_tree().process_frame
+	var shop_background: TextureRect = shop_screen.get_node_or_null("CourtBackground") as TextureRect
+	var shop_texture: Texture2D = shop_background.texture if shop_background != null else null
+	_assert_true(shop_background != null, "shop screen exposes a court background node", "")
+	_assert_true(
+		shop_texture != null and main_menu_texture != null and shop_texture.get_rid() == main_menu_texture.get_rid(),
+		"shop screen reuses the main menu background texture",
+		"%s %s" % [shop_texture.get_rid() if shop_texture != null else RID(), main_menu_texture.get_rid() if main_menu_texture != null else RID()]
+	)
+	_assert_true(MENU_BACKGROUND_SCRIPT.get_source_path() == shared_menu_source_path, "shop screen keeps the shared menu background selection", MENU_BACKGROUND_SCRIPT.get_source_path())
+	var shop_layout_snapshot: Dictionary = shop_screen.get_layout_snapshot()
+	_assert_true(int(shop_layout_snapshot.get("offer_count", 0)) == 4, "shop screen renders four featured players", JSON.stringify(shop_layout_snapshot))
+	_assert_true(
+		int(shop_layout_snapshot.get("row_count", 0)) == 2 and JSON.stringify(shop_layout_snapshot.get("row_card_counts", [])) == JSON.stringify([2, 2]),
+		"shop screen wraps the featured catalog into two rows",
+		JSON.stringify(shop_layout_snapshot)
+	)
+	_assert_true(str(shop_layout_snapshot.get("coin_balance_text", "")) == "1000", "shop screen coin badge starts at 1000", JSON.stringify(shop_layout_snapshot))
+	_assert_true(absf(float(shop_layout_snapshot.get("bottom_button_gap", -1.0)) - 50.0) < 0.5, "shop screen keeps Back To Team 50px above the screen edge", JSON.stringify(shop_layout_snapshot))
+	_assert_true(absf(float(shop_layout_snapshot.get("bottom_button_side_inset", -1.0)) - 30.0) < 0.5, "shop screen keeps Back To Team 30px from the screen sides", JSON.stringify(shop_layout_snapshot))
+	TeamRoster.purchase_shop_player("shop_lc_titan")
+	await get_tree().process_frame
+	var purchased_team_layout: Dictionary = team_screen.get_card_layout_snapshot()
+	_assert_true(
+		int(purchased_team_layout.get("bench_count", 0)) == 1 and not bool(purchased_team_layout.get("bench_placeholder_visible", true)),
+		"team screen bench updates immediately after a purchase",
+		JSON.stringify(purchased_team_layout)
+	)
+	_assert_true(bool(purchased_team_layout.get("bench_viewport_fits_card", false)), "team screen bench section is tall enough to show a full card", JSON.stringify(purchased_team_layout))
+	_assert_true(str(purchased_team_layout.get("coin_balance_text", "")) == "750", "team screen coin badge updates after a purchase", JSON.stringify(purchased_team_layout))
+	var purchased_shop_layout: Dictionary = shop_screen.get_layout_snapshot()
+	var purchased_titan_state: Dictionary = _find_roster_card_state_by_id(purchased_shop_layout.get("states", []), "shop_lc_titan")
+	_assert_true(
+		str(purchased_shop_layout.get("coin_balance_text", "")) == "750",
+		"shop screen coin badge updates after a purchase",
+		JSON.stringify(purchased_shop_layout)
+	)
+	_assert_true(
+		str(purchased_titan_state.get("button_text", "")) == "Purchased" and bool(purchased_titan_state.get("button_disabled", false)),
+		"shop screen marks bought players as purchased",
+		JSON.stringify(purchased_titan_state)
+	)
+	var bench_drag_handle_rect: Rect2 = team_screen.debug_get_drag_handle_global_rect("bench", "shop_lc_titan")
+	_assert_true(
+		bench_drag_handle_rect.size.x >= float(purchased_team_layout.get("card_width", 0.0)) - 60.0,
+		"team screen uses a near-full-width drag handle under the player details",
+		JSON.stringify({"handle_rect": bench_drag_handle_rect, "layout": purchased_team_layout})
+	)
+	_assert_true(
+		not team_screen.debug_simulate_body_press("bench", "shop_lc_titan"),
+		"team screen does not start a drag from the card body",
+		JSON.stringify(purchased_team_layout)
+	)
+	_assert_true(
+		team_screen.debug_simulate_handle_press("bench", "shop_lc_titan"),
+		"team screen starts a drag from the card handle",
+		JSON.stringify(purchased_team_layout)
+	)
+	var rc_rect: Rect2 = team_screen.debug_get_card_global_rect("lineup", "RC")
+	var hover_padding: float = float(purchased_team_layout.get("drag_hover_padding", 0.0))
+	var near_hover_point: Vector2 = rc_rect.get_center() + Vector2(0.0, rc_rect.size.y * 0.5 + hover_padding - 8.0)
+	var near_hover_target: Dictionary = team_screen.debug_resolve_drop_target(near_hover_point, "bench", "shop_lc_titan")
+	_assert_true(
+		str(near_hover_target.get("kind", "")) == "lineup" and str(near_hover_target.get("id", "")) == "RC",
+		"team screen accepts padded near-hover drag targets",
+		JSON.stringify({"point": near_hover_point, "target": near_hover_target, "rect": rc_rect})
+	)
+	var far_hover_point: Vector2 = rc_rect.get_center() + Vector2(0.0, rc_rect.size.y * 0.5 + hover_padding + 40.0)
+	var far_hover_target: Dictionary = team_screen.debug_resolve_drop_target(far_hover_point, "bench", "shop_lc_titan")
+	_assert_true(
+		str(far_hover_target.get("id", "")) == "",
+		"team screen rejects drops outside the padded hover threshold",
+		JSON.stringify({"point": far_hover_point, "target": far_hover_target, "rect": rc_rect})
+	)
 	var settings_screen_scene: PackedScene = load("res://scenes/SettingsScreen.tscn")
 	var settings_screen: Control = settings_screen_scene.instantiate() as Control
 	add_child(settings_screen)
@@ -985,8 +1167,10 @@ func _run_pure_logic() -> void:
 		"%s %s" % [settings_texture.get_rid() if settings_texture != null else RID(), main_menu_texture.get_rid() if main_menu_texture != null else RID()]
 	)
 	_assert_true(MENU_BACKGROUND_SCRIPT.get_source_path() == shared_menu_source_path, "settings screen keeps the shared menu background selection", MENU_BACKGROUND_SCRIPT.get_source_path())
+	TeamRoster.reset_demo_state()
 	main_menu.queue_free()
 	team_screen.queue_free()
+	shop_screen.queue_free()
 	settings_screen.queue_free()
 	await get_tree().process_frame
 	var game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
@@ -2147,6 +2331,33 @@ func _run_opponent_sim_banner_smoke() -> void:
 	_assert_true(smoke_coordinator.control_panel != null and smoke_coordinator.control_panel.visible, "opponent sim banner restores controls when offense resumes", str(smoke_coordinator.control_panel.visible if smoke_coordinator.control_panel != null else false))
 	game_root.queue_free()
 	await get_tree().process_frame
+	TeamRoster.reset_demo_state()
+	var titan_live_offer: PlayerData = _find_roster_player_by_id(TeamRoster.get_shop_players(), "shop_lc_titan")
+	TeamRoster.purchase_shop_player("shop_lc_titan")
+	var live_swap_result: bool = TeamRoster.swap_lineup_slot_with_bench("PG", "shop_lc_titan")
+	_assert_true(live_swap_result, "live roster swap setup succeeds before game boot", "")
+	var custom_game_root_scene: PackedScene = load("res://scenes/GameRoot.tscn")
+	var custom_game_root: Node2D = custom_game_root_scene.instantiate() as Node2D
+	add_child(custom_game_root)
+	await get_tree().process_frame
+	var custom_coordinator: GameCoordinator = custom_game_root.get_node("GameCoordinator") as GameCoordinator
+	var custom_pg: PlayerController = custom_coordinator.get_offense_player_by_role("PG") if custom_coordinator != null else null
+	_assert_true(
+		custom_pg != null and titan_live_offer != null and custom_pg.get_display_name() == titan_live_offer.display_name,
+		"game boot uses the swapped starter identity for the fixed PG slot",
+		custom_pg.get_display_name() if custom_pg != null else ""
+	)
+	_assert_true(
+		custom_pg != null and custom_pg.get_player_data() != null and custom_pg.get_player_data().role == "PG" and custom_pg.get_player_data().dunk == titan_live_offer.dunk,
+		"game boot keeps the fixed PG role while inheriting the swapped player's ratings",
+		JSON.stringify({
+			"role": custom_pg.get_player_data().role if custom_pg != null and custom_pg.get_player_data() != null else "",
+			"dunk": custom_pg.get_player_data().dunk if custom_pg != null and custom_pg.get_player_data() != null else -1,
+		})
+	)
+	custom_game_root.queue_free()
+	await get_tree().process_frame
+	TeamRoster.reset_demo_state()
 
 
 func _run_score_banner_smoke() -> void:
@@ -3096,6 +3307,27 @@ func _max_preview_z(points: Array[Dictionary]) -> float:
 	for point in points:
 		max_z = maxf(max_z, point["z"])
 	return max_z
+
+
+func _find_roster_player_by_id(players: Array[PlayerData], player_id: String) -> PlayerData:
+	for player_data in players:
+		if player_data != null and player_data.player_id == player_id:
+			return player_data
+	return null
+
+
+func _find_roster_slot_by_role(slots: Array[Dictionary], slot_role: String) -> Dictionary:
+	for slot_data in slots:
+		if str(slot_data.get("slot_role", "")) == slot_role:
+			return slot_data
+	return {}
+
+
+func _find_roster_card_state_by_id(states: Array, player_id: String) -> Dictionary:
+	for state in states:
+		if state is Dictionary and str(state.get("player_id", "")) == player_id:
+			return state
+	return {}
 
 
 func _new_ball_simulator(config: BallPhysicsConfig) -> BallSimulator:

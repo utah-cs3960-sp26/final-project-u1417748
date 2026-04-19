@@ -49,6 +49,15 @@
 - polls `PlayerVisual` after each animation advance so the actual shot launch and ball reveal happen only after the configured release frame for the committed row
 - exposes deterministic hooks used only by the automated harness
 
+`TeamRoster` is the session-scoped roster and economy autoload for menu and pre-match team management. It:
+
+- loads the authored `HOM`, `AWY`, and `ShopCatalog` resources once, then seeds a runtime-only demo state
+- owns the fixed home starter-slot mapping `PG/LW/RW/LC/RC`, the purchased home bench list, the featured shop catalog, and the one-time-purchase set
+- owns the session-only coin balance, which starts at `1000` on reset and changes only through roster-shop purchases
+- exposes `coins_changed` and `home_roster_changed` so `TeamScreen` and `ShopScreen` can stay in sync without duplicating state
+- returns a derived gameplay-safe home `TeamData` from the current starter assignments so live matches keep the fixed slot roles even when the swapped-in player's natural role differs
+- keeps all shop, bench, and lineup edits session-scoped only; `reset_demo_state()` is the authoritative reset path used by tests
+
 ## Core Systems
 
 - `InputController`
@@ -110,6 +119,13 @@
   - ratings-driven off-screen possession resolution
   - returns log-oriented `events` plus presentation-oriented `visual_steps`; each possession has `1..4` visible steps, and the final step matches `points_scored`
   - includes stable actor metadata on each visual step (`player_id`, `player_role`, and `actor_team`) so the presentation layer can place the correct ghost actor without changing the resolved sim result
+- `TeamScreen`
+  - pre-match roster-management scene that renders separate full-width horizontal `STARTERS` and `BENCH` strips from `TeamRoster`, keeps each strip tall enough to show a full card without vertical clipping, aligns the section headers to the title column, leaves a `20px` gap between the subtitle and the `STARTERS` header, centers the empty-bench placeholder against the full screen width, shows the shared top-right coin badge, and keeps the bottom `Back | Shop` bar inset `50px` above the phone edge with `30px` side padding
+  - uses padded hover hit rects plus overlay tween copies so accepted swaps animate across the screen instead of snapping instantly, while explicit swipe handling keeps the roster strips horizontally scrollable and drag-to-swap starts only from each card's full-width bottom drag strip
+- `ShopScreen`
+  - pre-match featured-player store scene that reuses the shared menu background, shows the same coin badge, renders four featured player cards with `Buy`, `Purchased`, or `Too Expensive` states, and keeps `Back To Team` inset `50px` above the phone edge with `30px` side padding
+- `RosterPlayerCard` + `CoinsBadge`
+  - small reusable menu controls shared by `TeamScreen` and `ShopScreen` so featured players, starters, bench players, and the coin total all use one consistent presentation contract; lineup and bench variants expose a near-full-width bottom drag strip under `OVR`, while shop cards stay purchase-only
 
 ## Data
 
@@ -118,6 +134,7 @@ Authored resources live under `data/`:
 - `data/config/*.tres`
 - `data/teams/HOM.tres`
 - `data/teams/AWY.tres`
+- `data/teams/ShopCatalog.tres`
 - `data/scenarios/*.tres`
 - `data/balance/*.tres`
 

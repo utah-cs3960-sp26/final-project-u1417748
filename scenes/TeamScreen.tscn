@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/game/TeamScreen.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/Court/Court.png" id="2"]
+[ext_resource type="Script" path="res://scripts/game/CoinsBadge.gd" id="3"]
 
 [node name="TeamScreen" type="Control"]
 layout_mode = 3
@@ -31,54 +32,167 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.62)
+color = Color(0, 0, 0, 0.64)
+
+[node name="CoinsBadge" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 760.0
+offset_top = 92.0
+offset_right = 1030.0
+offset_bottom = 168.0
+script = ExtResource("3")
 
 [node name="Title" type="Label" parent="."]
 layout_mode = 0
-offset_left = 60.0
-offset_top = 160.0
-offset_right = 1020.0
-offset_bottom = 280.0
+offset_left = 70.0
+offset_top = 120.0
+offset_right = 770.0
+offset_bottom = 220.0
 theme_override_font_sizes/font_size = 72
 text = "TEAM"
-horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Subtitle" type="Label" parent="."]
 layout_mode = 0
-offset_left = 60.0
-offset_top = 280.0
-offset_right = 1020.0
-offset_bottom = 340.0
+offset_left = 70.0
+offset_top = 220.0
+offset_right = 1010.0
+offset_bottom = 280.0
 theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.86, 0.92, 1, 0.85)
-text = "Your offensive starting five"
-horizontal_alignment = 1
+text = "Set your starters, bench, and featured buys"
 vertical_alignment = 1
 
-[node name="CardsScroll" type="ScrollContainer" parent="."]
+[node name="SectionsRoot" type="VBoxContainer" parent="."]
 layout_mode = 0
-offset_left = 20.0
-offset_top = 420.0
-offset_right = 1060.0
-offset_bottom = 1280.0
-horizontal_scroll_mode = 2
-vertical_scroll_mode = 0
+offset_left = 0.0
+offset_top = 300.0
+offset_right = 1080.0
+offset_bottom = 1820.0
+theme_override_constants/separation = 10
 
-[node name="CardsContainer" type="HBoxContainer" parent="CardsScroll"]
+[node name="StartersSection" type="VBoxContainer" parent="SectionsRoot"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="StartersHeaderWrap" type="MarginContainer" parent="SectionsRoot/StartersSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 70
+theme_override_constants/margin_right = 20
+
+[node name="StartersHeader" type="Label" parent="SectionsRoot/StartersSection/StartersHeaderWrap"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "STARTERS"
+
+[node name="StartersScroll" type="ScrollContainer" parent="SectionsRoot/StartersSection"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-alignment = 1
-theme_override_constants/separation = 18
+custom_minimum_size = Vector2(0, 710)
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
 
-[node name="BackButton" type="Button" parent="."]
+[node name="StartersContainer" type="HBoxContainer" parent="SectionsRoot/StartersSection/StartersScroll"]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 360.0
-offset_top = 1720.0
-offset_right = 720.0
-offset_bottom = 1820.0
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="BenchSection" type="VBoxContainer" parent="SectionsRoot"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="BenchHeaderWrap" type="MarginContainer" parent="SectionsRoot/BenchSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 70
+theme_override_constants/margin_right = 20
+
+[node name="BenchHeader" type="Label" parent="SectionsRoot/BenchSection/BenchHeaderWrap"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "BENCH"
+
+[node name="BenchContent" type="Control" parent="SectionsRoot/BenchSection"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 710)
+
+[node name="BenchScroll" type="ScrollContainer" parent="SectionsRoot/BenchSection/BenchContent"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="BenchContainer" type="HBoxContainer" parent="SectionsRoot/BenchSection/BenchContent/BenchScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="BottomBar" type="HBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = -150.0
+offset_right = -30.0
+offset_bottom = -50.0
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="BackButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 36
 text = "Back"
+
+[node name="ShopButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 36
+text = "Shop"
+
+[node name="OverlayLayer" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="BenchEmptyLabel" type="Label" parent="OverlayLayer"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_top = 1010.0
+offset_right = 1080.0
+offset_bottom = 1130.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.88, 0.92, 1, 0.78)
+text = "Buy a featured player to start filling the bench."
+horizontal_alignment = 1
+vertical_alignment = 1

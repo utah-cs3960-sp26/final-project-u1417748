@@ -1,5 +1,79 @@
 # Test Results
 
+## Horizontal-Scroll Team Layout Validation
+
+The team-management flow now keeps the roster readable on portrait screens by using separate full-width horizontal `STARTERS` and `BENCH` strips, strip heights that fully show a card without vertical clipping, section headers aligned to the title column, a `20px` gap between the subtitle and `STARTERS`, a viewport-width empty-bench placeholder centered against the full screen instead of the bench container, bottom navigation buttons inset `50px` above the phone edge with `30px` side padding, and a near-full-width bottom drag strip on lineup and bench cards so strip scrolling and drag/drop no longer fight over the same touch gesture.
+
+## Environment
+
+- Date: 2026-04-19
+- Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
+- Engine used for validation: Godot 4.6.1 stable
+
+## Commands Run
+
+Automated suite:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script tests/RunTests.gd
+```
+
+## Automated Result
+
+Full suite status: fail, with the new full-width carousel, no-clipping strip height, title-column header alignment, `20px` subtitle spacing, centered empty-bench placeholder, four-player shop, and `30px` / `50px` inset bottom-button coverage passing
+
+- Pure logic checks recorded: 1855
+- Scenarios: 18 / 18 resources executed
+- Balance: 4 / 4 batches executed
+- Failures: 5
+
+Horizontal-layout and roster/shop validation passed:
+
+- `TeamRoster` reset state starts with `1000` coins, five starter slots, an empty bench, and four featured shop players
+- successful purchase deducts coins, marks the offer purchased, and places the player on the bench
+- duplicate purchase and insufficient-funds purchase both fail cleanly
+- swapping a bench player into a starter slot updates the starter and bench state while preserving the fixed gameplay slot order
+- `TeamScreen` snapshot coverage passed for five starter cards, full-width horizontal starters and bench strips, a viewport-width empty-bench placeholder centered against the full screen, the shared coin badge, and a bottom action bar inset `50px` above the screen edge with `30px` side padding
+- `TeamScreen` snapshot coverage also passed for title-column-aligned `STARTERS` and `BENCH` headers, a `20px` subtitle gap before `STARTERS`, and full-card viewport height in both horizontal strips
+- team-page input smoke confirmed card-body drags pass swipe input through to the carousel, the starters strip actually scrolls on swipe, and the near-full-width bottom drag strip still starts roster swapping
+- `ShopScreen` snapshot coverage passed for four featured offers, two wrapped rows, shared coin badge state, and a `Back To Team` button inset `50px` above the screen edge with `30px` side padding
+- padded near-hover target acceptance and outside-threshold rejection both passed for the explicit drag/drop resolver
+- a fresh `GameRoot` instance used the swapped featured player in live gameplay while keeping the fixed slot role
+
+Current failing checks remain outside the new roster/shop flow:
+
+- `scenario Buzzer Shot Completion state expected GAME_OVER got SHOT_IN_FLIGHT`
+- `scenario Contested Green Release Scores home score expected 2 got 3`
+- `guided make bounce starts only after floor contact`
+- `outside arc three`
+- `straight dunk keeps moving through the landing after launch`
+
+## Main Menu Quit Button Removal Validation
+
+The home screen no longer exposes a `Quit Game` action. `MainMenu.tscn` now instantiates with only the start, team, and settings buttons, while the in-match quit flow remains unchanged.
+
+## Environment
+
+- Date: 2026-04-19
+- Workspace: `/Users/teeds/Desktop/Programming/RetroBasketball/PocketHoops/final-project-u1417748`
+- Engine used for validation: Godot 4.6.1 stable
+
+## Commands Run
+
+Focused headless validation:
+
+```bash
+'/Applications/Godot.app/Contents/MacOS/Godot' --headless --path . --script /tmp/verify_main_menu_no_quit.gd
+```
+
+## Automated Result
+
+Focused menu validation status: pass
+
+- `MainMenu.tscn` instantiated successfully
+- `ButtonStack/QuitButton` was absent as expected
+- the new smoke assertion `main menu omits a quit button` was added to `tests/TestRunner.gd`
+
 ## Shot Timing Bar Centering Validation
 
 The visible shot-timing bar now keeps its existing full-width action-row sizing, but it draws at the center of the safe viewport during `SHOT_AIM` instead of sitting inside the top `SHOOT | DUNK` control row. The new smoke coverage asserts both safe-area containment and centered placement.

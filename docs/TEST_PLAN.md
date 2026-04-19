@@ -98,6 +98,17 @@ Covered by `tests/TestRunner.gd`:
 - opponent sim presentation restoring live players and live ball when `LIVE_OFFENSE` resumes
 - deterministic opponent sim seeds covering one-step score, multi-step score, and no-score outcomes
 - log file creation
+- `TeamRoster` session reset seeding `1000` coins, five fixed starter slots, an empty bench, and a four-player featured shop catalog
+- successful featured-player purchase deducting coins, marking the offer purchased, and appending that player to the bench
+- duplicate purchase rejection and insufficient-funds rejection
+- starter-slot to bench swap behavior preserving the bench index of the displaced starter
+- derived gameplay home team staying in fixed `PG/LW/RW/LC/RC` order after lineup swaps while inheriting the swapped player's identity and ratings
+- `TeamScreen` roster snapshot coverage for five starters, a dedicated full-width horizontal starters strip, a dedicated full-width horizontal bench strip, full-card viewport height in both strips, title-column-aligned section headers, a `20px` subtitle-to-`STARTERS` gap, a screen-centered empty-bench placeholder, the top-right coin badge, and the bottom `Back | Shop` bar inset `50px` above the screen edge with `30px` side padding
+- handle-vs-body drag smoke coverage proving the card body keeps strip scrolling while the near-full-width bottom drag strip starts roster swapping
+- direct swipe-scroll smoke coverage proving the starters strip actually moves horizontally when swiped
+- `ShopScreen` snapshot coverage for four offers, wrapped two-card rows, shared coin badge state, `Buy` / `Purchased` / `Too Expensive` button text, and a `Back To Team` button inset `50px` above the screen edge with `30px` side padding
+- padded near-hover drop-target acceptance and outside-threshold rejection for roster drag/drop targeting
+- match integration smoke that buys a featured player, swaps them into a starter slot, starts a fresh match, and verifies gameplay consumes the derived runtime home roster
 
 ### Deterministic Scenarios
 
@@ -186,6 +197,15 @@ Smoke game scene:
 ## Manual Smoke Checklist
 
 - run the project and confirm live gameplay appears immediately
+- open `Team` from the main menu and confirm the team page shows the shared menu background, a top-right coin badge reading `1000`, a full-width horizontal `STARTERS` strip with five starter cards, an empty `BENCH` section, and a bottom `Back | Shop` row pinned to the screen edge
+- open `Shop` from the team page and confirm the shop page shows the same coin total plus four featured-player cards with natural role, OVR, cost, and buy-state text
+- buy at least one featured player and confirm the coin badge updates immediately on both team and shop screens without restarting the app
+- return to the team page and confirm the purchased player appears in the horizontal bench strip while the empty-bench placeholder disappears
+- swipe across the body of a starter or bench card and confirm the strip scrolls instead of starting a roster drag
+- press the bottom full-width drag strip on a bench card, drag near a starter card, confirm padded rough-hover targeting still highlights the slot, and release to swap the two players
+- confirm an invalid drop outside the padded hover threshold cancels and snaps back instead of mutating the roster
+- confirm an accepted starter/bench swap animates the card movement instead of snapping instantly
+- start a new match after swapping a featured player into the lineup and confirm that player now appears in live gameplay while the slot behavior still follows the fixed on-court role
 - confirm the compact bottom-quarter control panel is visible on match start with a shorter `SHOOT | DUNK` row above a larger `PASS | MOVE | PASS` row and small capped labels
 - confirm the center `MOVE` lane is visibly wider than either `PASS` lane
 - confirm the scoreboard card sits at the bottom left just above the `SHOOT` half instead of spanning the top edge

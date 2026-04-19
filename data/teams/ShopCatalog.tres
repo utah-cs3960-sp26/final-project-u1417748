@@ -1,0 +1,88 @@
+[gd_resource type="Resource" script_class="ShopCatalogData" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/entities/ShopCatalogData.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/entities/PlayerData.gd" id="2"]
+
+[sub_resource type="Resource" id="PlayerData_nova"]
+script = ExtResource("2")
+player_id = "shop_pg_nova"
+display_name = "Nova"
+role = "PG"
+purchase_cost = 245
+speed = 90
+acceleration = 91
+handle = 96
+pass_accuracy = 95
+catch_rating = 84
+shooting = 88
+release_consistency = 90
+perimeter_defense = 82
+steal = 84
+dunk = 52
+block = 46
+rebound = 70
+sim_offense = 92
+
+[sub_resource type="Resource" id="PlayerData_glitch"]
+script = ExtResource("2")
+player_id = "shop_lw_glitch"
+display_name = "Glitch"
+role = "LW"
+purchase_cost = 260
+speed = 88
+acceleration = 89
+handle = 83
+pass_accuracy = 80
+catch_rating = 90
+shooting = 92
+release_consistency = 91
+perimeter_defense = 80
+steal = 78
+dunk = 82
+block = 56
+rebound = 74
+sim_offense = 89
+
+[sub_resource type="Resource" id="PlayerData_orbit"]
+script = ExtResource("2")
+player_id = "shop_rw_orbit"
+display_name = "Orbit"
+role = "RW"
+purchase_cost = 246
+speed = 87
+acceleration = 86
+handle = 82
+pass_accuracy = 84
+catch_rating = 92
+shooting = 95
+release_consistency = 96
+perimeter_defense = 82
+steal = 80
+dunk = 72
+block = 58
+rebound = 76
+sim_offense = 91
+
+[sub_resource type="Resource" id="PlayerData_titan"]
+script = ExtResource("2")
+player_id = "shop_lc_titan"
+display_name = "Titan"
+role = "LC"
+purchase_cost = 250
+speed = 82
+acceleration = 80
+handle = 72
+pass_accuracy = 78
+catch_rating = 90
+shooting = 84
+release_consistency = 83
+perimeter_defense = 88
+steal = 74
+dunk = 97
+block = 92
+rebound = 95
+sim_offense = 88
+
+[resource]
+script = ExtResource("1")
+players = Array[ExtResource("2")]([SubResource("PlayerData_nova"), SubResource("PlayerData_glitch"), SubResource("PlayerData_orbit"), SubResource("PlayerData_titan")])
